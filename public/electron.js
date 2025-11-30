@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, protocol } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+const isDev = !app.isPackaged;
 const url = require('url');
 
 // Importar funciones de base de datos
