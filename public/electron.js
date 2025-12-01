@@ -11,7 +11,8 @@ const {
   buscarProductos,
   actualizarProducto,
   eliminarProducto,
-  obtenerEstadisticasInventario
+  obtenerEstadisticasInventario,
+  actualizarStockVariante
 } = require('./database/db');
 
 let mainWindow;
@@ -176,6 +177,22 @@ ipcMain.handle('obtener-estadisticas', async () => {
     });
   });
 });
+
+// Actualizar stock de variante
+ipcMain.handle('actualizar-stock-variante', async (event, varianteId, nuevaCantidad) => {
+  return new Promise((resolve, reject) => {
+    actualizarStockVariante(varianteId, nuevaCantidad, (err, result) => {
+      if (err) {
+        console.error('❌ Error al actualizar stock de variante:', err);
+        reject(err);
+      } else {
+        console.log('✅ Stock de variante actualizado:', result);
+        resolve(result);
+      }
+    });
+  });
+});
+
 
 // ==================== APP LIFECYCLE ====================
 
