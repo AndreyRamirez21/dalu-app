@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, AlertTriangle, AlertCircle, Package, X, Save, ChevronDown, ChevronUp } from 'lucide-react';
+import { exportarInventarioExcel, calcularMargen } from "../../utils/exportExcel";
 
 // Helper para IPC de Electron
 const getIPC = () => {
@@ -167,11 +168,6 @@ const toggleExpandirProducto = (productoId) => {
     return null;
   };
 
-  const calcularMargen = (costo, precioVenta) => {
-    if (!costo || !precioVenta) return 0;
-    return (((precioVenta - costo) / precioVenta) * 100).toFixed(1);
-  };
-
 const handleInputChange = (e) => {
   const { name, value } = e.target;
   setFormulario(prev => ({ ...prev, [name]: value }));
@@ -298,12 +294,13 @@ try {
           return;
         }
 
-        // Validar referencia duplicada
+        // Validar referencia duplicada (excepto el producto actual)
         const referenciaExiste = productos.some(p =>
-          p.referencia.toLowerCase() === formulario.referencia.trim().toLowerCase()
+          p.referencia.toLowerCase() === formulario.referencia.trim().toLowerCase() &&
+          p.id !== productoEditar.id
         );
         if (referenciaExiste) {
-          setNotificacion({ mensaje: `Ya existe un producto con la referencia "${formulario.referencia}"`, tipo: 'error' });
+          setNotificacion({ mensaje: `Ya existe otro producto con la referencia "${formulario.referencia}"`, tipo: 'error' });
           return;
         }
 
@@ -405,27 +402,34 @@ if (vista === 'lista') {
       <div className="p-8 bg-gray-50 min-h-screen">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-3xl font-bold text-gray-800">Gestión de Inventario</h2>
-            <p className="text-gray-500 mt-1">Administra los productos, stock y precios con variantes por talla.</p>
           </div>
-        <button
-                  onClick={() => {
-                    setFormulario({
-                      referencia: '',
-                      nombre: '',
-                      categoria: 'Deluxe',
-                      costo_base: '',
-                      precio_venta_base: '',
-                      variantes: []
-                    });
-                        setProductoEditar(null);
-                        setVista('agregar');;
-                  }}
-                  className="flex items-center space-x-2 px-5 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium shadow-sm"
-                >
+        <div className="flex items-center space-x-3">
+          <button
+        onClick={() => exportarInventarioExcel(productos)}
+            className="flex items-center space-x-2 px-5 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium shadow-sm"
+          >
+            <Package size={20} />
+            <span>Exportar Excel</span>
+          </button>
+          <button
+            onClick={() => {
+              setFormulario({
+                referencia: '',
+                nombre: '',
+                categoria: 'Deluxe',
+                costo_base: '',
+                precio_venta_base: '',
+                variantes: []
+              });
+              setProductoEditar(null);
+              setVista('agregar');
+            }}
+            className="flex items-center space-x-2 px-5 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium shadow-sm"
+          >
             <Plus size={20} />
             <span>Nuevo Producto</span>
           </button>
+        </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

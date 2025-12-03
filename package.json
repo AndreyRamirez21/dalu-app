@@ -18,13 +18,19 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-scripts": "5.0.1",
+    "sheetjs-style": "^0.15.8",
     "sqlite3": "^5.1.7",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "autoprefixer": "^10.4.16",
     "concurrently": "^9.2.1",
     "electron": "^39.2.4",
     "electron-builder": "^26.0.12",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.0",
     "wait-on": "^9.0.3"
   },
   "scripts": {
@@ -34,7 +40,9 @@
     "eject": "react-scripts eject",
     "electron:dev": "concurrently \"set BROWSER=none && npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --win --x64"
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:32": "npm run build && electron-builder --win --ia32",
+    "dist:all": "npm run build && electron-builder --win --x64 --ia32"
   },
   "eslintConfig": {
     "extends": [
@@ -80,11 +88,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         }
       ],
       "icon": "public/icon.png",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     }
   }
 }
