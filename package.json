@@ -15,9 +15,10 @@
     "electron-is-dev": "^3.0.1",
     "express": "^5.1.0",
     "lucide-react": "^0.555.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-scripts": "5.0.1",
+    "recharts": "^3.5.1",
     "sheetjs-style": "^0.15.8",
     "sqlite3": "^5.1.7",
     "web-vitals": "^2.1.4",
@@ -40,9 +41,7 @@
     "eject": "react-scripts eject",
     "electron:dev": "concurrently \"set BROWSER=none && npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --win --x64",
-    "dist:32": "npm run build && electron-builder --win --ia32",
-    "dist:all": "npm run build && electron-builder --win --x64 --ia32"
+    "dist": "npm run build && electron-builder --win --x64"
   },
   "eslintConfig": {
     "extends": [
@@ -89,12 +88,11 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "ia32"
+            "x64"
           ]
         }
       ],
-      "icon": "public/icon.png",
+      "icon": "electron/Dalu-desktop.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     }
