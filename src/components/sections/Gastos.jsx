@@ -1,6 +1,6 @@
 // src/components/sections/Gastos.jsx
 import React from 'react';
-import { Search, Plus, Edit, Trash2, X, Calendar, DollarSign, Tag, FileText, CreditCard, Building, Download, CalendarRange } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, Calendar, DollarSign, Tag, FileText, CreditCard, Building, Download, CalendarRange, TrendingUp, TrendingDown, Activity, Target } from 'lucide-react';
 import { useGastos } from '../../api/useGastos';
 
 const Gastos = () => {
@@ -259,6 +259,83 @@ const Gastos = () => {
           </div>
         </div>
 
+        {/* Métricas del mes */}
+        <div className="mb-8 space-y-3">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Métricas del Mes</h3>
+
+          {/* Gasto más alto */}
+          {(() => {
+            const gastoMasAlto = gastos.getGastoMasAlto();
+            return gastoMasAlto ? (
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-red-700">Gasto Más Alto</span>
+                  <Target size={16} className="text-red-600" />
+                </div>
+                <div className="text-2xl font-bold text-red-700">${parseFloat(gastoMasAlto.monto).toFixed(2)}</div>
+                <div className="text-xs text-red-600 mt-1 truncate">{gastoMasAlto.descripcion}</div>
+              </div>
+            ) : null;
+          })()}
+
+          {/* Gasto promedio por día */}
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-blue-700">Promedio por Día</span>
+              <Activity size={16} className="text-blue-600" />
+            </div>
+            <div className="text-2xl font-bold text-blue-700">
+              ${gastos.getGastoPromedioPorDia().toFixed(2)}
+            </div>
+            <div className="text-xs text-blue-600 mt-1">Del mes actual</div>
+          </div>
+
+          {/* Proyección mensual */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-purple-700">Proyección Mensual</span>
+              <TrendingUp size={16} className="text-purple-600" />
+            </div>
+            <div className="text-2xl font-bold text-purple-700">
+              ${gastos.getProyeccionMensual().toFixed(2)}
+            </div>
+            <div className="text-xs text-purple-600 mt-1">Estimado al final del mes</div>
+          </div>
+
+          {/* Comparación con mes anterior */}
+          {(() => {
+            const comparacion = gastos.getComparacionMesAnterior();
+            if (!comparacion) return null;
+
+            return (
+              <div className={`bg-gradient-to-br ${comparacion.esAumento
+                  ? 'from-orange-50 to-orange-100 border-orange-200'
+                  : 'from-green-50 to-green-100 border-green-200'
+                } rounded-lg p-4 border`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs font-medium ${comparacion.esAumento ? 'text-orange-700' : 'text-green-700'
+                    }`}>
+                    vs Mes Anterior
+                  </span>
+                  {comparacion.esAumento ? (
+                    <TrendingUp size={16} className="text-orange-600" />
+                  ) : (
+                    <TrendingDown size={16} className="text-green-600" />
+                  )}
+                </div>
+                <div className={`text-2xl font-bold ${comparacion.esAumento ? 'text-orange-700' : 'text-green-700'
+                  }`}>
+                  {comparacion.esAumento ? '+' : ''}{comparacion.porcentaje.toFixed(1)}%
+                </div>
+                <div className={`text-xs mt-1 ${comparacion.esAumento ? 'text-orange-600' : 'text-green-600'
+                  }`}>
+                  ${comparacion.totalActual.toFixed(2)} vs ${comparacion.totalAnterior.toFixed(2)}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
         {/* Filtros por categoría */}
         <div className="mb-8">
           <h3 className="text-lg font-bold text-gray-800 mb-4">Filtrar por Categoría</h3>
@@ -267,16 +344,14 @@ const Gastos = () => {
               <button
                 key={index}
                 onClick={() => gastos.setSelectedCategory(categoria.nombre)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition ${
-                  gastos.selectedCategory === categoria.nombre
-                    ? 'bg-teal-50 text-teal-600'
-                    : 'hover:bg-gray-50 text-gray-700'
-                }`}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition ${gastos.selectedCategory === categoria.nombre
+                  ? 'bg-teal-50 text-teal-600'
+                  : 'hover:bg-gray-50 text-gray-700'
+                  }`}
               >
                 <span className={`font-medium ${categoria.color}`}>{categoria.nombre}</span>
-                <span className={`text-sm font-bold ${
-                  gastos.selectedCategory === categoria.nombre ? 'text-teal-600' : 'text-gray-400'
-                }`}>
+                <span className={`text-sm font-bold ${gastos.selectedCategory === categoria.nombre ? 'text-teal-600' : 'text-gray-400'
+                  }`}>
                   {gastos.getCategoriaCount(categoria.nombre)}
                 </span>
               </button>

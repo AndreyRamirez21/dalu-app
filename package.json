@@ -41,7 +41,7 @@
     "eject": "react-scripts eject",
     "electron:dev": "concurrently \"set BROWSER=none && npm start\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --win --x64"
+    "dist": "npm run build && electron-builder --win --x64 --ia32"
   },
   "eslintConfig": {
     "extends": [
@@ -88,7 +88,8 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "ia32"
           ]
         }
       ],

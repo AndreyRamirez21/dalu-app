@@ -183,32 +183,32 @@ export const useGastos = () => {
     return colors[categoria] || 'bg-gray-100 text-gray-700';
   };
 
-// Filtrar gastos
-const gastosFiltrados = gastos.filter(gasto => {
-  const matchSearch = gasto.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                     (gasto.proveedor && gasto.proveedor.toLowerCase().includes(searchTerm.toLowerCase()));
-  const matchCategory = selectedCategory === 'Todas las Categorías' || gasto.categoria === selectedCategory;
+  // Filtrar gastos
+  const gastosFiltrados = gastos.filter(gasto => {
+    const matchSearch = gasto.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (gasto.proveedor && gasto.proveedor.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchCategory = selectedCategory === 'Todas las Categorías' || gasto.categoria === selectedCategory;
 
-  // Filtro por rango de fechas
-  let matchFecha = true;
-  if (fechaInicio || fechaFin) {
-    const fechaGasto = new Date(gasto.fecha + 'T00:00:00');
+    // Filtro por rango de fechas
+    let matchFecha = true;
+    if (fechaInicio || fechaFin) {
+      const fechaGasto = new Date(gasto.fecha + 'T00:00:00');
 
-    if (fechaInicio && fechaFin) {
-      const inicio = new Date(fechaInicio + 'T00:00:00');
-      const fin = new Date(fechaFin + 'T23:59:59');
-      matchFecha = fechaGasto >= inicio && fechaGasto <= fin;
-    } else if (fechaInicio) {
-      const inicio = new Date(fechaInicio + 'T00:00:00');
-      matchFecha = fechaGasto >= inicio;
-    } else if (fechaFin) {
-      const fin = new Date(fechaFin + 'T23:59:59');
-      matchFecha = fechaGasto <= fin;
+      if (fechaInicio && fechaFin) {
+        const inicio = new Date(fechaInicio + 'T00:00:00');
+        const fin = new Date(fechaFin + 'T23:59:59');
+        matchFecha = fechaGasto >= inicio && fechaGasto <= fin;
+      } else if (fechaInicio) {
+        const inicio = new Date(fechaInicio + 'T00:00:00');
+        matchFecha = fechaGasto >= inicio;
+      } else if (fechaFin) {
+        const fin = new Date(fechaFin + 'T23:59:59');
+        matchFecha = fechaGasto <= fin;
+      }
     }
-  }
 
-  return matchSearch && matchCategory && matchFecha;
-});
+    return matchSearch && matchCategory && matchFecha;
+  });
 
   // Total de gastos filtrados
   const totalGastos = gastosFiltrados.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
@@ -229,6 +229,95 @@ const gastosFiltrados = gastos.filter(gasto => {
   const limpiarFiltrosFecha = () => {
     setFechaInicio('');
     setFechaFin('');
+  };
+
+  // Obtener gasto más alto del mes actual
+  const getGastoMasAlto = () => {
+    const mesActual = new Date().getMonth();
+    const añoActual = new Date().getFullYear();
+
+    const gastosDelMes = gastos.filter(g => {
+      const fecha = new Date(g.fecha + 'T00:00:00');
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+    });
+
+    if (gastosDelMes.length === 0) return null;
+
+    return gastosDelMes.reduce((max, gasto) =>
+      parseFloat(gasto.monto) > parseFloat(max.monto) ? gasto : max
+    );
+  };
+
+  // Calcular gasto promedio por día del mes actual
+  const getGastoPromedioPorDia = () => {
+    const hoy = new Date();
+    const mesActual = hoy.getMonth();
+    const añoActual = hoy.getFullYear();
+    const diaActual = hoy.getDate();
+
+    const gastosDelMes = gastos.filter(g => {
+      const fecha = new Date(g.fecha + 'T00:00:00');
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+    });
+
+    const totalMes = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+
+    return diaActual > 0 ? totalMes / diaActual : 0;
+  };
+
+  // Calcular proyección de gasto mensual
+  const getProyeccionMensual = () => {
+    const hoy = new Date();
+    const mesActual = hoy.getMonth();
+    const añoActual = hoy.getFullYear();
+    const diaActual = hoy.getDate();
+    const diasDelMes = new Date(añoActual, mesActual + 1, 0).getDate();
+
+    const gastosDelMes = gastos.filter(g => {
+      const fecha = new Date(g.fecha + 'T00:00:00');
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+    });
+
+    const totalMes = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+    const promedioDiario = diaActual > 0 ? totalMes / diaActual : 0;
+
+    return promedioDiario * diasDelMes;
+  };
+
+  // Calcular comparación con mes anterior
+  const getComparacionMesAnterior = () => {
+    const hoy = new Date();
+    const mesActual = hoy.getMonth();
+    const añoActual = hoy.getFullYear();
+
+    // Gastos mes actual
+    const gastosDelMes = gastos.filter(g => {
+      const fecha = new Date(g.fecha + 'T00:00:00');
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+    });
+
+    // Gastos mes anterior
+    const mesAnterior = mesActual === 0 ? 11 : mesActual - 1;
+    const añoAnterior = mesActual === 0 ? añoActual - 1 : añoActual;
+
+    const gastosMesAnterior = gastos.filter(g => {
+      const fecha = new Date(g.fecha + 'T00:00:00');
+      return fecha.getMonth() === mesAnterior && fecha.getFullYear() === añoAnterior;
+    });
+
+    const totalMesActual = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+    const totalMesAnterior = gastosMesAnterior.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+
+    if (totalMesAnterior === 0) return null;
+
+    const porcentajeCambio = ((totalMesActual - totalMesAnterior) / totalMesAnterior) * 100;
+
+    return {
+      porcentaje: porcentajeCambio,
+      totalActual: totalMesActual,
+      totalAnterior: totalMesAnterior,
+      esAumento: porcentajeCambio > 0
+    };
   };
 
   // Exportar gastos a Excel
@@ -303,7 +392,6 @@ const gastosFiltrados = gastos.filter(gasto => {
     formData,
     setFormData,
 
-
     // Constantes
     categorias,
     metodosPago,
@@ -323,8 +411,10 @@ const gastosFiltrados = gastos.filter(gasto => {
     getCategoriaCount,
     formatDate,
     exportarGastosExcel,
-    limpiarFiltrosFecha
-
-
+    limpiarFiltrosFecha,
+    getGastoMasAlto,
+    getGastoPromedioPorDia,
+    getProyeccionMensual,
+    getComparacionMesAnterior
   };
 };
