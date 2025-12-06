@@ -2,6 +2,7 @@
 import React from 'react';
 import { Search, Plus, Edit, Trash2, X, Calendar, DollarSign, Tag, FileText, CreditCard, Building, Download, CalendarRange, TrendingUp, TrendingDown, Activity, Target } from 'lucide-react';
 import { useGastos } from '../../api/useGastos';
+import { Notificacion } from '../common/Notificacion';
 
 const Gastos = () => {
   const gastos = useGastos();
@@ -515,7 +516,15 @@ const Gastos = () => {
           </div>
         </div>
       )}
+            {gastos.notificacion && (
+              <Notificacion
+                mensaje={gastos.notificacion.mensaje}
+                tipo={gastos.notificacion.tipo}
+                onClose={() => gastos.setNotificacion(null)}
+              />
+            )}
     </div>
+
   );
 };
 

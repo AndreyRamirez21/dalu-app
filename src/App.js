@@ -4,7 +4,7 @@ import Header from './components/layout/Header';
 import Dashboard from './components/sections/Dashboard';
 import Ventas from './components/sections/Ventas';
 import Gastos from './components/sections/Gastos';
-import Deudas from './components/sections/Deudas';
+import Deudas from './components/sections/DeudasClientes';
 import Inventario from './components/sections/Inventario';
 
 const App = () => {

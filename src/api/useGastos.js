@@ -23,7 +23,7 @@ const getIPC = () => {
 
 export const useGastos = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Todas las Categorías');
+  const [selectedCategory, setSelectedCategory] = useState('Todas las Categorias');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [gastos, setGastos] = useState([]);
@@ -31,6 +31,7 @@ export const useGastos = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingGasto, setEditingGasto] = useState(null);
+  const [notificacion, setNotificacion] = useState(null);
 
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -43,10 +44,10 @@ export const useGastos = () => {
   });
 
   const categorias = [
-    { nombre: 'Todas las Categorías', color: 'text-gray-700' },
+    { nombre: 'Todas las Categorias', color: 'text-gray-700' },
     { nombre: 'Proveedores', color: 'text-orange-600' },
     { nombre: 'Marketing', color: 'text-purple-600' },
-    { nombre: 'Logística', color: 'text-blue-600' },
+    { nombre: 'Logistica', color: 'text-blue-600' },
     { nombre: 'Servicios', color: 'text-pink-600' },
     { nombre: 'Renta de Local', color: 'text-green-600' },
     { nombre: 'Otros', color: 'text-gray-600' }
@@ -73,7 +74,7 @@ export const useGastos = () => {
     }
   };
 
-  // Cargar estadísticas
+  // Cargar estadisticas
   const cargarEstadisticas = async () => {
     const ipc = getIPC();
     if (!ipc) return;
@@ -82,7 +83,7 @@ export const useGastos = () => {
       const stats = await ipc.invoke('obtener-estadisticas-gastos');
       setEstadisticas(stats || []);
     } catch (error) {
-      console.error('Error al cargar estadísticas:', error);
+      console.error('Error al cargar estadisticas:', error);
     }
   };
 
@@ -110,12 +111,12 @@ export const useGastos = () => {
   const handleSubmit = async () => {
     const ipc = getIPC();
     if (!ipc) {
-      alert('Error: Electron IPC no disponible');
+      setNotificacion({ mensaje: 'Error: Electron IPC no disponible', tipo: 'error' });
       return;
     }
 
     if (!formData.descripcion || !formData.monto) {
-      alert('Por favor completa los campos obligatorios');
+      setNotificacion({ mensaje: 'Por favor completa los campos obligatorios', tipo: 'advertencia' });
       return;
     }
 
@@ -132,7 +133,7 @@ export const useGastos = () => {
       cargarEstadisticas();
     } catch (error) {
       console.error('Error al guardar gasto:', error);
-      alert('Error al guardar el gasto');
+      setNotificacion({ mensaje: 'Error al guardar el gasto', tipo: 'error' });
     }
   };
 
@@ -155,11 +156,11 @@ export const useGastos = () => {
   const handleDelete = async (id) => {
     const ipc = getIPC();
     if (!ipc) {
-      alert('Error: Electron IPC no disponible');
+      setNotificacion({ mensaje: 'Error: Electron IPC no disponible', tipo: 'error' });
       return;
     }
 
-    if (window.confirm('¿Estás seguro de eliminar este gasto?')) {
+    if (window.confirm('Estas seguro de eliminar este gasto?')) {
       try {
         await ipc.invoke('eliminar-gasto', id);
         cargarGastos();
@@ -170,12 +171,12 @@ export const useGastos = () => {
     }
   };
 
-  // Obtener color de categoría
+  // Obtener color de categoria
   const getCategoriaColor = (categoria) => {
     const colors = {
       'Proveedores': 'bg-orange-100 text-orange-700',
       'Marketing': 'bg-purple-100 text-purple-700',
-      'Logística': 'bg-blue-100 text-blue-700',
+      'Logistica': 'bg-blue-100 text-blue-700',
       'Servicios': 'bg-pink-100 text-pink-700',
       'Renta de Local': 'bg-green-100 text-green-700',
       'Otros': 'bg-gray-100 text-gray-700'
@@ -187,7 +188,7 @@ export const useGastos = () => {
   const gastosFiltrados = gastos.filter(gasto => {
     const matchSearch = gasto.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (gasto.proveedor && gasto.proveedor.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchCategory = selectedCategory === 'Todas las Categorías' || gasto.categoria === selectedCategory;
+    const matchCategory = selectedCategory === 'Todas las Categorias' || gasto.categoria === selectedCategory;
 
     // Filtro por rango de fechas
     let matchFecha = true;
@@ -213,9 +214,9 @@ export const useGastos = () => {
   // Total de gastos filtrados
   const totalGastos = gastosFiltrados.reduce((sum, gasto) => sum + parseFloat(gasto.monto), 0);
 
-  // Contar gastos por categoría
+  // Contar gastos por categoria
   const getCategoriaCount = (nombreCategoria) => {
-    if (nombreCategoria === 'Todas las Categorías') return gastos.length;
+    if (nombreCategoria === 'Todas las Categorias') return gastos.length;
     return gastos.filter(g => g.categoria === nombreCategoria).length;
   };
 
@@ -231,14 +232,14 @@ export const useGastos = () => {
     setFechaFin('');
   };
 
-  // Obtener gasto más alto del mes actual
+  // Obtener gasto mas alto del mes actual
   const getGastoMasAlto = () => {
     const mesActual = new Date().getMonth();
-    const añoActual = new Date().getFullYear();
+    const anioActual = new Date().getFullYear();
 
     const gastosDelMes = gastos.filter(g => {
       const fecha = new Date(g.fecha + 'T00:00:00');
-      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
     });
 
     if (gastosDelMes.length === 0) return null;
@@ -248,16 +249,16 @@ export const useGastos = () => {
     );
   };
 
-  // Calcular gasto promedio por día del mes actual
+  // Calcular gasto promedio por dia del mes actual
   const getGastoPromedioPorDia = () => {
     const hoy = new Date();
     const mesActual = hoy.getMonth();
-    const añoActual = hoy.getFullYear();
+    const anioActual = hoy.getFullYear();
     const diaActual = hoy.getDate();
 
     const gastosDelMes = gastos.filter(g => {
       const fecha = new Date(g.fecha + 'T00:00:00');
-      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
     });
 
     const totalMes = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
@@ -265,17 +266,17 @@ export const useGastos = () => {
     return diaActual > 0 ? totalMes / diaActual : 0;
   };
 
-  // Calcular proyección de gasto mensual
+  // Calcular proyeccion de gasto mensual
   const getProyeccionMensual = () => {
     const hoy = new Date();
     const mesActual = hoy.getMonth();
-    const añoActual = hoy.getFullYear();
+    const anioActual = hoy.getFullYear();
     const diaActual = hoy.getDate();
-    const diasDelMes = new Date(añoActual, mesActual + 1, 0).getDate();
+    const diasDelMes = new Date(anioActual, mesActual + 1, 0).getDate();
 
     const gastosDelMes = gastos.filter(g => {
       const fecha = new Date(g.fecha + 'T00:00:00');
-      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
     });
 
     const totalMes = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
@@ -284,25 +285,25 @@ export const useGastos = () => {
     return promedioDiario * diasDelMes;
   };
 
-  // Calcular comparación con mes anterior
+  // Calcular comparacion con mes anterior
   const getComparacionMesAnterior = () => {
     const hoy = new Date();
     const mesActual = hoy.getMonth();
-    const añoActual = hoy.getFullYear();
+    const anioActual = hoy.getFullYear();
 
     // Gastos mes actual
     const gastosDelMes = gastos.filter(g => {
       const fecha = new Date(g.fecha + 'T00:00:00');
-      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual;
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
     });
 
     // Gastos mes anterior
     const mesAnterior = mesActual === 0 ? 11 : mesActual - 1;
-    const añoAnterior = mesActual === 0 ? añoActual - 1 : añoActual;
+    const anioAnterior = mesActual === 0 ? anioActual - 1 : anioActual;
 
     const gastosMesAnterior = gastos.filter(g => {
       const fecha = new Date(g.fecha + 'T00:00:00');
-      return fecha.getMonth() === mesAnterior && fecha.getFullYear() === añoAnterior;
+      return fecha.getMonth() === mesAnterior && fecha.getFullYear() === anioAnterior;
     });
 
     const totalMesActual = gastosDelMes.reduce((sum, g) => sum + parseFloat(g.monto), 0);
@@ -327,9 +328,9 @@ export const useGastos = () => {
     // Preparar los datos para Excel
     const datosExcel = gastosFiltrados.map(gasto => ({
       'Fecha': formatDate(gasto.fecha),
-      'Descripción': gasto.descripcion,
-      'Categoría': gasto.categoria,
-      'Método de Pago': gasto.metodo_pago,
+      'Descripcion': gasto.descripcion,
+      'Categoria': gasto.categoria,
+      'Metodo de Pago': gasto.metodo_pago,
       'Proveedor': gasto.proveedor || 'N/A',
       'Monto': `$${parseFloat(gasto.monto).toFixed(2)}`,
       'Notas': gasto.notas || ''
@@ -338,9 +339,9 @@ export const useGastos = () => {
     // Agregar fila de total
     datosExcel.push({
       'Fecha': '',
-      'Descripción': '',
-      'Categoría': '',
-      'Método de Pago': '',
+      'Descripcion': '',
+      'Categoria': '',
+      'Metodo de Pago': '',
       'Proveedor': 'TOTAL',
       'Monto': `$${totalGastos.toFixed(2)}`,
       'Notas': ''
@@ -353,9 +354,9 @@ export const useGastos = () => {
     // Ajustar ancho de columnas
     const anchoColumnas = [
       { wch: 15 }, // Fecha
-      { wch: 35 }, // Descripción
-      { wch: 18 }, // Categoría
-      { wch: 18 }, // Método de Pago
+      { wch: 35 }, // Descripcion
+      { wch: 18 }, // Categoria
+      { wch: 18 }, // Metodo de Pago
       { wch: 25 }, // Proveedor
       { wch: 15 }, // Monto
       { wch: 30 }  // Notas
@@ -390,6 +391,8 @@ export const useGastos = () => {
     setShowModal,
     editingGasto,
     formData,
+    notificacion,
+    setNotificacion,
     setFormData,
 
     // Constantes

@@ -136,100 +136,138 @@ export const VistaLista = ({ inventario }) => {
     setNombreProductoAmpliado('');
   };
 
-  return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      {/* Modal de imagen ampliada */}
-      {imagenAmpliada && (
-        <ModalImagen
-          imagenBase64={imagenAmpliada}
-          nombreProducto={nombreProductoAmpliado}
-          onCerrar={cerrarImagenAmpliada}
-        />
-      )}
+return (
+  <div className="p-8 bg-gray-50 min-h-screen">
+    {/* Modal de imagen ampliada */}
+    {imagenAmpliada && (
+      <ModalImagen
+        imagenBase64={imagenAmpliada}
+        nombreProducto={nombreProductoAmpliado}
+        onCerrar={cerrarImagenAmpliada}
+      />
+    )}
 
-      <div className="flex items-center justify-between mb-6">
-        <div></div>
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => exportarInventarioExcel(inventario.productos)}
-            className="flex items-center space-x-2 px-5 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium shadow-sm"
-          >
-            <Package size={20} />
-            <span>Exportar Excel</span>
-          </button>
-          <button
-            onClick={() => {
-              inventario.resetFormulario();
-              inventario.setVista('agregar');
-            }}
-            className="flex items-center space-x-2 px-5 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium shadow-sm"
-          >
-            <Plus size={20} />
-            <span>Nuevo Producto</span>
-          </button>
+    <div className="flex items-center justify-between mb-6">
+      <div></div>
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={() => exportarInventarioExcel(inventario.productos)}
+          className="flex items-center space-x-2 px-5 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium shadow-sm"
+        >
+          <Package size={20} />
+          <span>Exportar Excel</span>
+        </button>
+        <button
+          onClick={() => {
+            inventario.resetFormulario();
+            inventario.setVista('agregar');
+          }}
+          className="flex items-center space-x-2 px-5 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium shadow-sm"
+        >
+          <Plus size={20} />
+          <span>Nuevo Producto</span>
+        </button>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="text-sm font-medium text-gray-500 uppercase mb-2">Total Productos</div>
+        <div className="text-3xl font-bold text-gray-800">{inventario.totalProductos}</div>
+        <div className="text-sm text-gray-500 mt-1">Items en inventario</div>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="text-sm font-medium text-gray-500 uppercase mb-2">Stock Bajo</div>
+        <div className="text-3xl font-bold text-yellow-600">{inventario.stockBajo}</div>
+        <div className="text-sm text-gray-500 mt-1">Productos requieren reabastecimiento</div>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="text-sm font-medium text-gray-500 uppercase mb-2">Agotados</div>
+        <div className="text-3xl font-bold text-red-600">{inventario.agotados}</div>
+        <div className="text-sm text-gray-500 mt-1">Productos sin stock</div>
+      </div>
+    </div>
+
+    <div className="bg-white rounded-xl shadow-sm border">
+      <div className="p-6 border-b">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-800">Lista de Productos ({inventario.productosFiltrados.length})</h3>
+        </div>
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Buscar producto o referencia..."
+              value={inventario.searchTerm}
+              onChange={(e) => inventario.setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
+        </div>
+        <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+          {inventario.categorias.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => inventario.setCategoriaActiva(cat)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
+                inventario.categoriaActiva === cat
+                  ? 'bg-teal-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="text-sm font-medium text-gray-500 uppercase mb-2">Total Productos</div>
-          <div className="text-3xl font-bold text-gray-800">{inventario.totalProductos}</div>
-          <div className="text-sm text-gray-500 mt-1">Items en inventario</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="text-sm font-medium text-gray-500 uppercase mb-2">Stock Bajo</div>
-          <div className="text-3xl font-bold text-yellow-600">{inventario.stockBajo}</div>
-          <div className="text-sm text-gray-500 mt-1">Productos requieren reabastecimiento</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="text-sm font-medium text-gray-500 uppercase mb-2">Agotados</div>
-          <div className="text-3xl font-bold text-red-600">{inventario.agotados}</div>
-          <div className="text-sm text-gray-500 mt-1">Productos sin stock</div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-gray-800">Lista de Productos ({inventario.productosFiltrados.length})</h3>
+      <div className="overflow-x-auto">
+        {inventario.productosFiltrados.length === 0 ? (
+          <div className="p-12 text-center">
+            <Package size={48} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-gray-500 text-lg">No hay productos registrados</p>
+            <p className="text-gray-400 text-sm mt-2">Haz clic en "Nuevo Producto" para agregar uno</p>
           </div>
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder="Buscar producto o referencia..."
-                value={inventario.searchTerm}
-                onChange={(e) => inventario.setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+        ) : (
+          <>
+            {/* Encabezados de columna */}
+            <div className="bg-gray-50 border-b border-gray-200">
+              <div className="px-6 py-3 flex items-center">
+                <div className="w-8 mr-3"></div>
+                <div className="flex-1 flex items-center">
+                  <div className="w-24 flex-shrink-0 text-left">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Referencia</span>
+                  </div>
+                  <div className="flex-1 min-w-[200px] text-left">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Producto</span>
+                  </div>
+                  <div className="w-32 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Categoría</span>
+                  </div>
+                  <div className="w-28 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Costo</span>
+                  </div>
+                  <div className="w-28 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Precio Venta</span>
+                  </div>
+                  <div className="w-24 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Margen</span>
+                  </div>
+                  <div className="w-24 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Stock</span>
+                  </div>
+                  <div className="w-28 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Estado</span>
+                  </div>
+                  <div className="w-24 text-center">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Acciones</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-            {inventario.categorias.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => inventario.setCategoriaActiva(cat)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                  inventario.categoriaActiva === cat
-                    ? 'bg-teal-500 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          {inventario.productosFiltrados.length === 0 ? (
-            <div className="p-12 text-center">
-              <Package size={48} className="mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500 text-lg">No hay productos registrados</p>
-              <p className="text-gray-400 text-sm mt-2">Haz clic en "Nuevo Producto" para agregar uno</p>
-            </div>
-          ) : (
+            {/* Filas de productos */}
             <div className="divide-y divide-gray-200">
               {inventario.productosFiltrados.map((producto) => {
                 const stockTotal = inventario.calcularStockTotal(producto.variantes);
@@ -245,14 +283,15 @@ export const VistaLista = ({ inventario }) => {
                         {expandido ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                       </button>
 
-                      <div className="flex-1 grid grid-cols-12 gap-4 items-center">
-                        <div className="col-span-1">
+                      <div className="flex-1 flex items-center">
+                        {/* Referencia */}
+                        <div className="w-24 flex-shrink-0">
                           <div className="text-sm font-mono text-gray-600">{producto.referencia}</div>
                         </div>
 
-                        <div className="col-span-3">
+                        {/* Producto con imagen */}
+                        <div className="flex-1 min-w-[200px]">
                           <div className="flex items-center space-x-3">
-                            {/* ✅ IMAGEN CLICKEABLE */}
                             <ImagenProducto
                               rutaImagen={producto.imagen}
                               nombreProducto={producto.nombre}
@@ -262,28 +301,33 @@ export const VistaLista = ({ inventario }) => {
                           </div>
                         </div>
 
-                        <div className="col-span-2">
+                        {/* Categoría */}
+                        <div className="w-32 flex justify-center">
                           <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
                             {producto.categoria}
                           </span>
                         </div>
 
-                        <div className="col-span-1">
+                        {/* Costo */}
+                        <div className="w-28 text-center">
                           <div className="text-sm text-gray-600">${producto.costo_base.toFixed(2)}</div>
                         </div>
 
-                        <div className="col-span-1">
+                        {/* Precio Venta */}
+                        <div className="w-28 text-center">
                           <div className="text-sm font-medium text-gray-800">${producto.precio_venta_base.toFixed(2)}</div>
                         </div>
 
-                        <div className="col-span-1">
+                        {/* Margen */}
+                        <div className="w-24 text-center">
                           <div className="text-sm text-green-600 font-medium">
                             {((producto.precio_venta_base - producto.costo_base) / producto.costo_base * 100).toFixed(1)}%
                           </div>
                         </div>
 
-                        <div className="col-span-1">
-                          <div className="flex items-center space-x-2">
+                        {/* Stock */}
+                        <div className="w-24">
+                          <div className="flex items-center justify-center space-x-2">
                             <span className={`text-lg font-bold ${
                               stockTotal === 0 ? 'text-red-600' :
                               stockTotal < 10 ? 'text-yellow-600' :
@@ -295,13 +339,15 @@ export const VistaLista = ({ inventario }) => {
                           </div>
                         </div>
 
-                        <div className="col-span-1">
+                        {/* Estado */}
+                        <div className="w-28 flex justify-center">
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${inventario.getEstadoStyle(stockTotal)}`}>
                             {inventario.getEstadoTexto(stockTotal)}
                           </span>
                         </div>
 
-                        <div className="col-span-1 flex items-center space-x-2">
+                        {/* Acciones */}
+                        <div className="w-24 flex items-center justify-center space-x-2">
                           <button
                             onClick={() => inventario.handleEditarProducto(producto)}
                             className="p-2 hover:bg-teal-50 rounded-lg transition"
@@ -320,6 +366,7 @@ export const VistaLista = ({ inventario }) => {
                       </div>
                     </div>
 
+                    {/* Variantes expandidas */}
                     {expandido && producto.variantes && producto.variantes.length > 0 && (
                       <div className="px-6 pb-4 ml-12 bg-gray-50">
                         <div className="border-l-2 border-teal-300 pl-6">
@@ -362,9 +409,11 @@ export const VistaLista = ({ inventario }) => {
                 );
               })}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
-  );
+  </div>
+);
+
 };
