@@ -1647,12 +1647,16 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
                 // 6. Items en inventario y stock bajo
                 db.get(`
                   SELECT
-                    COUNT(*) as total_variantes,
-                    SUM(CASE WHEN cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
-                  FROM variantes
+                    SUM(v.cantidad) as total_items,
+                    SUM(CASE WHEN v.cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
+                  FROM variantes_producto v
                 `, [], (err, row) => {
+                  if (err) {
+                    console.error('❌ Error al obtener inventario:', err);
+                  }
+
                   if (!err && row) {
-                    estadisticas.itemsInventario = row.total_variantes || 0;
+                    estadisticas.itemsInventario = row.total_items || 0;
                     estadisticas.productosStockBajo = row.stock_bajo || 0;
                   }
 
@@ -1695,7 +1699,7 @@ function obtenerActividadReciente(callback) {
     // Gastos recientes
     db.all(`
       SELECT 'Gasto' as tipo,
-             'Pago de ' || concepto as descripcion,
+             'Pago de ' || descripcion as descripcion,
              '-$' || printf('%.2f', monto) as monto,
              fecha
       FROM gastos
@@ -1706,38 +1710,40 @@ function obtenerActividadReciente(callback) {
         actividades.push(...gastos);
       }
 
-      // Inventario reciente (reabastecimientos)
-      db.all(`
-        SELECT 'Inventario' as tipo,
-               'Reabastecimiento de "' || p.nombre || '"' as descripcion,
-               '+' || SUM(v.cantidad) || ' unidades' as monto,
-               p.fecha_registro as fecha
-        FROM productos p
-        JOIN variantes v ON v.producto_id = p.id
-        WHERE date(p.fecha_registro) >= date('now', '-7 days')
-        GROUP BY p.id
-        ORDER BY p.fecha_registro DESC
-        LIMIT 2
-      `, [], (err, inventario) => {
-        if (!err && inventario) {
-          actividades.push(...inventario);
-        }
+      // Inventario reciente (productos nuevos agregados)
+            db.all(`
+              SELECT 'Inventario' as tipo,
+                     'Producto agregado: ' || p.nombre as descripcion,
+                     '+' || COALESCE(SUM(v.cantidad), 0) || ' unidades' as monto,
+                     p.fecha_creado as fecha
+              FROM productos p
+              LEFT JOIN variantes_producto v ON v.producto_id = p.id
+              WHERE date(p.fecha_creado) >= date('now', '-7 days')
+              GROUP BY p.id
+              ORDER BY p.fecha_creado DESC
+              LIMIT 2
+            `, [], (err, inventario) => {
+              if (err) {
+                console.error('❌ Error al obtener inventario reciente:', err);
+              }
+              if (!err && inventario) {
+                actividades.push(...inventario);
+              }
 
-        // Deudas de clientes recientes
+// Deudas de clientes recientes
         db.all(`
           SELECT 'Deuda' as tipo,
-                 CASE
-                   WHEN c.nombre IS NOT NULL THEN c.nombre || ' debe $' || printf('%.2f', d.monto_pendiente)
-                   ELSE d.cliente_nombre || ' debe $' || printf('%.2f', d.monto_pendiente)
-                 END as descripcion,
+                 d.cliente_nombre || ' debe $' || printf('%.2f', d.monto_pendiente) as descripcion,
                  '$' || printf('%.2f', d.monto_pendiente) as monto,
-                 d.fecha_venta as fecha
+                 d.fecha_creacion as fecha
           FROM deudas_clientes d
-          LEFT JOIN clientes c ON d.cliente_id = c.id
           WHERE d.estado = 'Pendiente'
-          ORDER BY d.fecha_venta DESC
+          ORDER BY d.fecha_creacion DESC
           LIMIT 2
         `, [], (err, deudas) => {
+          if (err) {
+            console.error('❌ Error al obtener deudas recientes:', err);
+          }
           if (!err && deudas) {
             actividades.push(...deudas);
           }

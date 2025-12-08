@@ -101,21 +101,25 @@ export const useInventario = () => {
   const totalProductos = productos.length;
   const stockBajo = productos.filter(p => {
     const stockTotal = calcularStockTotal(p.variantes);
-    return stockTotal > 0 && stockTotal < 10;
+    return stockTotal > 0 && stockTotal <= 2;
   }).length;
   const agotados = productos.filter(p => calcularStockTotal(p.variantes) === 0).length;
 
   const getEstadoStyle = (cantidad) => {
     if (cantidad === 0) return 'bg-red-100 text-red-700';
-    if (cantidad < 10) return 'bg-yellow-100 text-yellow-700';
+    if (cantidad <= 2) return 'bg-yellow-100 text-yellow-700';
     return 'bg-green-100 text-green-700';
   };
 
   const getEstadoTexto = (cantidad) => {
     if (cantidad === 0) return 'Agotado';
-    if (cantidad < 10) return 'Stock Bajo';
+    if (cantidad <= 2) return 'Stock Bajo';
     return 'En Stock';
   };
+
+  const totalUnidades = productos.reduce((total, producto) => {
+    return total + calcularStockTotal(producto.variantes);
+  }, 0);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -414,6 +418,7 @@ export const useInventario = () => {
 
     // Funciones
     cargarProductos,
+    totalUnidades,
     toggleExpandirProducto,
     calcularStockTotal,
     getEstadoStyle,

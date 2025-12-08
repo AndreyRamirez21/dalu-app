@@ -183,29 +183,42 @@ const Dashboard = () => {
         <div className="p-6 border-b">
           <h3 className="text-xl font-bold text-gray-800">Actividad Reciente</h3>
         </div>
-        <div className="p-6">
+        <div className="overflow-x-auto">
           {actividadReciente.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <AlertCircle size={48} className="mx-auto mb-4 text-gray-300" />
               <p>No hay actividad reciente</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {actividadReciente.map((actividad, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className={`px-3 py-1 rounded-full text-xs font-medium ${getTipoColor(actividad.tipo)}`}>
-                      {actividad.tipo}
-                    </div>
-                    <div>
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Tipo
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Descripción
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Monto
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Fecha
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {actividadReciente.map((actividad, index) => (
+                  <tr key={index} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTipoColor(actividad.tipo)}`}>
+                        {actividad.tipo}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
                       <div className="font-medium text-gray-800">{actividad.descripcion}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-6">
-                    <div className="text-right">
+                    </td>
+                    <td className="px-6 py-4 text-right">
                       <div className={`font-bold text-lg ${
                         actividad.tipo === 'Venta' || actividad.tipo === 'Deuda'
                           ? 'text-green-600'
@@ -215,14 +228,16 @@ const Dashboard = () => {
                       }`}>
                         {actividad.monto}
                       </div>
-                    </div>
-                    <div className="text-sm text-gray-500 min-w-[100px] text-right">
-                      {formatearFecha(actividad.fecha)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="text-sm text-gray-500">
+                        {formatearFecha(actividad.fecha)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       </div>

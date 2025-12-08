@@ -1,6 +1,6 @@
 // src/components/sections/inventario/VistaLista.jsx
 import React, { useState, useEffect, memo } from 'react';
-import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X, Download} from 'lucide-react';
+import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { exportarInventarioExcel } from "../../../utils/exportExcel";
 
 
@@ -122,7 +122,7 @@ export const VistaLista = ({ inventario }) => {
 
   const getStockIcon = (stock) => {
     if (stock === 0) return <AlertCircle size={16} className="text-red-600" />;
-    if (stock < 10) return <AlertCircle size={16} className="text-yellow-600" />;
+    if (stock <= 2) return <AlertCircle size={16} className="text-yellow-600" />;
     return null;
   };
 
@@ -154,7 +154,7 @@ export const VistaLista = ({ inventario }) => {
             onClick={() => exportarInventarioExcel(inventario.productos)}
             className="flex items-center space-x-2 px-5 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium shadow-sm"
           >
-            <Download size={20} />
+            <Package size={20} />
             <span>Exportar Excel</span>
           </button>
           <button
@@ -170,16 +170,21 @@ export const VistaLista = ({ inventario }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="text-sm font-medium text-gray-500 uppercase mb-2">Total Productos</div>
           <div className="text-3xl font-bold text-gray-800">{inventario.totalProductos}</div>
+          <div className="text-sm text-gray-500 mt-1">Productos registrados</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="text-sm font-medium text-gray-500 uppercase mb-2">Total Unidades</div>
+          <div className="text-3xl font-bold text-blue-600">{inventario.totalUnidades}</div>
           <div className="text-sm text-gray-500 mt-1">Items en inventario</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="text-sm font-medium text-gray-500 uppercase mb-2">Stock Bajo</div>
           <div className="text-3xl font-bold text-yellow-600">{inventario.stockBajo}</div>
-          <div className="text-sm text-gray-500 mt-1">Productos requieren reabastecimiento</div>
+          <div className="text-sm text-gray-500 mt-1">Requieren reabastecimiento</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="text-sm font-medium text-gray-500 uppercase mb-2">Agotados</div>
@@ -349,7 +354,7 @@ export const VistaLista = ({ inventario }) => {
                             <div className="flex items-center justify-center space-x-2">
                               <span className={`text-lg font-bold ${
                                 stockTotal === 0 ? 'text-red-600' :
-                                stockTotal < 10 ? 'text-yellow-600' :
+                                stockTotal <= 2 ? 'text-yellow-600' :
                                 'text-gray-800'
                               }`}>
                                 {stockTotal}
