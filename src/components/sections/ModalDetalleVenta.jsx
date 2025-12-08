@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ShoppingCart, User, Calendar, CreditCard, FileText, Package, AlertCircle } from 'lucide-react';
+import { X, ShoppingCart, User, Calendar, CreditCard, FileText, Package, Download, AlertCircle } from 'lucide-react';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -28,15 +28,16 @@ const ModalDetalleVenta = ({ venta, onClose }) => {
   };
 
 const formatDate = (dateString) => {
-  // SQLite guarda en UTC, así que parseamos como UTC y convertimos a hora local
-  const date = new Date(dateString + 'Z'); // La 'Z' indica que es UTC
+  // SQLite ahora guarda en hora local, parseamos directamente
+  const date = new Date(dateString);
 
   return date.toLocaleString('es-CO', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: true
   });
 };
 

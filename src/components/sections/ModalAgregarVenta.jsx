@@ -115,7 +115,7 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   const [productoActual, setProductoActual] = useState(null);
   const [productosSeleccionados, setProductosSeleccionados] = useState([]);
   const [costosAdicionales, setCostosAdicionales] = useState([]);
-  const [nuevoCosto, setNuevoCosto] = useState({ concepto: '', monto: '' });
+  const [costoAdicional, setCostoAdicional] = useState('');
 
   // Cliente
   const [buscarCliente, setBuscarCliente] = useState('');
@@ -291,37 +291,30 @@ if (variante && variante.cantidad <= 0) {
   };
 
 const agregarCostoAdicional = () => {
-  console.log('🔵 Intentando agregar costo:', nuevoCosto); // ← AGREGAR
+  const monto = parseFloat(costoAdicional);
 
-  if (
-    !nuevoCosto.concepto ||
-    !nuevoCosto.monto ||
-    parseFloat(nuevoCosto.monto) <= 0
-  ) {
-    setMensajeModal("Completa el concepto y el monto del costo");
+  if (!costoAdicional || monto <= 0 || isNaN(monto)) {
+    setMensajeModal("Ingresa un monto válido para los costos adicionales");
     setTipoMensaje('error');
     setMostrarMensaje(true);
     return;
   }
 
+  // Solo guardamos el monto, el concepto siempre será "Costos Adicionales"
   const costoParaAgregar = {
-    concepto: nuevoCosto.concepto,
-    monto: parseFloat(nuevoCosto.monto)
+    concepto: 'Costos Adicionales',
+    monto: monto
   };
 
-  console.log('✅ Costo a agregar:', costoParaAgregar); // ← AGREGAR
-  console.log('📋 Array actual de costos:', costosAdicionales); // ← AGREGAR
-
   setCostosAdicionales([...costosAdicionales, costoParaAgregar]);
-
-  console.log('📋 Nuevo array de costos:', [...costosAdicionales, costoParaAgregar]); // ← AGREGAR
 
   setMensajeModal("Costo adicional agregado exitosamente");
   setTipoMensaje('exito');
   setMostrarMensaje(true);
 
-  setNuevoCosto({ concepto: '', monto: '' });
+  setCostoAdicional('');
 };
+
 
   const eliminarCostoAdicional = (index) => {
     setCostosAdicionales(costosAdicionales.filter((_, i) => i !== index));
@@ -367,9 +360,9 @@ const agregarCostoAdicional = () => {
     return productosSeleccionados.reduce((sum, p) => sum + p.subtotal, 0);
   };
 
-  const calcularCostosTotal = () => {
-    return costosAdicionales.reduce((sum, c) => sum + c.monto, 0);
-  };
+const calcularCostosTotal = () => {
+  return costosAdicionales.reduce((sum, c) => sum + c.monto, 0);
+};
 
   const calcularTotal = () => {
     return calcularSubtotal() + calcularCostosTotal();
@@ -680,54 +673,69 @@ const handleSubmit = async () => {
                   )}
                 </div>
 
-                {/* Costos Adicionales */}
-                <div>
-                  <h4 className="font-bold text-gray-800 mb-3">Costos Adicionales (Bolsas, Etiquetas, etc.)</h4>
+                                {/* Costos Adicionales */}
+                                <div>
+                                  <h4 className="font-bold text-gray-800 mb-3">
+                                    Costos Adicionales (Bolsas, Etiquetas, etc.)
+                                  </h4>
 
-                  {costosAdicionales.length > 0 && (
-                    <div className="bg-gray-50 p-3 rounded-lg mb-3 space-y-2">
-                      {costosAdicionales.map((costo, index) => (
-                        <div key={index} className="flex items-center justify-between bg-white p-2 rounded">
-                          <span className="text-sm text-gray-700">{costo.concepto}</span>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-medium text-gray-800">${costo.monto.toFixed(2)}</span>
-                            <button
-                              onClick={() => eliminarCostoAdicional(index)}
-                              className="p-1 hover:bg-red-50 rounded transition"
-                            >
-                              <Trash2 size={16} className="text-red-600" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                                  {costosAdicionales.length > 0 && (
+                                    <div className="bg-gray-50 p-3 rounded-lg mb-3 space-y-2">
+                                      {costosAdicionales.map((costo, index) => (
+                                        <div key={index} className="flex items-center justify-between bg-white p-2 rounded">
+                                          <span className="text-sm text-gray-700">{costo.concepto}</span>
+                                          <div className="flex items-center space-x-2">
+                                            <span className="font-medium text-gray-800">${costo.monto.toFixed(2)}</span>
+                                            <button
+                                              onClick={() => eliminarCostoAdicional(index)}
+                                              className="p-1 hover:bg-red-50 rounded transition"
+                                            >
+                                              <Trash2 size={16} className="text-red-600" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm font-medium text-blue-700">Total Costos:</span>
+                                          <span className="font-bold text-blue-600">${calcularCostosTotal().toFixed(2)}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
 
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      value={nuevoCosto.concepto}
-                      onChange={(e) => setNuevoCosto({ ...nuevoCosto, concepto: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder="Concepto (ej: Bolsas)"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={nuevoCosto.monto}
-                      onChange={(e) => setNuevoCosto({ ...nuevoCosto, monto: e.target.value })}
-                      className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                      placeholder="$0.00"
-                    />
-                    <button
-                      onClick={agregarCostoAdicional}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
-                    >
-                      <Plus size={18} />
-                    </button>
-                  </div>
-                </div>
+                                  <div className="flex space-x-2">
+                                    <div className="flex-1 relative">
+                                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={costoAdicional}
+                                        onChange={(e) => setCostoAdicional(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Ingresa el monto (ej: 500.00)"
+                                        onKeyPress={(e) => {
+                                          if (e.key === 'Enter') {
+                                            agregarCostoAdicional();
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={agregarCostoAdicional}
+                                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center space-x-1"
+                                    >
+                                      <Plus size={18} />
+                                      <span>Agregar</span>
+                                    </button>
+                                  </div>
+
+                                  <p className="text-xs text-gray-500 mt-2">
+                                    💡 Los costos adicionales se suman al total de la venta (bolsas, etiquetas, envío, etc.)
+                                  </p>
+                                </div>
               </div>
+
             )}
 
             {paso === 2 && (

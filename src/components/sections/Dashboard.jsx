@@ -1,136 +1,229 @@
-import React from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  AlertCircle,
+  Package,
+  ShoppingBag,
+  CreditCard,
+  Receipt
+} from 'lucide-react';
+
+const { ipcRenderer } = window.require('electron');
 
 const Dashboard = () => {
-  const stats = {
-    totalSales: 12450.00,
-    salesChange: '+15.2%',
-    totalExpenses: 3120.50,
-    expensesChange: '+5.8%',
-    debts: 850.00,
-    debtClients: 3,
-    inventory: 256,
-    lowStock: 12
+  const [estadisticas, setEstadisticas] = useState({
+    ventasTotales: 0,
+    ventasMesAnterior: 0,
+    gastosTotales: 0,
+    gastosMesAnterior: 0,
+    deudasPendientes: 0,
+    clientesConDeuda: 0,
+    itemsInventario: 0,
+    productosStockBajo: 0
+  });
+
+  const [actividadReciente, setActividadReciente] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cargarDashboard();
+  }, []);
+
+  const cargarDashboard = async () => {
+    try {
+      setLoading(true);
+      const datos = await ipcRenderer.invoke('obtener-dashboard-stats');
+      setEstadisticas(datos.estadisticas);
+      setActividadReciente(datos.actividades);
+    } catch (error) {
+      console.error('Error al cargar dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const activities = [
-    { id: 1, type: 'Venta', description: 'Venta a cliente #1024', amount: '$150.00', time: 'Hace 2 horas' },
-    { id: 2, type: 'Gasto', description: 'Pago de envío a proveedor', amount: '-$45.50', time: 'Hace 5 horas' },
-    { id: 3, type: 'Inventario', description: 'Reabastecimiento de "Pijama Nube"', amount: '+20 unidades', time: 'Ayer' },
-    { id: 4, type: 'Deuda', description: 'Recordatorio de pago enviado', amount: '$75.00', time: 'Ayer' }
-  ];
+  const calcularCambio = (actual, anterior) => {
+    if (anterior === 0) return 0;
+    return (((actual - anterior) / anterior) * 100).toFixed(2);
+  };
 
-  const getTypeColor = (type) => {
+  const cambioVentas = calcularCambio(estadisticas.ventasTotales, estadisticas.ventasMesAnterior);
+  const cambioGastos = calcularCambio(estadisticas.gastosTotales, estadisticas.gastosMesAnterior);
+
+  const getTipoColor = (tipo) => {
     const colors = {
       'Venta': 'bg-green-100 text-green-700',
       'Gasto': 'bg-red-100 text-red-700',
       'Inventario': 'bg-blue-100 text-blue-700',
       'Deuda': 'bg-yellow-100 text-yellow-700'
     };
-    return colors[type] || 'bg-gray-100 text-gray-700';
+    return colors[tipo] || 'bg-gray-100 text-gray-700';
   };
 
+  const formatearFecha = (fecha) => {
+    const ahora = new Date();
+    const fechaActividad = new Date(fecha);
+    const diffMs = ahora - fechaActividad;
+    const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+
+    if (diffHoras < 1) {
+      const diffMinutos = Math.floor(diffMs / (1000 * 60));
+      return `Hace ${diffMinutos} minuto${diffMinutos !== 1 ? 's' : ''}`;
+    } else if (diffHoras < 24) {
+      return `Hace ${diffHoras} hora${diffHoras !== 1 ? 's' : ''}`;
+    } else {
+      return fechaActividad.toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'short'
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-screen">
+        <div className="text-gray-500">Cargando dashboard...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-8">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div className="p-8 bg-gray-50 min-h-screen">
+      {/* Tarjetas de Estadísticas */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Ventas Totales */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium uppercase">Ventas Totales</span>
-            <TrendingUp className="text-green-500" size={20} />
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Ventas Totales
+              </div>
+              <div className="text-3xl font-bold text-gray-800">
+                ${estadisticas.ventasTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-green-100 rounded-lg">
+              <TrendingUp className="text-green-600" size={24} />
+            </div>
           </div>
-          <div className="text-3xl font-bold text-gray-800 mb-2">
-            ${stats.totalSales.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-green-500 text-sm font-medium">
-            {stats.salesChange} vs mes anterior
+          <div className={`text-sm font-medium flex items-center ${
+            cambioVentas >= 0 ? 'text-green-600' : 'text-red-600'
+          }`}>
+            {cambioVentas >= 0 ? '+' : ''}{cambioVentas}% vs mes anterior
           </div>
         </div>
 
+        {/* Gastos Totales */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium uppercase">Gastos Totales</span>
-            <TrendingDown className="text-red-500" size={20} />
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Gastos Totales
+              </div>
+              <div className="text-3xl font-bold text-gray-800">
+                ${estadisticas.gastosTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-red-100 rounded-lg">
+              <TrendingDown className="text-red-600" size={24} />
+            </div>
           </div>
-          <div className="text-3xl font-bold text-gray-800 mb-2">
-            ${stats.totalExpenses.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-red-500 text-sm font-medium">
-            {stats.expensesChange} vs mes anterior
+          <div className={`text-sm font-medium flex items-center ${
+            cambioGastos >= 0 ? 'text-red-600' : 'text-green-600'
+          }`}>
+            {cambioGastos >= 0 ? '+' : ''}{cambioGastos}% vs mes anterior
           </div>
         </div>
 
+        {/* Deudas por Cobrar */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium uppercase">Deudas por Cobrar</span>
-            <span className="text-2xl">💰</span>
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Deudas por Cobrar
+              </div>
+              <div className="text-3xl font-bold text-gray-800">
+                ${estadisticas.deudasPendientes.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-yellow-100 rounded-lg">
+              <DollarSign className="text-yellow-600" size={24} />
+            </div>
           </div>
-          <div className="text-3xl font-bold text-gray-800 mb-2">
-            ${stats.debts.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-          </div>
-          <div className="text-gray-500 text-sm">
-            {stats.debtClients} clientes con saldo pendiente
+          <div className="text-sm text-gray-500">
+            {estadisticas.clientesConDeuda} cliente{estadisticas.clientesConDeuda !== 1 ? 's' : ''} con saldo pendiente
           </div>
         </div>
 
+        {/* Items en Inventario */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium uppercase">Items en Inventario</span>
-            <span className="text-2xl">📦</span>
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Items en Inventario
+              </div>
+              <div className="text-3xl font-bold text-gray-800">
+                {estadisticas.itemsInventario}
+              </div>
+            </div>
+            <div className="p-3 bg-orange-100 rounded-lg">
+              <Package className="text-orange-600" size={24} />
+            </div>
           </div>
-          <div className="text-3xl font-bold text-gray-800 mb-2">
-            {stats.inventory}
-          </div>
-          <div className="text-gray-500 text-sm">
-            {stats.lowStock} productos bajos en stock
+          <div className="text-sm text-gray-500">
+            {estadisticas.productosStockBajo} producto{estadisticas.productosStockBajo !== 1 ? 's' : ''} bajos en stock
           </div>
         </div>
       </div>
 
       {/* Actividad Reciente */}
       <div className="bg-white rounded-xl shadow-sm border">
-        <div className="px-6 py-4 border-b">
+        <div className="p-6 border-b">
           <h3 className="text-xl font-bold text-gray-800">Actividad Reciente</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tipo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Descripción
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Monto
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Fecha
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {activities.map((activity) => (
-                <tr key={activity.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTypeColor(activity.type)}`}>
-                      {activity.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    {activity.description}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {activity.amount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {activity.time}
-                  </td>
-                </tr>
+        <div className="p-6">
+          {actividadReciente.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <AlertCircle size={48} className="mx-auto mb-4 text-gray-300" />
+              <p>No hay actividad reciente</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {actividadReciente.map((actividad, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className={`px-3 py-1 rounded-full text-xs font-medium ${getTipoColor(actividad.tipo)}`}>
+                      {actividad.tipo}
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-800">{actividad.descripcion}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-6">
+                    <div className="text-right">
+                      <div className={`font-bold text-lg ${
+                        actividad.tipo === 'Venta' || actividad.tipo === 'Deuda'
+                          ? 'text-green-600'
+                          : actividad.tipo === 'Gasto'
+                            ? 'text-red-600'
+                            : 'text-blue-600'
+                      }`}>
+                        {actividad.monto}
+                      </div>
+                    </div>
+                    <div className="text-sm text-gray-500 min-w-[100px] text-right">
+                      {formatearFecha(actividad.fecha)}
+                    </div>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -35,8 +35,8 @@ function initDatabase() {
       cedula TEXT UNIQUE,
       correo TEXT,
       celular TEXT,
-      fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
-      ultima_compra DATETIME,
+      fecha_registro DATETIME DEFAULT (datetime('now', 'localtime')),
+      ultima_compra DATETIME DEFAULT (datetime('now', 'localtime')),
       total_compras REAL DEFAULT 0,
       numero_compras INTEGER DEFAULT 0
     )`);
@@ -54,8 +54,8 @@ function initDatabase() {
       precio_venta_base REAL NOT NULL,
       tiene_variantes INTEGER DEFAULT 0,
       imagen TEXT,
-      fecha_creado DATETIME DEFAULT CURRENT_TIMESTAMP,
-      fecha_actualizado DATETIME DEFAULT CURRENT_TIMESTAMP
+      fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
+      fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
     )`);
 
     db.run(`ALTER TABLE productos ADD COLUMN imagen TEXT`, (err) => {
@@ -69,7 +69,7 @@ function initDatabase() {
       talla TEXT NOT NULL,
       cantidad INTEGER DEFAULT 0,
       ajuste_precio REAL DEFAULT 0,
-      fecha_creado DATETIME DEFAULT CURRENT_TIMESTAMP,
+      fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE,
       UNIQUE(producto_id, talla)
     )`);
@@ -96,10 +96,10 @@ function initDatabase() {
   monto_total REAL,
   monto_pagado REAL DEFAULT 0,
   notas TEXT,
-  fecha_creacion DATE DEFAULT CURRENT_TIMESTAMP,
+  fecha_creacion DATETIME DEFAULT (datetime('now', 'localtime')),
   fecha_recordatorio DATE,
   estado TEXT DEFAULT 'Pendiente',
-  fecha_actualizado DATETIME DEFAULT CURRENT_TIMESTAMP,
+  fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY(venta_id) REFERENCES ventas(id),
   FOREIGN KEY(producto_id) REFERENCES productos(id),
   FOREIGN KEY(variante_id) REFERENCES variantes_producto(id)
@@ -110,7 +110,7 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       deuda_id INTEGER NOT NULL,
       monto_pago REAL NOT NULL,
-      fecha_pago DATE DEFAULT CURRENT_TIMESTAMP,
+      fecha_pago DATETIME DEFAULT (datetime('now', 'localtime')),
       metodo_pago TEXT,
       notas TEXT,
       FOREIGN KEY(deuda_id) REFERENCES deudas(id) ON DELETE CASCADE
@@ -142,8 +142,8 @@ function initDatabase() {
        metodo_pago TEXT NOT NULL,
        proveedor TEXT,
        notas TEXT,
-       fecha_creado DATETIME DEFAULT CURRENT_TIMESTAMP,
-       fecha_actualizado DATETIME DEFAULT CURRENT_TIMESTAMP
+       fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
+       fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
      )`, (err) => {
        if (err) {
          console.error('Error al crear tabla gastos:', err);
@@ -235,10 +235,18 @@ function actualizarGasto(id, datos, callback) {
   const { fecha, descripcion, categoria, monto, metodo_pago, proveedor, notas } = datos;
 
   const sql = `UPDATE gastos
-                  SET fecha = ?, descripcion = ?, categoria = ?, monto = ?,
-  metodo_pago = ?, proveedor = ?, notas = ?,
-  fecha_actualizado = CURRENT_TIMESTAMP
-                  WHERE id = ? `;
+               SET fecha = ?, descripcion = ?, categoria = ?, monto = ?,
+                   metodo_pago = ?, proveedor = ?, notas = ?,
+                   fecha_actualizado = datetime('now', 'localtime')
+               WHERE id = ?`;
+
+  db.run(sql, [fecha, descripcion, categoria, monto, metodo_pago, proveedor, notas, id], function(err) {
+    if (err) {
+      callback(err, null);
+    } else {
+      callback(null, { success: true, changes: this.changes });
+    }
+  });
 
   db.run(sql, [fecha, descripcion, categoria, monto, metodo_pago, proveedor || null, notas || null, id], function (err) {
     if (err) {
@@ -505,10 +513,12 @@ function actualizarProducto(id, datos, callback) {
     db.run('BEGIN TRANSACTION');
 
     // Actualizar producto principal
-    const sqlProducto = `UPDATE productos
-                         SET referencia = ?, nombre = ?, categoria = ?, costo_base = ?,
-  precio_venta_base = ?, tiene_variantes = ?, fecha_actualizado = CURRENT_TIMESTAMP
-                         WHERE id = ? `;
+// Actualizar producto principal
+const sqlProducto = `UPDATE productos
+                     SET referencia = ?, nombre = ?, categoria = ?, costo_base = ?,
+                         precio_venta_base = ?, tiene_variantes = ?,
+                         fecha_actualizado = datetime('now', 'localtime')
+                     WHERE id = ?`;
 
     const tieneVariantes = variantes && variantes.length > 0 ? 1 : 0;
 
@@ -731,11 +741,11 @@ VALUES(?, ?, ?, ?)`;
           return;
         }
 
-        // Actualizar deuda
-        const sqlUpdate = `UPDATE deudas
-                          SET monto_pagado = ?, estado = ?, fecha_actualizado = CURRENT_TIMESTAMP
-                          WHERE id = ? `;
-
+            // Actualizar deuda
+            const sqlUpdate = `UPDATE deudas
+                               SET monto_pagado = ?, estado = ?,
+                                   fecha_actualizado = datetime('now', 'localtime')
+                               WHERE id = ?`;
         db.run(sqlUpdate, [nuevoMontoPagado, nuevoEstado, deudaId], function (err) {
           if (err) {
             db.run('ROLLBACK');
@@ -762,7 +772,7 @@ function actualizarDeuda(id, datos, callback) {
 
   const sql = `UPDATE deudas
                SET acreedor = ?, factura = ?, tipo_acreedor = ?, monto_total = ?,
-  notas = ?, fecha_recordatorio = ?, fecha_actualizado = CURRENT_TIMESTAMP
+  notas = ?, fecha_recordatorio = ?, fecha_actualizado = datetime('now', 'localtime')
                WHERE id = ? `;
 
   db.run(sql, [acreedor, factura || null, tipo_acreedor, monto_total, notas || null, fecha_recordatorio || null, id], function (err) {

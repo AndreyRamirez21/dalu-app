@@ -89,7 +89,7 @@ const DeudasClientes = () => {
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     // SQLite guarda en UTC, así que parseamos como UTC y convertimos a hora local
-    const date = new Date(dateString + 'Z'); // La 'Z' indica que es UTC
+    const date = new Date(dateString); // La 'Z' indica que es UTC
 
     return date.toLocaleString('es-CO', {
       day: '2-digit',

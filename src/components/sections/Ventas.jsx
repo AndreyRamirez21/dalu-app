@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { ShoppingCart, Eye, Plus, Search, Calendar, X } from 'lucide-react';
+import { ShoppingCart, Eye, Plus, Search, Calendar, X, Download } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import ModalAgregarVenta from './ModalAgregarVenta';
 import ModalDetalleVenta from './ModalDetalleVenta';
 import { ModalConfirmacion } from '../common/ModalConfirmacion';
 import { ModalMensaje } from '../common/ModalMensaje';
+import { exportarVentasExcel } from '../../utils/exportExcel';
+
 
 
 const Ventas = () => {
@@ -77,7 +79,7 @@ const confirmarCancelacion = async () => {
 
     const formatDate = (dateString) => {
       // SQLite guarda en UTC, así que parseamos como UTC y convertimos a hora local
-      const date = new Date(dateString + 'Z'); // La 'Z' indica que es UTC
+      const date = new Date(dateString); // La 'Z' indica que es UTC
 
       return date.toLocaleString('es-CO', {
         day: '2-digit',
@@ -143,6 +145,14 @@ const confirmarCancelacion = async () => {
                     className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
+                <button
+                  onClick={() => exportarVentasExcel(ventas)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium"
+                  disabled={ventas.length === 0}
+                >
+                  <Download size={20} />
+                  <span>Exportar Excel</span>
+                </button>
                 <button
                   onClick={() => setShowModalAgregar(true)}
                   className="flex items-center space-x-2 px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"

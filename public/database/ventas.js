@@ -1,8 +1,8 @@
 const { db } = require('./db');
 
-// Ejecutar migraciones para agregar columnas faltantes a tabla ventas
-function runMigrations() {
-    // Primero crear la tabla ventas si no existe
+// Crear tablas necesarias (sin migraciones)
+function crearTablas() {
+    // Tabla de ventas
     db.run(`CREATE TABLE IF NOT EXISTS ventas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         numero_venta TEXT,
@@ -15,8 +15,8 @@ function runMigrations() {
         estado TEXT DEFAULT 'Pendiente',
         metodo_pago TEXT,
         notas TEXT,
-        fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
-        fecha_actualizado DATETIME,
+        fecha DATETIME DEFAULT (datetime('now', 'localtime')),
+        fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )`, (err) => {
         if (err) {
@@ -24,59 +24,76 @@ function runMigrations() {
         }
     });
 
-    // Luego agregar columnas que puedan faltar (para bases de datos existentes)
-    const ventasColumns = [
-        'ALTER TABLE ventas ADD COLUMN numero_venta TEXT',
-        'ALTER TABLE ventas ADD COLUMN cliente_nombre TEXT',
-        'ALTER TABLE ventas ADD COLUMN subtotal REAL',
-        'ALTER TABLE ventas ADD COLUMN monto_pagado REAL DEFAULT 0',
-        'ALTER TABLE ventas ADD COLUMN cambio REAL DEFAULT 0',
-        'ALTER TABLE ventas ADD COLUMN estado TEXT DEFAULT "Pendiente"',
-        'ALTER TABLE ventas ADD COLUMN metodo_pago TEXT',
-        'ALTER TABLE ventas ADD COLUMN notas TEXT',
-        'ALTER TABLE ventas ADD COLUMN fecha_actualizado DATETIME'
-    ];
-
-    ventasColumns.forEach(sql => {
-        db.run(sql, (err) => {
-            // Ignorar error de columna duplicada
-            if (err && !err.message.includes('duplicate column name')) {
-                console.error('Error en migración:', err.message);
-            }
-        });
+    // Tabla de productos vendidos
+    db.run(`CREATE TABLE IF NOT EXISTS venta_productos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER NOT NULL,
+        producto_id INTEGER NOT NULL,
+        variante_id INTEGER,
+        cantidad INTEGER NOT NULL,
+        precio_unitario REAL NOT NULL,
+        subtotal REAL NOT NULL,
+        FOREIGN KEY(venta_id) REFERENCES ventas(id),
+        FOREIGN KEY(producto_id) REFERENCES productos(id),
+        FOREIGN KEY(variante_id) REFERENCES variantes_producto(id)
+    )`, (err) => {
+        if (err) {
+            console.error('Error al crear tabla venta_productos:', err);
+        }
     });
 
+    // Tabla de costos adicionales
+    db.run(`CREATE TABLE IF NOT EXISTS costos_adicionales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER NOT NULL,
+        concepto TEXT NOT NULL,
+        monto REAL NOT NULL,
+        FOREIGN KEY(venta_id) REFERENCES ventas(id)
+    )`, (err) => {
+        if (err) {
+            console.error('Error al crear tabla costos_adicionales:', err);
+        }
+    });
 
-    // Crear tablas de deudas de clientes si no existen
+    // Tabla de deudas de clientes
     db.run(`CREATE TABLE IF NOT EXISTS deudas_clientes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    venta_id INTEGER,
-    cliente_id INTEGER,
-    cliente_nombre TEXT,
-    monto_total REAL NOT NULL,
-    monto_pagado REAL DEFAULT 0,
-    monto_pendiente REAL,
-    estado TEXT DEFAULT 'Pendiente',
-    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
-    fecha_actualizado DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(venta_id) REFERENCES ventas(id)
-  )`);
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        venta_id INTEGER,
+        cliente_id INTEGER,
+        cliente_nombre TEXT,
+        monto_total REAL NOT NULL,
+        monto_pagado REAL DEFAULT 0,
+        monto_pendiente REAL,
+        estado TEXT DEFAULT 'Pendiente',
+        fecha_creacion DATETIME DEFAULT (datetime('now', 'localtime')),
+        fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY(venta_id) REFERENCES ventas(id)
+    )`, (err) => {
+        if (err) {
+            console.error('Error al crear tabla deudas_clientes:', err);
+        }
+    });
 
+    // Tabla de abonos a deudas
     db.run(`CREATE TABLE IF NOT EXISTS abonos_deuda_cliente (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    deuda_cliente_id INTEGER NOT NULL,
-    monto_abono REAL NOT NULL,
-    metodo_pago TEXT,
-    notas TEXT,
-    fecha_abono DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(deuda_cliente_id) REFERENCES deudas_clientes(id)
-  )`);
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        deuda_cliente_id INTEGER NOT NULL,
+        monto_abono REAL NOT NULL,
+        metodo_pago TEXT,
+        notas TEXT,
+        fecha_abono DATETIME DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY(deuda_cliente_id) REFERENCES deudas_clientes(id)
+    )`, (err) => {
+        if (err) {
+            console.error('Error al crear tabla abonos_deuda_cliente:', err);
+        }
+    });
 
-    console.log('✅ Migraciones de ventas ejecutadas');
+    console.log('✅ Tablas de ventas creadas correctamente');
 }
 
-// Ejecutar migraciones al cargar el módulo
-runMigrations();
+// Ejecutar creación de tablas al cargar el módulo
+crearTablas();
 
 // ==================== FUNCIONES PARA VENTAS ====================
 
@@ -96,8 +113,6 @@ function generarNumeroVenta(callback) {
         callback(null, `${prefijo}-${consecutivo.toString().padStart(4, '0')}`);
     });
 }
-
-// Reemplaza la función crearVenta en database/ventas.js
 
 function crearVenta(datosVenta, callback) {
     const { cliente_nombre, cliente_id, productos, subtotal, total, monto_pagado, cambio, metodo_pago, notas, costos_adicionales } = datosVenta;
@@ -133,7 +148,6 @@ function crearVenta(datosVenta, callback) {
                     const ventaId = this.lastID;
                     console.log('✅ Venta insertada con ID:', ventaId);
 
-                    // Si no hay productos, terminar aquí
                     if (!productos || productos.length === 0) {
                         console.log('⚠️ No hay productos para guardar');
                         db.run('COMMIT');
@@ -178,14 +192,12 @@ function crearVenta(datosVenta, callback) {
                                 insertados++;
                                 console.log(`✅ Producto ${insertados}/${productos.length} guardado`);
 
-                                // CUANDO TERMINAMOS DE GUARDAR TODOS LOS PRODUCTOS
                                 if (insertados === productos.length) {
                                     if (hayErrores) {
                                         console.error('❌ Hubo errores al guardar productos, haciendo ROLLBACK');
                                         db.run('ROLLBACK');
                                         callback(new Error('Error al guardar productos'), null);
                                     } else {
-                                        // AHORA GUARDAMOS LOS COSTOS ADICIONALES
                                         if (costos_adicionales && costos_adicionales.length > 0) {
                                             console.log(`🔵 Guardando ${costos_adicionales.length} costos adicionales...`);
                                             let costosGuardados = 0;
@@ -205,7 +217,6 @@ function crearVenta(datosVenta, callback) {
 
                                                         costosGuardados++;
 
-                                                        // CUANDO TERMINAMOS DE GUARDAR TODOS LOS COSTOS
                                                         if (costosGuardados === costos_adicionales.length) {
                                                             if (errorCostos) {
                                                                 console.error('❌ Error al guardar costos, haciendo ROLLBACK');
@@ -228,7 +239,6 @@ function crearVenta(datosVenta, callback) {
                                                 );
                                             });
                                         } else {
-                                            // NO HAY COSTOS ADICIONALES, HACER COMMIT DIRECTAMENTE
                                             console.log('✅ No hay costos adicionales, haciendo COMMIT');
                                             db.run('COMMIT', (err) => {
                                                 if (err) {
@@ -258,7 +268,6 @@ function obtenerVentas(callback) {
 }
 
 function obtenerVentaPorId(id, callback) {
-    // Primero obtenemos la venta principal
     db.get(`SELECT * FROM ventas WHERE id = ?`, [id], (err, venta) => {
         if (err) {
             console.error('❌ Error al obtener venta:', err);
@@ -272,7 +281,6 @@ function obtenerVentaPorId(id, callback) {
 
         console.log('📦 Venta encontrada:', venta);
 
-        // Luego obtenemos los productos con sus detalles completos usando JOIN
         db.all(`
             SELECT
                 vp.id,
@@ -299,7 +307,6 @@ function obtenerVentaPorId(id, callback) {
 
             console.log('📦 Productos encontrados:', productos);
 
-            // Obtener costos adicionales si existen
             db.all(`
                 SELECT * FROM costos_adicionales WHERE venta_id = ?
             `, [id], (err, costosAdicionales) => {
@@ -311,7 +318,6 @@ function obtenerVentaPorId(id, callback) {
 
                 console.log('💰 Costos adicionales:', costosAdicionales);
 
-                // Calcular total de costos adicionales
                 const totalCostosAdicionales = costosAdicionales ?
                     costosAdicionales.reduce((sum, costo) => sum + Number(costo.monto || 0), 0) : 0;
 
@@ -346,7 +352,7 @@ function obtenerEstadisticasVentas(callback) {
       SUM(CASE WHEN v.estado = 'Pendiente' THEN (v.total - v.monto_pagado) ELSE 0 END) as total_pendiente
     FROM ventas v
     WHERE v.estado != 'Cancelado'
-      AND strftime('%Y-%m', v.fecha) = strftime('%Y-%m', 'now')
+      AND strftime('%Y-%m', v.fecha) = strftime('%Y-%m', 'now', 'localtime')
   `, [], (err, row1) => {
     if (err) {
       console.error('❌ Error en estadísticas ventas:', err);
@@ -354,13 +360,12 @@ function obtenerEstadisticasVentas(callback) {
       return;
     }
 
-    // Consulta SEPARADA para costos adicionales
     db.get(`
       SELECT COALESCE(SUM(ca.monto), 0) as total_costos_adicionales
       FROM costos_adicionales ca
       INNER JOIN ventas v ON ca.venta_id = v.id
       WHERE v.estado != 'Cancelado'
-        AND strftime('%Y-%m', v.fecha) = strftime('%Y-%m', 'now')
+        AND strftime('%Y-%m', v.fecha) = strftime('%Y-%m', 'now', 'localtime')
     `, [], (err, row2) => {
       if (err) {
         console.error('❌ Error en costos adicionales:', err);
@@ -424,7 +429,6 @@ function registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, call
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
 
-    // 1. Obtener información de la deuda
     db.get('SELECT * FROM deudas_clientes WHERE id = ?', [deudaId], (err, deuda) => {
       if (err) {
         db.run('ROLLBACK');
@@ -442,7 +446,6 @@ function registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, call
       const nuevoMontoPendiente = parseFloat(deuda.monto_total) - nuevoMontoPagado;
       const nuevoEstado = nuevoMontoPendiente <= 0.01 ? 'Pagado' : 'Pendiente';
 
-      // 2. Registrar el abono
       db.run(
         `INSERT INTO abonos_deuda_cliente (deuda_cliente_id, monto_abono, metodo_pago, notas)
          VALUES (?, ?, ?, ?)`,
@@ -454,10 +457,9 @@ function registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, call
             return;
           }
 
-          // 3. Actualizar la deuda
           db.run(
             `UPDATE deudas_clientes
-             SET monto_pagado = ?, monto_pendiente = ?, estado = ?, fecha_actualizado = datetime('now')
+             SET monto_pagado = ?, monto_pendiente = ?, estado = ?, fecha_actualizado = datetime('now', 'localtime')
              WHERE id = ?`,
             [nuevoMontoPagado, nuevoMontoPendiente, nuevoEstado, deudaId],
             (err) => {
@@ -467,10 +469,9 @@ function registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, call
                 return;
               }
 
-              // 4. AGREGAR ESTA PARTE: Actualizar la tabla ventas
               db.run(
                 `UPDATE ventas
-                 SET monto_pagado = ?, estado = ?, fecha_actualizado = datetime('now')
+                 SET monto_pagado = ?, estado = ?, fecha_actualizado = datetime('now', 'localtime')
                  WHERE id = ?`,
                 [nuevoMontoPagado, nuevoEstado, deuda.venta_id],
                 (err) => {
@@ -480,7 +481,6 @@ function registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, call
                     return;
                   }
 
-                  // 5. Confirmar transacción
                   db.run('COMMIT', (err) => {
                     if (err) {
                       callback(err, null);

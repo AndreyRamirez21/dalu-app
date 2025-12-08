@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, CreditCard, DollarSign, Package, LogOut } from 'lucide-react';
+import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users } from 'lucide-react';
 
 const Sidebar = ({ activeSection, setActiveSection }) => {
   return (
@@ -75,7 +75,24 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
         >
           <Package size={20} />
           <span className="font-medium">Inventario</span>
+
         </button>
+
+                <button
+                  onClick={() => setActiveSection('clientes')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                    activeSection === 'clientes'
+                      ? 'bg-teal-50 text-teal-600'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Users size={20} />
+                  <span className="font-medium">Clientes</span>
+
+                </button>
+
+
+
       </nav>
 
       <div className="p-4 border-t">

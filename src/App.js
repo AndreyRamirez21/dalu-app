@@ -6,6 +6,8 @@ import Ventas from './components/sections/Ventas';
 import Gastos from './components/sections/Gastos';
 import Deudas from './components/sections/DeudasClientes';
 import Inventario from './components/sections/Inventario';
+import Clientes from './components/sections/Clientes';
+
 
 const App = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -22,6 +24,8 @@ const App = () => {
         return <Deudas />;
       case 'inventario':
         return <Inventario />;
+      case 'clientes':
+        return <Clientes />;
       default:
         return <Dashboard />;
     }
@@ -48,6 +52,10 @@ const App = () => {
       inventario: {
         title: 'Gestión de Inventario',
         subtitle: 'Controla el stock de tus productos.'
+      },
+      clientes: {
+        title: 'Gestión de Clientes',
+        subtitle: 'Administra tu base de clientes y programa de fidelidad.'
       }
     };
     return titles[activeSection] || titles.dashboard;

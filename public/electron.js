@@ -672,7 +672,7 @@ ipcMain.handle('obtener-historial-pagos', async (event, deudaId) => {
 });
 
 
-// ==================== HANDLERS PARA CLIENTES ====================
+// ==================== HANDLERS PARA CLIENTES (CORREGIDOS) ====================
 
 // Buscar clientes por nombre, cédula o celular
 ipcMain.handle('buscar-clientes', async (event, termino) => {
@@ -709,8 +709,6 @@ ipcMain.handle('obtener-cliente', async (event, clienteId) => {
     });
   });
 });
-
-
 
 // Crear o actualizar cliente
 ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
@@ -774,7 +772,48 @@ ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
   });
 });
 
-// Actualizar estadísticas de compra del cliente
+// ✅ NUEVA: Revertir estadísticas cuando se cancela una venta
+ipcMain.handle('revertir-estadisticas-cliente', async (event, clienteId, totalCompra) => {
+  return new Promise((resolve, reject) => {
+    // Primero obtenemos las estadísticas actuales
+    db.get('SELECT numero_compras, total_compras FROM clientes WHERE id = ?', [clienteId], (err, cliente) => {
+      if (err) {
+        console.error('Error al obtener cliente:', err);
+        reject(err);
+        return;
+      }
+
+      if (!cliente) {
+        resolve({ success: false, error: 'Cliente no encontrado' });
+        return;
+      }
+
+      // Calcular los nuevos valores
+      const nuevoNumeroCompras = Math.max(0, (cliente.numero_compras || 0) - 1);
+      const nuevoTotalCompras = Math.max(0, (cliente.total_compras || 0) - totalCompra);
+
+      // Actualizar el cliente
+      const query = `
+        UPDATE clientes
+        SET numero_compras = ?,
+            total_compras = ?
+        WHERE id = ?
+      `;
+
+      db.run(query, [nuevoNumeroCompras, nuevoTotalCompras, clienteId], function (err) {
+        if (err) {
+          console.error('Error al revertir estadísticas del cliente:', err);
+          reject(err);
+        } else {
+          console.log(`✅ Estadísticas revertidas para cliente ${clienteId}: -1 compra, -$${totalCompra}`);
+          resolve({ success: true });
+        }
+      });
+    });
+  });
+});
+
+// Actualizar estadísticas de compra del cliente (cuando se crea una venta)
 ipcMain.handle('actualizar-estadisticas-cliente', async (event, clienteId, totalCompra) => {
   return new Promise((resolve, reject) => {
     const query = `
@@ -796,8 +835,35 @@ ipcMain.handle('actualizar-estadisticas-cliente', async (event, clienteId, total
   });
 });
 
-// Obtener todos los clientes
-// Obtener todos los clientes
+// Obtener todos los clientes con estadísticas de ventas
+ipcMain.handle('obtener-clientes-con-estadisticas', async () => {
+  return new Promise((resolve, reject) => {
+    db.all(`
+      SELECT
+        c.id,
+        c.nombre,
+        c.cedula,
+        c.correo,
+        c.celular,
+        COUNT(CASE WHEN v.estado = 'Pagado' THEN v.id END) as numero_compras,
+        SUM(CASE WHEN v.estado = 'Pagado' THEN v.total ELSE 0 END) as total_compras,
+        MAX(CASE WHEN v.estado = 'Pagado' THEN v.fecha END) as ultima_compra
+      FROM clientes c
+      LEFT JOIN ventas v ON c.id = v.cliente_id
+      GROUP BY c.id
+      ORDER BY numero_compras DESC, total_compras DESC
+    `, [], (err, rows) => {
+      if (err) {
+        console.error('Error al obtener clientes:', err);
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+});
+
+// Obtener todos los clientes (simple)
 ipcMain.handle('obtener-clientes', async () => {
   return new Promise((resolve, reject) => {
     db.all('SELECT * FROM clientes ORDER BY nombre ASC', [], (err, rows) => {
@@ -811,15 +877,15 @@ ipcMain.handle('obtener-clientes', async () => {
   });
 });
 
-// Obtener estadísticas de un cliente
+// Obtener estadísticas de un cliente específico
 ipcMain.handle('obtener-estadisticas-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
     const query = `
       SELECT
         c.*,
-        COUNT(v.id) as total_ventas,
-        SUM(v.total) as total_gastado,
-        MAX(v.fecha) as ultima_venta
+        COUNT(CASE WHEN v.estado = 'Pagado' THEN v.id END) as total_ventas,
+        SUM(CASE WHEN v.estado = 'Pagado' THEN v.total ELSE 0 END) as total_gastado,
+        MAX(CASE WHEN v.estado = 'Pagado' THEN v.fecha_registro END) as ultima_venta
       FROM clientes c
       LEFT JOIN ventas v ON c.id = v.cliente_id
       WHERE c.id = ?
@@ -868,6 +934,7 @@ ipcMain.handle('eliminar-cliente', async (event, clienteId) => {
 
 
 
+
 // ==================== SISTEMA DE RECORDATORIOS ====================
 
 // Función para mostrar notificación de recordatorio
@@ -908,7 +975,8 @@ const {
   obtenerDeudasPorCliente,
   buscarDeudasClientes,
   obtenerEstadisticasDeudasClientes,
-  obtenerHistorialAbonos
+  obtenerHistorialAbonos,
+
 } = require('./database/ventas');
 
 // Generar número de venta
@@ -1269,17 +1337,149 @@ ipcMain.handle('obtener-estadisticas-ventas', async () => {
   });
 });
 
-// Cancelar venta
-ipcMain.handle('cancelar-venta', async (event, id) => {
+ipcMain.handle('cancelar-venta', async (event, ventaId) => {
   return new Promise((resolve, reject) => {
-    cancelarVenta(id, (err, resultado) => {
-      if (err) {
-        console.error('❌ Error al cancelar venta:', err);
-        reject(err);
-      } else {
-        console.log('✅ Venta cancelada:', id);
-        resolve(resultado);
-      }
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+
+      // 1. Obtener información de la venta ANTES de cancelarla
+      db.get('SELECT cliente_id, total, estado FROM ventas WHERE id = ?', [ventaId], (err, venta) => {
+        if (err) {
+          db.run('ROLLBACK');
+          console.error('❌ Error al obtener venta:', err);
+          reject(err);
+          return;
+        }
+
+        if (!venta) {
+          db.run('ROLLBACK');
+          reject(new Error('Venta no encontrada'));
+          return;
+        }
+
+        // Verificar que no esté ya cancelada
+        if (venta.estado === 'Cancelado') {
+          db.run('ROLLBACK');
+          resolve({ success: false, error: 'La venta ya está cancelada' });
+          return;
+        }
+
+        console.log(`🔄 Cancelando venta ${ventaId} - Cliente: ${venta.cliente_id}, Total: $${venta.total}`);
+
+        // 2. Obtener los productos de la venta para restaurar stock
+        db.all('SELECT producto_id, variante_id, cantidad FROM venta_productos WHERE venta_id = ?', [ventaId], (err, productos) => {
+          if (err) {
+            db.run('ROLLBACK');
+            console.error('❌ Error al obtener productos:', err);
+            reject(err);
+            return;
+          }
+
+          console.log(`📦 Productos a restaurar: ${productos.length}`);
+
+          // 3. Restaurar stock de cada producto
+          let erroresStock = [];
+          let procesados = 0;
+
+          if (productos.length === 0) {
+            // Si no hay productos, continuar directamente
+            continuarCancelacion();
+          } else {
+            productos.forEach((item) => {
+              if (item.variante_id) {
+                // Restaurar stock de variante
+                db.run(
+                  'UPDATE variantes SET cantidad = cantidad + ? WHERE id = ?',
+                  [item.cantidad, item.variante_id],
+                  (err) => {
+                    if (err) {
+                      console.error(`❌ Error al restaurar stock de variante ${item.variante_id}:`, err);
+                      erroresStock.push(err);
+                    } else {
+                      console.log(`✅ Stock restaurado: Variante ${item.variante_id} +${item.cantidad}`);
+                    }
+                    procesados++;
+                    if (procesados === productos.length) continuarCancelacion();
+                  }
+                );
+              } else {
+                // Si no tiene variante, solo contar como procesado
+                procesados++;
+                if (procesados === productos.length) continuarCancelacion();
+              }
+            });
+          }
+
+          function continuarCancelacion() {
+            if (erroresStock.length > 0) {
+              db.run('ROLLBACK');
+              reject(erroresStock[0]);
+              return;
+            }
+
+            // 4. ✅ REVERTIR ESTADÍSTICAS DEL CLIENTE (si tiene cliente asociado)
+            if (venta.cliente_id) {
+              console.log(`🔄 Revirtiendo estadísticas del cliente ${venta.cliente_id}`);
+
+              db.run(
+                `UPDATE clientes
+                 SET numero_compras = CASE
+                       WHEN numero_compras > 0 THEN numero_compras - 1
+                       ELSE 0
+                     END,
+                     total_compras = CASE
+                       WHEN total_compras >= ? THEN total_compras - ?
+                       ELSE 0
+                     END
+                 WHERE id = ?`,
+                [venta.total, venta.total, venta.cliente_id],
+                (err) => {
+                  if (err) {
+                    console.error('❌ Error al revertir estadísticas del cliente:', err);
+                    db.run('ROLLBACK');
+                    reject(err);
+                    return;
+                  }
+
+                  console.log(`✅ Estadísticas del cliente ${venta.cliente_id} revertidas: -1 compra, -$${venta.total}`);
+                  finalizarCancelacion();
+                }
+              );
+            } else {
+              // Si no tiene cliente, continuar directamente
+              finalizarCancelacion();
+            }
+
+            function finalizarCancelacion() {
+              // 5. Marcar la venta como cancelada
+              db.run(
+                "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
+                [ventaId],
+                (err) => {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    console.error('❌ Error al actualizar estado de venta:', err);
+                    reject(err);
+                  } else {
+                    db.run('COMMIT', (err) => {
+                      if (err) {
+                        console.error('❌ Error al hacer commit:', err);
+                        reject(err);
+                      } else {
+                        console.log(`✅ Venta ${ventaId} cancelada correctamente`);
+                        if (venta.cliente_id) {
+                          console.log(`✅ Estadísticas del cliente ${venta.cliente_id} actualizadas`);
+                        }
+                        resolve({ success: true });
+                      }
+                    });
+                  }
+                }
+              );
+            }
+          }
+        });
+      });
     });
   });
 });
@@ -1367,6 +1567,191 @@ ipcMain.handle('obtener-historial-abonos', async (event, deudaId) => {
 });
 
 
+ipcMain.handle('obtener-dashboard-stats', async () => {
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      // Obtener fecha del mes actual y anterior
+      const fechaActual = new Date();
+      const primerDiaMesActual = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1);
+      const primerDiaMesAnterior = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - 1, 1);
+      const ultimoDiaMesAnterior = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 0);
+
+      let estadisticas = {
+        ventasTotales: 0,
+        ventasMesAnterior: 0,
+        gastosTotales: 0,
+        gastosMesAnterior: 0,
+        deudasPendientes: 0,
+        clientesConDeuda: 0,
+        itemsInventario: 0,
+        productosStockBajo: 0
+      };
+
+      let actividades = [];
+
+      // 1. Ventas del mes actual
+      db.get(`
+        SELECT SUM(total) as total
+        FROM ventas
+        WHERE estado = 'Pagado'
+        AND date(fecha) >= date('now', 'start of month')
+      `, [], (err, row) => {
+        if (!err && row) {
+          estadisticas.ventasTotales = row.total || 0;
+        }
+
+        // 2. Ventas del mes anterior
+        db.get(`
+          SELECT SUM(total) as total
+          FROM ventas
+          WHERE estado = 'Pagado'
+          AND date(fecha) >= date('now', 'start of month', '-1 month')
+          AND date(fecha) < date('now', 'start of month')
+        `, [], (err, row) => {
+          if (!err && row) {
+            estadisticas.ventasMesAnterior = row.total || 0;
+          }
+
+          // 3. Gastos del mes actual
+          db.get(`
+            SELECT SUM(monto) as total
+            FROM gastos
+            WHERE date(fecha) >= date('now', 'start of month')
+          `, [], (err, row) => {
+            if (!err && row) {
+              estadisticas.gastosTotales = row.total || 0;
+            }
+
+            // 4. Gastos del mes anterior
+            db.get(`
+              SELECT SUM(monto) as total
+              FROM gastos
+              WHERE date(fecha) >= date('now', 'start of month', '-1 month')
+              AND date(fecha) < date('now', 'start of month')
+            `, [], (err, row) => {
+              if (!err && row) {
+                estadisticas.gastosMesAnterior = row.total || 0;
+              }
+
+              // 5. Deudas pendientes (CORREGIDO - usar deudas_clientes)
+              db.get(`
+                SELECT SUM(monto_pendiente) as total, COUNT(DISTINCT cliente_id) as clientes
+                FROM deudas_clientes
+                WHERE estado = 'Pendiente'
+              `, [], (err, row) => {
+                if (!err && row) {
+                  estadisticas.deudasPendientes = row.total || 0;
+                  estadisticas.clientesConDeuda = row.clientes || 0;
+                }
+
+                // 6. Items en inventario y stock bajo
+                db.get(`
+                  SELECT
+                    COUNT(*) as total_variantes,
+                    SUM(CASE WHEN cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
+                  FROM variantes
+                `, [], (err, row) => {
+                  if (!err && row) {
+                    estadisticas.itemsInventario = row.total_variantes || 0;
+                    estadisticas.productosStockBajo = row.stock_bajo || 0;
+                  }
+
+                  // 7. Actividad reciente (últimas 10)
+                  obtenerActividadReciente((actividadesResult) => {
+                    actividades = actividadesResult;
+                    resolve({ estadisticas, actividades });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+});
+
+
+
+
+function obtenerActividadReciente(callback) {
+  const actividades = [];
+
+  // Ventas recientes
+  db.all(`
+    SELECT 'Venta' as tipo,
+           'Venta a cliente #' || numero_venta as descripcion,
+           '$' || printf('%.2f', total) as monto,
+           fecha
+    FROM ventas
+    WHERE estado = 'Pagado'
+    ORDER BY fecha DESC
+    LIMIT 3
+  `, [], (err, ventas) => {
+    if (!err && ventas) {
+      actividades.push(...ventas);
+    }
+
+    // Gastos recientes
+    db.all(`
+      SELECT 'Gasto' as tipo,
+             'Pago de ' || concepto as descripcion,
+             '-$' || printf('%.2f', monto) as monto,
+             fecha
+      FROM gastos
+      ORDER BY fecha DESC
+      LIMIT 3
+    `, [], (err, gastos) => {
+      if (!err && gastos) {
+        actividades.push(...gastos);
+      }
+
+      // Inventario reciente (reabastecimientos)
+      db.all(`
+        SELECT 'Inventario' as tipo,
+               'Reabastecimiento de "' || p.nombre || '"' as descripcion,
+               '+' || SUM(v.cantidad) || ' unidades' as monto,
+               p.fecha_registro as fecha
+        FROM productos p
+        JOIN variantes v ON v.producto_id = p.id
+        WHERE date(p.fecha_registro) >= date('now', '-7 days')
+        GROUP BY p.id
+        ORDER BY p.fecha_registro DESC
+        LIMIT 2
+      `, [], (err, inventario) => {
+        if (!err && inventario) {
+          actividades.push(...inventario);
+        }
+
+        // Deudas de clientes recientes
+        db.all(`
+          SELECT 'Deuda' as tipo,
+                 CASE
+                   WHEN c.nombre IS NOT NULL THEN c.nombre || ' debe $' || printf('%.2f', d.monto_pendiente)
+                   ELSE d.cliente_nombre || ' debe $' || printf('%.2f', d.monto_pendiente)
+                 END as descripcion,
+                 '$' || printf('%.2f', d.monto_pendiente) as monto,
+                 d.fecha_venta as fecha
+          FROM deudas_clientes d
+          LEFT JOIN clientes c ON d.cliente_id = c.id
+          WHERE d.estado = 'Pendiente'
+          ORDER BY d.fecha_venta DESC
+          LIMIT 2
+        `, [], (err, deudas) => {
+          if (!err && deudas) {
+            actividades.push(...deudas);
+          }
+
+          // Ordenar todas las actividades por fecha
+          actividades.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+          // Limitar a las 10 más recientes
+          callback(actividades.slice(0, 10));
+        });
+      });
+    });
+  });
+}
 
 
 // ==================== APP LIFECYCLE ====================
