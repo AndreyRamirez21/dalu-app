@@ -32,8 +32,11 @@ const {
   actualizarStockVariante
 } = require('./database/db');
 
+const BackupService = require('./database/backupService');
 
 let mainWindow;
+let backupService;
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -47,6 +50,12 @@ function createWindow() {
       webSecurity: false
     }
   });
+
+  // CORREGIDO: Inicialización del Backup Service
+  const dbPath = path.join(app.getPath('userData'), 'dalu.db');
+  backupService = new BackupService(dbPath);
+
+
 
   // CORREGIDO: Cargar la app correctamente
   if (isDev) {
@@ -975,8 +984,7 @@ const {
   obtenerDeudasPorCliente,
   buscarDeudasClientes,
   obtenerEstadisticasDeudasClientes,
-  obtenerHistorialAbonos,
-
+  obtenerHistorialAbonos
 } = require('./database/ventas');
 
 // Generar número de venta
@@ -1759,7 +1767,127 @@ function obtenerActividadReciente(callback) {
   });
 }
 
+// Agregar este handler en electron.js
 
+ipcMain.handle('obtener-datos-grafica', async () => {
+  return new Promise((resolve, reject) => {
+    // Obtener últimos 6 meses
+    const meses = [];
+    const fechaActual = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const fecha = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - i, 1);
+      const mesNombre = fecha.toLocaleDateString('es-CO', { month: 'short' });
+      const año = fecha.getFullYear();
+      const mes = fecha.getMonth() + 1;
+
+      meses.push({
+        mes: mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1),
+        año: año,
+        mesNumero: mes
+      });
+    }
+
+    // Obtener datos de cada mes
+    let procesados = 0;
+    const datos = [];
+
+    meses.forEach((mesInfo, index) => {
+      const primerDia = `${mesInfo.año}-${String(mesInfo.mesNumero).padStart(2, '0')}-01`;
+      const ultimoDia = new Date(mesInfo.año, mesInfo.mesNumero, 0).getDate();
+      const ultimoDiaFecha = `${mesInfo.año}-${String(mesInfo.mesNumero).padStart(2, '0')}-${ultimoDia}`;
+
+      // Ventas del mes
+      db.get(`
+        SELECT COALESCE(SUM(total), 0) as total
+        FROM ventas
+        WHERE estado = 'Pagado'
+        AND date(fecha) >= date(?)
+        AND date(fecha) <= date(?)
+      `, [primerDia, ultimoDiaFecha], (err, ventasRow) => {
+        const ventas = ventasRow ? ventasRow.total : 0;
+
+        // Gastos del mes
+        db.get(`
+          SELECT COALESCE(SUM(monto), 0) as total
+          FROM gastos
+          WHERE date(fecha) >= date(?)
+          AND date(fecha) <= date(?)
+        `, [primerDia, ultimoDiaFecha], (err, gastosRow) => {
+          const gastos = gastosRow ? gastosRow.total : 0;
+          const ganancia = ventas - gastos;
+
+          datos[index] = {
+            mes: mesInfo.mes,
+            ventas: ventas,
+            gastos: gastos,
+            ganancia: ganancia
+          };
+
+          procesados++;
+
+          if (procesados === meses.length) {
+            resolve(datos);
+          }
+        });
+      });
+    });
+  });
+});
+
+// ==================== HANDLERS DE BACKUP ====================
+
+// Crear backup manual
+ipcMain.handle('crear-backup', async () => {
+  try {
+    if (!backupService) {
+      return { success: false, error: 'Servicio de backup no inicializado' };
+    }
+    const resultado = await backupService.crearBackup();
+    return resultado;
+  } catch (error) {
+    console.error('Error al crear backup:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Listar backups disponibles
+ipcMain.handle('listar-backups', async () => {
+  try {
+    if (!backupService) {
+      return { success: false, backups: [] };
+    }
+    const backups = await backupService.listarBackups();
+    return { success: true, backups };
+  } catch (error) {
+    console.error('Error al listar backups:', error);
+    return { success: false, backups: [], error: error.message };
+  }
+});
+
+// Restaurar backup
+ipcMain.handle('restaurar-backup', async (event, fileName) => {
+  try {
+    if (!backupService) {
+      return { success: false, error: 'Servicio de backup no inicializado' };
+    }
+
+    const resultado = await backupService.restaurarBackup(fileName);
+
+    if (resultado.success) {
+      // Reiniciar la app después de restaurar
+      setTimeout(() => {
+        app.relaunch();
+        app.exit(0);
+      }, 2000);
+    }
+
+    return resultado;
+  } catch (error) {
+    console.error('Error al restaurar backup:', error);
+    return { success: false, error: error.message };
+  }
+});
 // ==================== APP LIFECYCLE ====================
 
 app.on('ready', () => {
@@ -1768,8 +1896,10 @@ app.on('ready', () => {
   console.log('📂 appPath:', app.getAppPath());
   createWindow();
   setTimeout(() => {
-    console.log('🔔 Inicializando sistema de notificaciones...');
-  }, 2000);
+    if (backupService) {
+      backupService.iniciarBackupAutomatico(24);
+    }
+  }, 10000); // Esperar 10 segundos después de que inicie la app
 });
 
 app.on('window-all-closed', () => {

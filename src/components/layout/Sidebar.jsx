@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users } from 'lucide-react';
+import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3, HardDrive } from 'lucide-react';
 
 const Sidebar = ({ activeSection, setActiveSection }) => {
   return (
@@ -90,6 +90,31 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
                   <span className="font-medium">Clientes</span>
 
                 </button>
+
+                <button
+                  onClick={() => setActiveSection('estadisticas')}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                    setActiveSection === 'estadisticas'
+                      ? 'bg-teal-50 text-teal-600'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <BarChart3 size={20} />
+                  <span className="font-medium">Estadísticas</span>
+                </button>
+
+                                <button
+                                  onClick={() => setActiveSection('backups')}
+                                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                                    setActiveSection === 'backups'
+                                      ? 'bg-teal-50 text-teal-600'
+                                      : 'text-gray-600 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  <HardDrive size={20} />
+                                  <span className="font-medium">GestionBackups</span>
+                                </button>
+
 
 
 

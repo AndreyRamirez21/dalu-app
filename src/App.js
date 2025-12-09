@@ -7,7 +7,8 @@ import Gastos from './components/sections/Gastos';
 import Deudas from './components/sections/DeudasClientes';
 import Inventario from './components/sections/Inventario';
 import Clientes from './components/sections/Clientes';
-
+import Estadisticas from './components/sections/Estadisticas';
+import Backups from './components/sections/GestionBackups';
 
 const App = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -26,8 +27,13 @@ const App = () => {
         return <Inventario />;
       case 'clientes':
         return <Clientes />;
+      case 'estadisticas':
+        return <Estadisticas />;
+      case 'backups':
+        return <Backups />;
       default:
         return <Dashboard />;
+
     }
   };
 
@@ -56,7 +62,15 @@ const App = () => {
       clientes: {
         title: 'Gestión de Clientes',
         subtitle: 'Administra tu base de clientes y programa de fidelidad.'
-      }
+      },
+      estadisticas: {
+      title: 'Gestión de Estadisticas',
+      subtitle: 'Visualiza las estadísticas de Dalú.'
+      },
+            backups: {
+            title: 'Gestión de Backups',
+            subtitle: 'Gestion de los respaldos de la base de datos.'
+            }
     };
     return titles[activeSection] || titles.dashboard;
   };
