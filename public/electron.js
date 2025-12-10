@@ -1835,6 +1835,38 @@ ipcMain.handle('obtener-datos-grafica', async () => {
   });
 });
 
+ipcMain.handle('obtener-top-productos', async () => {
+  return new Promise((resolve, reject) => {
+    // Obtener fecha de hace 6 meses
+    const fechaActual = new Date();
+    const hace6Meses = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - 6, 1);
+    const fechaInicio = `${hace6Meses.getFullYear()}-${String(hace6Meses.getMonth() + 1).padStart(2, '0')}-01`;
+
+    db.all(`
+      SELECT
+        p.id,
+        p.nombre,
+        p.referencia as codigo,
+        SUM(vp.cantidad) as cantidad,
+        SUM(vp.precio_unitario * vp.cantidad) as total_ventas
+      FROM venta_productos vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      INNER JOIN ventas v ON vp.venta_id = v.id
+      WHERE v.estado = 'Pagado'
+      AND date(v.fecha) >= date(?)
+      GROUP BY p.id, p.nombre, p.referencia
+      ORDER BY cantidad DESC
+      LIMIT 5
+    `, [fechaInicio], (err, rows) => {
+      if (err) {
+        console.error('Error al obtener top productos:', err);
+        reject(err);
+      } else {
+        resolve(rows || []);
+      }
+    });
+  });
+});
 // ==================== HANDLERS DE BACKUP ====================
 
 // Crear backup manual

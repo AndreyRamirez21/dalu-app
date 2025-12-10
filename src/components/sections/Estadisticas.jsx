@@ -21,6 +21,7 @@ const Estadisticas = () => {
   });
 
   const [datosGrafica, setDatosGrafica] = useState([]);
+  const [topProductos, setTopProductos] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +39,10 @@ const Estadisticas = () => {
       // Cargar datos para las gráficas
       const grafica = await ipcRenderer.invoke('obtener-datos-grafica');
       setDatosGrafica(grafica || []);
+
+      // Cargar top productos más vendidos
+      const productos = await ipcRenderer.invoke('obtener-top-productos');
+      setTopProductos(productos || []);
     } catch (error) {
       console.error('Error al cargar estadísticas:', error);
     } finally {
@@ -214,7 +219,7 @@ const Estadisticas = () => {
       </div>
 
       {/* Gráficas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Gráfica de Líneas: Ventas vs Gastos */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="mb-6">
@@ -302,6 +307,77 @@ const Estadisticas = () => {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Top Productos Más Vendidos */}
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-gray-800">Top 5 Productos Más Vendidos</h3>
+          <p className="text-sm text-gray-500">Basado en cantidad vendida en los últimos 6 meses</p>
+        </div>
+
+        {topProductos.length === 0 ? (
+          <div className="text-center py-8 text-gray-400">
+            No hay datos de productos vendidos
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {topProductos.map((producto, index) => {
+              const porcentaje = topProductos[0].cantidad > 0
+                ? (producto.cantidad / topProductos[0].cantidad) * 100
+                : 0;
+
+              const colores = [
+                { bg: 'bg-yellow-100', bar: 'bg-yellow-500', text: 'text-yellow-700', icon: '🥇' },
+                { bg: 'bg-gray-100', bar: 'bg-gray-400', text: 'text-gray-600', icon: '🥈' },
+                { bg: 'bg-orange-100', bar: 'bg-orange-400', text: 'text-orange-600', icon: '🥉' },
+                { bg: 'bg-blue-50', bar: 'bg-blue-400', text: 'text-blue-600', icon: '4️⃣' },
+                { bg: 'bg-purple-50', bar: 'bg-purple-400', text: 'text-purple-600', icon: '5️⃣' }
+              ];
+
+              const color = colores[index];
+
+              return (
+                <div key={index} className={`${color.bg} rounded-lg p-4 transition-all hover:shadow-md`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3 flex-1">
+                      <span className="text-2xl">{color.icon}</span>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-gray-800">{producto.nombre}</h4>
+                        <p className="text-xs text-gray-500">Código: {producto.codigo || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-2xl font-bold ${color.text}`}>
+                        {producto.cantidad}
+                      </div>
+                      <div className="text-xs text-gray-500">unidades</div>
+                    </div>
+                  </div>
+
+                  {/* Barra de progreso */}
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                    <div
+                      className={`${color.bar} h-2.5 rounded-full transition-all duration-500`}
+                      style={{ width: `${porcentaje}%` }}
+                    ></div>
+                  </div>
+
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      Ingresos: <span className="font-semibold text-green-600">
+                        ${producto.total_ventas.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+                      </span>
+                    </span>
+                    <span className="text-gray-500">
+                      {porcentaje.toFixed(1)}% del líder
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
