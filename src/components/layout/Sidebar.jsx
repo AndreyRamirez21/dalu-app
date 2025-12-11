@@ -4,17 +4,17 @@ import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3
 const Sidebar = ({ activeSection, setActiveSection }) => {
   return (
     <div className="w-64 bg-white shadow-lg flex flex-col">
-      <div className="p-6 border-b">
-        <div className="flex items-center space-x-2">
-          <div className="w-10 h-10 bg-teal-500 rounded-lg flex items-center justify-center text-white font-bold text-xl">
-            D
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">Dalú</h1>
-            <p className="text-xs text-teal-500 uppercase tracking-wide">Siendo Tú</p>
+        <div className="p-6 border-b">
+          <div className="flex flex-col items-center space-y-2">
+            <img
+              src={process.env.PUBLIC_URL + '/logito.png'}
+              alt="Dalú Logo"
+              className="w-[100px] h-[100px] object-contain"
+            />
+            <p className="text-xs text-teal-500 uppercase tracking-wide font-semibold">
+            </p>
           </div>
         </div>
-      </div>
 
       <nav className="flex-1 p-4 space-y-2">
         <button

@@ -65,37 +65,42 @@
   "build": {
     "appId": "com.dalu.app",
     "productName": "Dalú",
+
     "files": [
       "build/**/*",
       "public/electron.js",
       "public/database/**/*",
       "node_modules/**/*"
     ],
+
     "extraResources": [
       {
         "from": "public/database",
         "to": "database"
       }
     ],
+
     "asarUnpack": [
       "node_modules/sqlite3/**/*"
     ],
+
     "npmRebuild": false,
+
     "directories": {
-      "buildResources": "public"
+      "buildResources": "build"
     },
+
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
-      "icon": "electron/Dalu-desktop.ico",
+      "icon": "../build/icons/logooo1.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     }
   }
+
 }

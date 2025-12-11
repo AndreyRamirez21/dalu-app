@@ -19,18 +19,8 @@ app.whenReady().then(() => {
 });
 
 
-// Importar funciones de base de datos
-const {
-  db,
-  agregarProducto,
-  obtenerProductos,
-  obtenerProductosPorCategoria,
-  buscarProductos,
-  actualizarProducto,
-  eliminarProducto,
-  obtenerEstadisticasInventario,
-  actualizarStockVariante
-} = require('./database/db');
+const db = require('./database');
+// Ya no importas funciones individuales
 
 const BackupService = require('./database/backupService');
 
@@ -43,7 +33,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     title: 'Dalú',
-    icon: path.join(__dirname, 'electron', 'Dalu-desktop.ico'),
+    icon: path.join(__dirname, '../build/icons/logooo1.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -163,7 +153,7 @@ function eliminarImagen(rutaImagen) {
 // Obtener todos los productos
 ipcMain.handle('obtener-productos', async () => {
   return new Promise((resolve, reject) => {
-    obtenerProductos((err, productos) => {
+    db.productos.obtener((err, productos) => {
       if (err) {
         console.error('❌ Error al obtener productos:', err);
         reject(err);
@@ -178,7 +168,7 @@ ipcMain.handle('obtener-productos', async () => {
 // Obtener productos por categoría
 ipcMain.handle('obtener-productos-categoria', async (event, categoria) => {
   return new Promise((resolve, reject) => {
-    obtenerProductosPorCategoria(categoria, (err, productos) => {
+    db.productos.obtenerPorCategoria(categoria, (err, productos) => {
       if (err) reject(err);
       else resolve(productos);
     });
@@ -188,7 +178,7 @@ ipcMain.handle('obtener-productos-categoria', async (event, categoria) => {
 // Buscar productos
 ipcMain.handle('buscar-productos', async (event, termino) => {
   return new Promise((resolve, reject) => {
-    buscarProductos(termino, (err, productos) => {
+    db.productos.buscar(termino, (err, productos) => {
       if (err) reject(err);
       else resolve(productos);
     });
@@ -215,8 +205,8 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
     };
 
     // Usar la función de db.js
-    agregarProducto(datosProducto, (err, resultado) => {
-      if (err) {
+        db.productos.agregar(datosProducto, (err, resultado) => {
+        if (err) {
         // Si falla, eliminar imagen guardada
         if (rutaImagen) eliminarImagen(rutaImagen);
         console.error('❌ Error al agregar producto:', err);
@@ -226,8 +216,7 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
 
       // Si el producto se guardó exitosamente, actualizar la imagen en la BD
       if (rutaImagen) {
-        const { db } = require('./database/db');
-        db.run(
+        db.db.run(
           'UPDATE productos SET imagen = ? WHERE id = ?',
           [rutaImagen, resultado.id],
           (errImg) => {
@@ -247,10 +236,8 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
 // Actualizar producto
 ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
   return new Promise((resolve, reject) => {
-    const { db } = require('./database/db');
-
     // Obtener imagen anterior para eliminarla si se actualiza
-    db.get(`SELECT imagen FROM productos WHERE id = ?`, [id], (err, row) => {
+    db.db.get(`SELECT imagen FROM productos WHERE id = ?`, [id], (err, row) => {
       if (err) {
         reject(err);
         return;
@@ -280,7 +267,7 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
       };
 
       // Usar la función de db.js
-      actualizarProducto(id, datosParaActualizar, (err, resultado) => {
+        db.productos.actualizar(id, datosParaActualizar, (err, resultado) => {
         if (err) {
           console.error('❌ Error al actualizar producto:', err);
           reject(err);
@@ -289,7 +276,7 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
 
         // Si el producto se actualizó exitosamente, actualizar la imagen en la BD
         if (nuevaRutaImagen) {
-          db.run(
+          db.db.run(
             'UPDATE productos SET imagen = ? WHERE id = ?',
             [nuevaRutaImagen, id],
             (errImg) => {
@@ -311,10 +298,9 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
 // Eliminar producto
 ipcMain.handle('eliminar-producto', async (event, id) => {
   return new Promise((resolve, reject) => {
-    const { db } = require('./database/db');
 
     // Primero obtener la ruta de la imagen
-    db.get(`SELECT imagen FROM productos WHERE id = ?`, [id], (err, row) => {
+    db.db.get(`SELECT imagen FROM productos WHERE id = ?`, [id], (err, row) => {
       if (err) {
         reject(err);
         return;
@@ -323,8 +309,7 @@ ipcMain.handle('eliminar-producto', async (event, id) => {
       const rutaImagen = row ? row.imagen : null;
 
       // Usar la función de db.js para eliminar (CASCADE se encarga de las variantes)
-      eliminarProducto(id, (err, resultado) => {
-        if (err) {
+        db.productos.eliminar(id, (err, resultado) => {        if (err) {
           console.error('❌ Error al eliminar producto:', err);
           reject(err);
           return;
@@ -347,8 +332,8 @@ ipcMain.handle('eliminar-producto', async (event, id) => {
 // Obtener estadísticas
 ipcMain.handle('obtener-estadisticas', async () => {
   return new Promise((resolve, reject) => {
-    obtenerEstadisticasInventario((err, stats) => {
-      if (err) reject(err);
+    db.productos.obtenerEstadisticas((err, stats) => {
+    if (err) reject(err);
       else resolve(stats);
     });
   });
@@ -357,7 +342,7 @@ ipcMain.handle('obtener-estadisticas', async () => {
 // Actualizar stock de variante
 ipcMain.handle('actualizar-stock-variante', async (event, varianteId, nuevaCantidad) => {
   return new Promise((resolve, reject) => {
-    actualizarStockVariante(varianteId, nuevaCantidad, (err, result) => {
+db.productos.actualizarStockVariante(varianteId, nuevaCantidad, (err, result) => {
       if (err) {
         console.error('❌ Error al actualizar stock de variante:', err);
         reject(err);
@@ -414,24 +399,12 @@ ipcMain.handle('obtener-url-imagen', async (event, rutaImagen) => {
 // ==================== IPC HANDLERS PARA GASTOS ====================
 // Agregar estos handlers en tu archivo main.js
 
-const {
-  agregarGasto,
-  obtenerGastos,
-  obtenerGastosPorCategoria,
-  obtenerGastosPorFecha,
-  buscarGastos,
-  actualizarGasto,
-  eliminarGasto,
-  obtenerEstadisticasGastos,
-  obtenerTotalGastos,
-  obtenerGastosMesActual
-} = require('./database/db');
 
 // Obtener todos los gastos
 ipcMain.handle('obtener-gastos', async () => {
   return new Promise((resolve, reject) => {
-    obtenerGastos((err, gastos) => {
-      if (err) {
+     db.gastos.obtener((err, gastos) => {
+     if (err) {
         console.error('❌ Error al obtener gastos:', err);
         reject(err);
       } else {
@@ -445,7 +418,7 @@ ipcMain.handle('obtener-gastos', async () => {
 // Agregar gasto
 ipcMain.handle('agregar-gasto', async (event, gasto) => {
   return new Promise((resolve, reject) => {
-    agregarGasto(gasto, (err, resultado) => {
+db.gastos.agregar(gasto, (err, resultado) => {
       if (err) {
         console.error('❌ Error al agregar gasto:', err);
         reject(err);
@@ -460,7 +433,7 @@ ipcMain.handle('agregar-gasto', async (event, gasto) => {
 // Actualizar gasto
 ipcMain.handle('actualizar-gasto', async (event, id, datos) => {
   return new Promise((resolve, reject) => {
-    actualizarGasto(id, datos, (err, resultado) => {
+db.gastos.actualizar(id, datos, (err, resultado) => {
       if (err) {
         console.error('❌ Error al actualizar gasto:', err);
         reject(err);
@@ -475,7 +448,7 @@ ipcMain.handle('actualizar-gasto', async (event, id, datos) => {
 // Eliminar gasto
 ipcMain.handle('eliminar-gasto', async (event, id) => {
   return new Promise((resolve, reject) => {
-    eliminarGasto(id, (err, resultado) => {
+db.gastos.eliminar(id, (err, resultado) => {
       if (err) {
         console.error('❌ Error al eliminar gasto:', err);
         reject(err);
@@ -490,7 +463,7 @@ ipcMain.handle('eliminar-gasto', async (event, id) => {
 // Buscar gastos
 ipcMain.handle('buscar-gastos', async (event, termino) => {
   return new Promise((resolve, reject) => {
-    buscarGastos(termino, (err, gastos) => {
+db.gastos.buscar(termino, (err, gastos) => {
       if (err) reject(err);
       else resolve(gastos);
     });
@@ -500,8 +473,8 @@ ipcMain.handle('buscar-gastos', async (event, termino) => {
 // Obtener gastos por categoría
 ipcMain.handle('obtener-gastos-categoria', async (event, categoria) => {
   return new Promise((resolve, reject) => {
-    obtenerGastosPorCategoria(categoria, (err, gastos) => {
-      if (err) reject(err);
+db.gastos.obtenerPorCategoria(categoria, (err, gastos) => {
+     if (err) reject(err);
       else resolve(gastos);
     });
   });
@@ -510,7 +483,7 @@ ipcMain.handle('obtener-gastos-categoria', async (event, categoria) => {
 // Obtener estadísticas de gastos
 ipcMain.handle('obtener-estadisticas-gastos', async () => {
   return new Promise((resolve, reject) => {
-    obtenerEstadisticasGastos((err, stats) => {
+    db.gastos.obtenerEstadisticas((err, stats) => {
       if (err) reject(err);
       else resolve(stats);
     });
@@ -520,7 +493,7 @@ ipcMain.handle('obtener-estadisticas-gastos', async () => {
 // Obtener total de gastos
 ipcMain.handle('obtener-total-gastos', async () => {
   return new Promise((resolve, reject) => {
-    obtenerTotalGastos((err, totales) => {
+    db.gastos.obtenerTotal((err, totales) => {
       if (err) reject(err);
       else resolve(totales);
     });
@@ -530,7 +503,7 @@ ipcMain.handle('obtener-total-gastos', async () => {
 // Obtener gastos del mes actual
 ipcMain.handle('obtener-gastos-mes', async () => {
   return new Promise((resolve, reject) => {
-    obtenerGastosMesActual((err, gastos) => {
+    db.gastos.obtenerMesActual((err, gastos) => {
       if (err) reject(err);
       else resolve(gastos);
     });
@@ -540,25 +513,12 @@ ipcMain.handle('obtener-gastos-mes', async () => {
 
 
 const { Notification } = require('electron');
-const {
-  agregarDeuda,
-  obtenerDeudas,
-  obtenerDeudasPendientes,
-  obtenerDeudaPorId,
-  registrarPagoDeuda,
-  actualizarDeuda,
-  eliminarDeuda,
-  buscarDeudas,
-  obtenerEstadisticasDeudas,
-  verificarRecordatoriosDeudas,
-  debugverificarfechas,
-  obtenerHistorialPagos
-} = require('./database/db');
+
 
 // Obtener todas las deudas
 ipcMain.handle('obtener-deudas', async () => {
   return new Promise((resolve, reject) => {
-    obtenerDeudas((err, deudas) => {
+    db.deudas.obtener((err, deudas) => {
       if (err) {
         console.error('❌ Error al obtener deudas:', err);
         reject(err);
@@ -573,7 +533,7 @@ ipcMain.handle('obtener-deudas', async () => {
 // Obtener deudas pendientes
 ipcMain.handle('obtener-deudas-pendientes', async () => {
   return new Promise((resolve, reject) => {
-    obtenerDeudasPendientes((err, deudas) => {
+    db.deudas.obtenerPendientes((err, deudas) => {
       if (err) reject(err);
       else resolve(deudas);
     });
@@ -583,7 +543,7 @@ ipcMain.handle('obtener-deudas-pendientes', async () => {
 // Obtener deuda por ID
 ipcMain.handle('obtener-deuda-por-id', async (event, id) => {
   return new Promise((resolve, reject) => {
-    obtenerDeudaPorId(id, (err, deuda) => {
+    db.deudas.obtenerPorId(id, (err, deuda) => {
       if (err) reject(err);
       else resolve(deuda);
     });
@@ -593,7 +553,7 @@ ipcMain.handle('obtener-deuda-por-id', async (event, id) => {
 // Agregar deuda
 ipcMain.handle('agregar-deuda', async (event, deuda) => {
   return new Promise((resolve, reject) => {
-    agregarDeuda(deuda, (err, resultado) => {
+    db.deudas.agregar(deuda, (err, resultado) => {
       if (err) {
         console.error('❌ Error al agregar deuda:', err);
         reject(err);
@@ -608,7 +568,7 @@ ipcMain.handle('agregar-deuda', async (event, deuda) => {
 // Registrar pago de deuda
 ipcMain.handle('registrar-pago-deuda', async (event, deudaId, montoPago, metodoPago, notas) => {
   return new Promise((resolve, reject) => {
-    registrarPagoDeuda(deudaId, montoPago, metodoPago, notas, (err, resultado) => {
+    db.deudas.registrarPago(deudaId, montoPago, metodoPago, notas, (err, resultado) => {
       if (err) {
         console.error('❌ Error al registrar pago:', err);
         reject(err);
@@ -623,7 +583,7 @@ ipcMain.handle('registrar-pago-deuda', async (event, deudaId, montoPago, metodoP
 // Actualizar deuda
 ipcMain.handle('actualizar-deuda', async (event, id, datos) => {
   return new Promise((resolve, reject) => {
-    actualizarDeuda(id, datos, (err, resultado) => {
+    db.deudas.actualizar(id, datos, (err, resultado) => {
       if (err) {
         console.error('❌ Error al actualizar deuda:', err);
         reject(err);
@@ -638,7 +598,7 @@ ipcMain.handle('actualizar-deuda', async (event, id, datos) => {
 // Eliminar deuda
 ipcMain.handle('eliminar-deuda', async (event, id) => {
   return new Promise((resolve, reject) => {
-    eliminarDeuda(id, (err, resultado) => {
+    db.deudas.eliminar(id, (err, resultado) => {
       if (err) {
         console.error('❌ Error al eliminar deuda:', err);
         reject(err);
@@ -653,7 +613,7 @@ ipcMain.handle('eliminar-deuda', async (event, id) => {
 // Buscar deudas
 ipcMain.handle('buscar-deudas', async (event, termino) => {
   return new Promise((resolve, reject) => {
-    buscarDeudas(termino, (err, deudas) => {
+    db.deudas.buscar(termino, (err, deudas) => {
       if (err) reject(err);
       else resolve(deudas);
     });
@@ -663,7 +623,7 @@ ipcMain.handle('buscar-deudas', async (event, termino) => {
 // Obtener estadísticas
 ipcMain.handle('obtener-estadisticas-deudas', async () => {
   return new Promise((resolve, reject) => {
-    obtenerEstadisticasDeudas((err, stats) => {
+    db.deudas.obtenerEstadisticas((err, stats) => {
       if (err) reject(err);
       else resolve(stats);
     });
@@ -673,7 +633,7 @@ ipcMain.handle('obtener-estadisticas-deudas', async () => {
 // Obtener historial de pagos
 ipcMain.handle('obtener-historial-pagos', async (event, deudaId) => {
   return new Promise((resolve, reject) => {
-    obtenerHistorialPagos(deudaId, (err, pagos) => {
+    db.deudas.obtenerHistorialPagos(deudaId, (err, pagos) => {
       if (err) reject(err);
       else resolve(pagos);
     });
@@ -694,7 +654,7 @@ ipcMain.handle('buscar-clientes', async (event, termino) => {
     `;
     const searchTerm = `%${termino}%`;
 
-    db.all(query, [searchTerm, searchTerm, searchTerm], (err, rows) => {
+    db.db.all(query, [searchTerm, searchTerm, searchTerm], (err, rows) => {
       if (err) {
         console.error('Error al buscar clientes:', err);
         reject(err);
@@ -708,7 +668,7 @@ ipcMain.handle('buscar-clientes', async (event, termino) => {
 // Obtener cliente por ID
 ipcMain.handle('obtener-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
-    db.get('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, row) => {
+    db.db.get('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, row) => {
       if (err) {
         console.error('Error al obtener cliente:', err);
         reject(err);
@@ -732,7 +692,7 @@ ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
         WHERE id = ?
       `;
 
-      db.run(query, [nombre, cedula, correo, celular, id], function (err) {
+      db.db.run(query, [nombre, cedula, correo, celular, id], function (err) {
         if (err) {
           console.error('Error al actualizar cliente:', err);
           reject(err);
@@ -743,7 +703,7 @@ ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
     } else {
       // Verificar si ya existe un cliente con esa cédula
       if (cedula) {
-        db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
+        db.db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
           if (err) {
             reject(err);
             return;
@@ -769,7 +729,7 @@ ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
         VALUES (?, ?, ?, ?)
       `;
 
-      db.run(query, [nombre, cedula, correo, celular], function (err) {
+      db.db.run(query, [nombre, cedula, correo, celular], function (err) {
         if (err) {
           console.error('Error al crear cliente:', err);
           reject(err);
@@ -785,7 +745,7 @@ ipcMain.handle('guardar-cliente', async (event, datosCliente) => {
 ipcMain.handle('revertir-estadisticas-cliente', async (event, clienteId, totalCompra) => {
   return new Promise((resolve, reject) => {
     // Primero obtenemos las estadísticas actuales
-    db.get('SELECT numero_compras, total_compras FROM clientes WHERE id = ?', [clienteId], (err, cliente) => {
+    db.db.get('SELECT numero_compras, total_compras FROM clientes WHERE id = ?', [clienteId], (err, cliente) => {
       if (err) {
         console.error('Error al obtener cliente:', err);
         reject(err);
@@ -809,7 +769,7 @@ ipcMain.handle('revertir-estadisticas-cliente', async (event, clienteId, totalCo
         WHERE id = ?
       `;
 
-      db.run(query, [nuevoNumeroCompras, nuevoTotalCompras, clienteId], function (err) {
+      db.db.run(query, [nuevoNumeroCompras, nuevoTotalCompras, clienteId], function (err) {
         if (err) {
           console.error('Error al revertir estadísticas del cliente:', err);
           reject(err);
@@ -833,7 +793,7 @@ ipcMain.handle('actualizar-estadisticas-cliente', async (event, clienteId, total
       WHERE id = ?
     `;
 
-    db.run(query, [totalCompra, clienteId], function (err) {
+    db.db.run(query, [totalCompra, clienteId], function (err) {
       if (err) {
         console.error('Error al actualizar estadísticas del cliente:', err);
         reject(err);
@@ -847,7 +807,7 @@ ipcMain.handle('actualizar-estadisticas-cliente', async (event, clienteId, total
 // Obtener todos los clientes con estadísticas de ventas
 ipcMain.handle('obtener-clientes-con-estadisticas', async () => {
   return new Promise((resolve, reject) => {
-    db.all(`
+    db.db.all(`
       SELECT
         c.id,
         c.nombre,
@@ -875,7 +835,7 @@ ipcMain.handle('obtener-clientes-con-estadisticas', async () => {
 // Obtener todos los clientes (simple)
 ipcMain.handle('obtener-clientes', async () => {
   return new Promise((resolve, reject) => {
-    db.all('SELECT * FROM clientes ORDER BY nombre ASC', [], (err, rows) => {
+    db.db.all('SELECT * FROM clientes ORDER BY nombre ASC', [], (err, rows) => {
       if (err) {
         console.error('Error al obtener clientes:', err);
         reject(err);
@@ -901,7 +861,7 @@ ipcMain.handle('obtener-estadisticas-cliente', async (event, clienteId) => {
       GROUP BY c.id
     `;
 
-    db.get(query, [clienteId], (err, row) => {
+    db.db.get(query, [clienteId], (err, row) => {
       if (err) {
         console.error('Error al obtener estadísticas del cliente:', err);
         reject(err);
@@ -916,7 +876,7 @@ ipcMain.handle('obtener-estadisticas-cliente', async (event, clienteId) => {
 ipcMain.handle('eliminar-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
     // Primero verificar si tiene ventas asociadas
-    db.get('SELECT COUNT(*) as count FROM ventas WHERE cliente_id = ?', [clienteId], (err, row) => {
+    db.db.get('SELECT COUNT(*) as count FROM ventas WHERE cliente_id = ?', [clienteId], (err, row) => {
       if (err) {
         reject(err);
         return;
@@ -928,7 +888,7 @@ ipcMain.handle('eliminar-cliente', async (event, clienteId) => {
           error: 'No se puede eliminar un cliente con ventas asociadas'
         });
       } else {
-        db.run('DELETE FROM clientes WHERE id = ?', [clienteId], function (err) {
+        db.db.run('DELETE FROM clientes WHERE id = ?', [clienteId], function (err) {
           if (err) {
             console.error('Error al eliminar cliente:', err);
             reject(err);
@@ -969,28 +929,12 @@ function mostrarRecordatorioDeuda(deuda) {
 
 
 
-const {
-  generarNumeroVenta,
-  crearVenta,
-  obtenerVentas,
-  obtenerVentaPorId,
-  buscarVentas,
-  obtenerEstadisticasVentas,
-  cancelarVenta,
-  // Deudas de clientes
-  obtenerDeudasClientes,
-  obtenerDeudaClientePorId,
-  registrarAbonoDeudaCliente,
-  obtenerDeudasPorCliente,
-  buscarDeudasClientes,
-  obtenerEstadisticasDeudasClientes,
-  obtenerHistorialAbonos
-} = require('./database/ventas');
+//VENTAS
 
 // Generar número de venta
 ipcMain.handle('generar-numero-venta', async () => {
   return new Promise((resolve, reject) => {
-    generarNumeroVenta((err, numero) => {
+db.ventas.generarNumeroVenta((err, numero) => {
       if (err) reject(err);
       else resolve(numero);
     });
@@ -1031,7 +975,7 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
 
     // 3. Usar la función crearVenta del módulo
-    crearVenta(datosVentaDB, async (err, resultado) => {
+db.ventas.crear(datosVentaDB, async (err, resultado) => {
       if (err) {
         console.error('❌ Error al crear venta:', err);
         reject(err);
@@ -1042,7 +986,7 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
       try {
         // 4. Verificar que los productos se guardaron
-        db.all(
+        db.db.all(
           'SELECT * FROM venta_productos WHERE venta_id = ?',
           [resultado.id],
           (err, productosGuardados) => {
@@ -1069,7 +1013,7 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
         // 6. Actualizar estadísticas del cliente si existe
         if (clienteId) {
-          db.run(`
+          db.db.run(`
             UPDATE clientes
             SET ultima_compra = datetime('now'),
                 total_compras = total_compras + ?,
@@ -1088,7 +1032,7 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
           // Actualizar la venta con el ID del nuevo cliente
           if (nuevoCliente && nuevoCliente.id) {
-            db.run(`UPDATE ventas SET cliente_id = ? WHERE id = ?`, [nuevoCliente.id, resultado.id]);
+            db.db.run(`UPDATE ventas SET cliente_id = ? WHERE id = ?`, [nuevoCliente.id, resultado.id]);
           }
         }
 
@@ -1114,7 +1058,7 @@ async function guardarClienteNuevo(datosCliente) {
 
     // Verificar si ya existe por cédula
     if (cedula) {
-      db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
+      db.db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
         if (err) {
           reject(err);
           return;
@@ -1139,7 +1083,7 @@ async function guardarClienteNuevo(datosCliente) {
         VALUES (?, ?, ?, ?)
       `;
 
-      db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
+      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
         if (err) {
           console.error('Error al crear cliente:', err);
           reject(err);
@@ -1158,7 +1102,7 @@ async function guardarCostoAdicional(ventaId, costo) {
       VALUES (?, ?, ?)
     `;
 
-    db.run(query, [ventaId, costo.concepto, costo.monto], (err) => {
+    db.db.run(query, [ventaId, costo.concepto, costo.monto], (err) => {
       if (err) {
         console.error('❌ Error al guardar costo adicional:', err);
         reject(err);
@@ -1178,7 +1122,7 @@ async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, 
       VALUES (?, ?, ?, ?, ?, ?, 'Pendiente')
     `;
 
-    db.run(query, [ventaId, clienteId, clienteNombre, montoTotal, montoPagado, montoPendiente], (err) => {
+    db.db.run(query, [ventaId, clienteId, clienteNombre, montoTotal, montoPagado, montoPendiente], (err) => {
       if (err) {
         console.error('❌ Error al crear deuda:', err);
         reject(err);
@@ -1197,7 +1141,7 @@ async function guardarClienteNuevo(datosCliente) {
 
     // Verificar si ya existe por cédula
     if (cedula) {
-      db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
+      db.db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
         if (err) {
           reject(err);
           return;
@@ -1222,7 +1166,7 @@ async function guardarClienteNuevo(datosCliente) {
         VALUES (?, ?, ?, ?)
       `;
 
-      db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
+      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
         if (err) {
           console.error('Error al crear cliente:', err);
           reject(err);
@@ -1242,7 +1186,7 @@ async function guardarDetalleVenta(ventaId, producto) {
       VALUES (?, ?, ?, ?, ?, ?)
     `;
 
-    db.run(
+    db.db.run(
       query,
       [ventaId, producto.producto_id, producto.variante_id, producto.cantidad, producto.precio_unitario, producto.subtotal],
       (err) => {
@@ -1256,7 +1200,7 @@ async function guardarDetalleVenta(ventaId, producto) {
 async function actualizarStock(producto) {
   return new Promise((resolve, reject) => {
     if (producto.variante_id) {
-      db.run(
+      db.db.run(
         'UPDATE variantes_producto SET cantidad = cantidad - ? WHERE id = ?',
         [producto.cantidad, producto.variante_id],
         (err) => {
@@ -1277,7 +1221,7 @@ async function guardarCostoAdicional(ventaId, costo) {
       VALUES (?, ?, ?)
     `;
 
-    db.run(query, [ventaId, costo.concepto, costo.monto], (err) => {
+    db.db.run(query, [ventaId, costo.concepto, costo.monto], (err) => {
       if (err) reject(err);
       else resolve();
     });
@@ -1292,7 +1236,7 @@ async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, 
       VALUES (?, ?, ?, ?, ?, ?, 'Pendiente')
     `;
 
-    db.run(query, [ventaId, clienteId, clienteNombre, montoTotal, montoPagado, montoPendiente], (err) => {
+    db.db.run(query, [ventaId, clienteId, clienteNombre, montoTotal, montoPagado, montoPendiente], (err) => {
       if (err) reject(err);
       else resolve();
     });
@@ -1302,7 +1246,7 @@ async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, 
 // Obtener todas las ventas
 ipcMain.handle('obtener-ventas', async () => {
   return new Promise((resolve, reject) => {
-    obtenerVentas((err, ventas) => {
+db.ventas.obtener((err, ventas) => {
       if (err) {
         console.error('❌ Error al obtener ventas:', err);
         reject(err);
@@ -1318,7 +1262,7 @@ ipcMain.handle('obtener-ventas', async () => {
 // Obtener venta por ID
 ipcMain.handle('obtener-venta-por-id', async (event, id) => {
   return new Promise((resolve, reject) => {
-    obtenerVentaPorId(id, (err, venta) => {
+    db.ventas.obtenerPorId(id, (err, venta) => {
       if (err) reject(err);
       else resolve(venta);
     });
@@ -1328,7 +1272,7 @@ ipcMain.handle('obtener-venta-por-id', async (event, id) => {
 // Buscar ventas
 ipcMain.handle('buscar-ventas', async (event, termino) => {
   return new Promise((resolve, reject) => {
-    buscarVentas(termino, (err, ventas) => {
+    db.ventas.buscar(termino, (err, ventas) => {
       if (err) reject(err);
       else resolve(ventas);
     });
@@ -1338,7 +1282,7 @@ ipcMain.handle('buscar-ventas', async (event, termino) => {
 // Obtener estadísticas de ventas
 ipcMain.handle('obtener-estadisticas-ventas', async () => {
   return new Promise((resolve, reject) => {
-    obtenerEstadisticasVentas((err, stats) => {
+    db.ventas.obtenerEstadisticas((err, stats) => {
       if (err) reject(err);
       else resolve(stats);
     });
@@ -1347,27 +1291,27 @@ ipcMain.handle('obtener-estadisticas-ventas', async () => {
 
 ipcMain.handle('cancelar-venta', async (event, ventaId) => {
   return new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
+    db.db.serialize(() => {
+      db.db.run('BEGIN TRANSACTION');
 
       // 1. Obtener información de la venta ANTES de cancelarla
-      db.get('SELECT cliente_id, total, estado FROM ventas WHERE id = ?', [ventaId], (err, venta) => {
+      db.db.get('SELECT cliente_id, total, estado FROM ventas WHERE id = ?', [ventaId], (err, venta) => {
         if (err) {
-          db.run('ROLLBACK');
+          db.db.run('ROLLBACK');
           console.error('❌ Error al obtener venta:', err);
           reject(err);
           return;
         }
 
         if (!venta) {
-          db.run('ROLLBACK');
+          db.db.run('ROLLBACK');
           reject(new Error('Venta no encontrada'));
           return;
         }
 
         // Verificar que no esté ya cancelada
         if (venta.estado === 'Cancelado') {
-          db.run('ROLLBACK');
+          db.db.run('ROLLBACK');
           resolve({ success: false, error: 'La venta ya está cancelada' });
           return;
         }
@@ -1375,9 +1319,9 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
         console.log(`🔄 Cancelando venta ${ventaId} - Cliente: ${venta.cliente_id}, Total: $${venta.total}`);
 
         // 2. Obtener los productos de la venta para restaurar stock
-        db.all('SELECT producto_id, variante_id, cantidad FROM venta_productos WHERE venta_id = ?', [ventaId], (err, productos) => {
+        db.db.all('SELECT producto_id, variante_id, cantidad FROM venta_productos WHERE venta_id = ?', [ventaId], (err, productos) => {
           if (err) {
-            db.run('ROLLBACK');
+            db.db.run('ROLLBACK');
             console.error('❌ Error al obtener productos:', err);
             reject(err);
             return;
@@ -1396,7 +1340,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
             productos.forEach((item) => {
               if (item.variante_id) {
                 // Restaurar stock de variante
-                db.run(
+                db.db.run(
                   'UPDATE variantes SET cantidad = cantidad + ? WHERE id = ?',
                   [item.cantidad, item.variante_id],
                   (err) => {
@@ -1420,7 +1364,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
 
           function continuarCancelacion() {
             if (erroresStock.length > 0) {
-              db.run('ROLLBACK');
+              db.db.run('ROLLBACK');
               reject(erroresStock[0]);
               return;
             }
@@ -1429,7 +1373,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
             if (venta.cliente_id) {
               console.log(`🔄 Revirtiendo estadísticas del cliente ${venta.cliente_id}`);
 
-              db.run(
+              db.db.run(
                 `UPDATE clientes
                  SET numero_compras = CASE
                        WHEN numero_compras > 0 THEN numero_compras - 1
@@ -1444,7 +1388,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
                 (err) => {
                   if (err) {
                     console.error('❌ Error al revertir estadísticas del cliente:', err);
-                    db.run('ROLLBACK');
+                    db.db.run('ROLLBACK');
                     reject(err);
                     return;
                   }
@@ -1460,7 +1404,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
 
             function finalizarCancelacion() {
               // 5. Marcar la venta como cancelada
-              db.run(
+              db.db.run(
                 "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
                 [ventaId],
                 (err) => {
@@ -1469,7 +1413,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
                     console.error('❌ Error al actualizar estado de venta:', err);
                     reject(err);
                   } else {
-                    db.run('COMMIT', (err) => {
+                    db.db.run('COMMIT', (err) => {
                       if (err) {
                         console.error('❌ Error al hacer commit:', err);
                         reject(err);
@@ -1497,7 +1441,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
 // Obtener deudas de clientes
 ipcMain.handle('obtener-deudas-clientes', async () => {
   return new Promise((resolve, reject) => {
-    obtenerDeudasClientes((err, deudas) => {
+    db.deudasClientes.obtener((err, deudas) => {
       if (err) {
         console.error('❌ Error al obtener deudas de clientes:', err);
         reject(err);
@@ -1512,7 +1456,7 @@ ipcMain.handle('obtener-deudas-clientes', async () => {
 // Obtener deuda de cliente por ID
 ipcMain.handle('obtener-deuda-cliente-por-id', async (event, id) => {
   return new Promise((resolve, reject) => {
-    obtenerDeudaClientePorId(id, (err, deuda) => {
+    db.deudasClientes.obtenerPorId(id, (err, deuda) => {
       if (err) reject(err);
       else resolve(deuda);
     });
@@ -1522,7 +1466,7 @@ ipcMain.handle('obtener-deuda-cliente-por-id', async (event, id) => {
 // Registrar abono a deuda de cliente
 ipcMain.handle('registrar-abono-deuda-cliente', async (event, deudaId, montoAbono, metodoPago, notas) => {
   return new Promise((resolve, reject) => {
-    registrarAbonoDeudaCliente(deudaId, montoAbono, metodoPago, notas, (err, resultado) => {
+    db.deudasClientes.registrarAbono(deudaId, montoAbono, metodoPago, notas, (err, resultado) => {
       if (err) {
         console.error('❌ Error al registrar abono:', err);
         reject(err);
@@ -1537,7 +1481,7 @@ ipcMain.handle('registrar-abono-deuda-cliente', async (event, deudaId, montoAbon
 // Obtener deudas por cliente
 ipcMain.handle('obtener-deudas-por-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
-    obtenerDeudasPorCliente(clienteId, (err, deudas) => {
+    db.deudasClientes.obtenerPorCliente(clienteId, (err, deudas) => {
       if (err) reject(err);
       else resolve(deudas);
     });
@@ -1547,7 +1491,7 @@ ipcMain.handle('obtener-deudas-por-cliente', async (event, clienteId) => {
 // Buscar deudas de clientes
 ipcMain.handle('buscar-deudas-clientes', async (event, termino) => {
   return new Promise((resolve, reject) => {
-    buscarDeudasClientes(termino, (err, deudas) => {
+    db.deudasClientes.buscar(termino, (err, deudas) => {
       if (err) reject(err);
       else resolve(deudas);
     });
@@ -1557,7 +1501,7 @@ ipcMain.handle('buscar-deudas-clientes', async (event, termino) => {
 // Obtener estadísticas de deudas de clientes
 ipcMain.handle('obtener-estadisticas-deudas-clientes', async () => {
   return new Promise((resolve, reject) => {
-    obtenerEstadisticasDeudasClientes((err, stats) => {
+    db.deudasClientes.obtenerEstadisticas((err, stats) => {
       if (err) reject(err);
       else resolve(stats);
     });
@@ -1567,7 +1511,7 @@ ipcMain.handle('obtener-estadisticas-deudas-clientes', async () => {
 // Obtener historial de abonos
 ipcMain.handle('obtener-historial-abonos', async (event, deudaId) => {
   return new Promise((resolve, reject) => {
-    obtenerHistorialAbonos(deudaId, (err, abonos) => {
+    db.deudasClientes.obtenerHistorialAbonos(deudaId, (err, abonos) => {
       if (err) reject(err);
       else resolve(abonos);
     });
@@ -1577,7 +1521,7 @@ ipcMain.handle('obtener-historial-abonos', async (event, deudaId) => {
 
 ipcMain.handle('obtener-dashboard-stats', async () => {
   return new Promise((resolve, reject) => {
-    db.serialize(() => {
+    db.db.serialize(() => {
       // Obtener fecha del mes actual y anterior
       const fechaActual = new Date();
       const primerDiaMesActual = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1);
@@ -1598,7 +1542,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
       let actividades = [];
 
       // 1. Ventas del mes actual
-      db.get(`
+      db.db.get(`
         SELECT SUM(total) as total
         FROM ventas
         WHERE estado = 'Pagado'
@@ -1609,7 +1553,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
         }
 
         // 2. Ventas del mes anterior
-        db.get(`
+        db.db.get(`
           SELECT SUM(total) as total
           FROM ventas
           WHERE estado = 'Pagado'
@@ -1621,7 +1565,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
           }
 
           // 3. Gastos del mes actual
-          db.get(`
+          db.db.get(`
             SELECT SUM(monto) as total
             FROM gastos
             WHERE date(fecha) >= date('now', 'start of month')
@@ -1631,7 +1575,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
             }
 
             // 4. Gastos del mes anterior
-            db.get(`
+            db.db.get(`
               SELECT SUM(monto) as total
               FROM gastos
               WHERE date(fecha) >= date('now', 'start of month', '-1 month')
@@ -1642,7 +1586,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
               }
 
               // 5. Deudas pendientes (CORREGIDO - usar deudas_clientes)
-              db.get(`
+              db.db.get(`
                 SELECT SUM(monto_pendiente) as total, COUNT(DISTINCT cliente_id) as clientes
                 FROM deudas_clientes
                 WHERE estado = 'Pendiente'
@@ -1653,7 +1597,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
                 }
 
                 // 6. Items en inventario y stock bajo
-                db.get(`
+                db.db.get(`
                   SELECT
                     SUM(v.cantidad) as total_items,
                     SUM(CASE WHEN v.cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
@@ -1690,7 +1634,7 @@ function obtenerActividadReciente(callback) {
   const actividades = [];
 
   // Ventas recientes
-  db.all(`
+  db.db.all(`
     SELECT 'Venta' as tipo,
            'Venta a cliente #' || numero_venta as descripcion,
            '$' || printf('%.2f', total) as monto,
@@ -1705,7 +1649,7 @@ function obtenerActividadReciente(callback) {
     }
 
     // Gastos recientes
-    db.all(`
+    db.db.all(`
       SELECT 'Gasto' as tipo,
              'Pago de ' || descripcion as descripcion,
              '-$' || printf('%.2f', monto) as monto,
@@ -1719,7 +1663,7 @@ function obtenerActividadReciente(callback) {
       }
 
       // Inventario reciente (productos nuevos agregados)
-            db.all(`
+            db.db.all(`
               SELECT 'Inventario' as tipo,
                      'Producto agregado: ' || p.nombre as descripcion,
                      '+' || COALESCE(SUM(v.cantidad), 0) || ' unidades' as monto,
@@ -1739,7 +1683,7 @@ function obtenerActividadReciente(callback) {
               }
 
 // Deudas de clientes recientes
-        db.all(`
+        db.db.all(`
           SELECT 'Deuda' as tipo,
                  d.cliente_nombre || ' debe $' || printf('%.2f', d.monto_pendiente) as descripcion,
                  '$' || printf('%.2f', d.monto_pendiente) as monto,
@@ -1798,7 +1742,7 @@ ipcMain.handle('obtener-datos-grafica', async () => {
       const ultimoDiaFecha = `${mesInfo.año}-${String(mesInfo.mesNumero).padStart(2, '0')}-${ultimoDia}`;
 
       // Ventas del mes
-      db.get(`
+      db.db.get(`
         SELECT COALESCE(SUM(total), 0) as total
         FROM ventas
         WHERE estado = 'Pagado'
@@ -1808,7 +1752,7 @@ ipcMain.handle('obtener-datos-grafica', async () => {
         const ventas = ventasRow ? ventasRow.total : 0;
 
         // Gastos del mes
-        db.get(`
+        db.db.get(`
           SELECT COALESCE(SUM(monto), 0) as total
           FROM gastos
           WHERE date(fecha) >= date(?)
@@ -1842,7 +1786,7 @@ ipcMain.handle('obtener-top-productos', async () => {
     const hace6Meses = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - 6, 1);
     const fechaInicio = `${hace6Meses.getFullYear()}-${String(hace6Meses.getMonth() + 1).padStart(2, '0')}-01`;
 
-    db.all(`
+    db.db.all(`
       SELECT
         p.id,
         p.nombre,
