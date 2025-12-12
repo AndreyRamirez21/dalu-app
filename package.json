@@ -65,31 +65,29 @@
   "build": {
     "appId": "com.dalu.app",
     "productName": "Dalú",
-
     "files": [
       "build/**/*",
       "public/electron.js",
       "public/database/**/*",
       "node_modules/**/*"
     ],
-
     "extraResources": [
       {
         "from": "public/database",
         "to": "database"
+      },
+      {
+        "from": "build/icons/icon.ico",
+        "to": "icon.ico"
       }
     ],
-
     "asarUnpack": [
       "node_modules/sqlite3/**/*"
     ],
-
     "npmRebuild": false,
-
     "directories": {
       "buildResources": "build"
     },
-
     "win": {
       "target": [
         {
@@ -97,9 +95,24 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "../build/icons/logooo1.ico",
+      "icon": "build/icons/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dalú",
+      "installerIcon": "build/icons/icon.ico",
+      "uninstallerIcon": "build/icons/icon.ico",
+      "installerHeaderIcon": "build/icons/icon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "perMachine": false
     }
   }
 

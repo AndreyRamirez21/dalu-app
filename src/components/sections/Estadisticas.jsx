@@ -6,7 +6,10 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
-  Calendar
+  Calendar,
+  PiggyBank,
+  Package,
+  Info
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
@@ -17,7 +20,13 @@ const Estadisticas = () => {
     ventasTotales: 0,
     ventasMesAnterior: 0,
     gastosTotales: 0,
-    gastosMesAnterior: 0
+    gastosMesAnterior: 0,
+    gastosInventario: 0,
+    gastosInventarioMesAnterior: 0,
+    costoProductosVendidos: 0,
+    costosAdicionales: 0,
+    gananciaBruta: 0,
+    gananciaNeta: 0
   });
 
   const [datosGrafica, setDatosGrafica] = useState([]);
@@ -55,18 +64,28 @@ const Estadisticas = () => {
     return (((actual - anterior) / anterior) * 100).toFixed(2);
   };
 
-  const calcularGananciaNeta = () => {
-    return estadisticas.ventasTotales - estadisticas.gastosTotales;
+  const calcularMargenBruto = () => {
+    if (estadisticas.ventasTotales === 0) return 0;
+    return (estadisticas.gananciaBruta / estadisticas.ventasTotales) * 100;
+  };
+
+  const calcularMargenNeto = () => {
+    if (estadisticas.ventasTotales === 0) return 0;
+    return (estadisticas.gananciaNeta / estadisticas.ventasTotales) * 100;
   };
 
   const cambioVentas = calcularCambio(estadisticas.ventasTotales, estadisticas.ventasMesAnterior);
   const cambioGastos = calcularCambio(estadisticas.gastosTotales, estadisticas.gastosMesAnterior);
-  const gananciaNeta = calcularGananciaNeta();
+  const margenBruto = calcularMargenBruto();
+  const margenNeto = calcularMargenNeto();
+  const costoTotalVentas = estadisticas.costoProductosVendidos + estadisticas.costosAdicionales;
 
   // Calcular totales de los últimos 6 meses
   const totalVentas6Meses = datosGrafica.reduce((sum, item) => sum + (item.ventas || 0), 0);
+  const totalCostoProductos6Meses = datosGrafica.reduce((sum, item) => sum + (item.costoProductos || 0), 0);
+  const totalCostosAdicionales6Meses = datosGrafica.reduce((sum, item) => sum + (item.costosAdicionales || 0), 0);
   const totalGastos6Meses = datosGrafica.reduce((sum, item) => sum + (item.gastos || 0), 0);
-  const ganancia6Meses = totalVentas6Meses - totalGastos6Meses;
+  const ganancia6Meses = totalVentas6Meses - totalCostoProductos6Meses - totalCostosAdicionales6Meses - totalGastos6Meses;
 
   if (loading) {
     return (
@@ -84,8 +103,17 @@ const Estadisticas = () => {
         <p className="text-gray-500 mt-2">Análisis detallado de ventas, gastos y ganancias</p>
       </div>
 
-      {/* Tarjetas de resumen del mes actual */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      {/* ALERTA INFORMATIVA */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-start space-x-3">
+        <Info className="text-blue-600 flex-shrink-0 mt-0.5" size={20} />
+        <div className="text-sm text-blue-800">
+          <strong>Nota:</strong> Los gastos con categoría "Inventario" o "Proveedores" NO se incluyen en el cálculo de ganancia neta.
+          Solo se cuentan los gastos operativos (arriendo, servicios, publicidad, etc.).
+        </div>
+      </div>
+
+      {/* Tarjetas de resumen del mes actual - FILA 1 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         {/* Ventas del Mes */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
@@ -109,12 +137,32 @@ const Estadisticas = () => {
           </div>
         </div>
 
-        {/* Gastos del Mes */}
+        {/* Costo Total de Ventas */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Gastos del Mes
+                Costo Total Ventas
+              </div>
+              <div className="text-2xl font-bold text-gray-800">
+                ${costoTotalVentas.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-orange-100 rounded-lg">
+              <DollarSign className="text-orange-600" size={24} />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            Productos + Adicionales
+          </div>
+        </div>
+
+        {/* Gastos Operativos del Mes */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Gastos Operativos
               </div>
               <div className="text-2xl font-bold text-gray-800">
                 ${estadisticas.gastosTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
@@ -132,45 +180,67 @@ const Estadisticas = () => {
           </div>
         </div>
 
-        {/* Ganancia Neta del Mes */}
+        {/* Inversión en Inventario */}
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl shadow-sm border border-indigo-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-indigo-700 uppercase mb-1">
+                Inversión Inventario
+              </div>
+              <div className="text-2xl font-bold text-indigo-700">
+                ${estadisticas.gastosInventario.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-indigo-200 rounded-lg">
+              <Package className="text-indigo-700" size={24} />
+            </div>
+          </div>
+          <div className="text-xs text-indigo-600 font-medium">
+            No afecta ganancia neta
+          </div>
+        </div>
+      </div>
+
+      {/* FILA 2 - Ganancias y Márgenes */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Ganancia Bruta */}
         <div className={`rounded-xl shadow-sm border p-6 ${
-          gananciaNeta >= 0 ? 'bg-gradient-to-br from-green-50 to-emerald-50' : 'bg-gradient-to-br from-red-50 to-rose-50'
+          estadisticas.gananciaBruta >= 0 ? 'bg-gradient-to-br from-blue-50 to-cyan-50' : 'bg-gradient-to-br from-orange-50 to-red-50'
         }`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Ganancia del Mes
+                Ganancia Bruta
               </div>
               <div className={`text-2xl font-bold ${
-                gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'
+                estadisticas.gananciaBruta >= 0 ? 'text-blue-700' : 'text-orange-700'
               }`}>
-                ${Math.abs(gananciaNeta).toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+                {estadisticas.gananciaBruta >= 0 ? '$' : '-$'}
+                {Math.abs(estadisticas.gananciaBruta).toLocaleString('es-CO', { minimumFractionDigits: 2 })}
               </div>
             </div>
             <div className={`p-3 rounded-lg ${
-              gananciaNeta >= 0 ? 'bg-green-200' : 'bg-red-200'
+              estadisticas.gananciaBruta >= 0 ? 'bg-blue-200' : 'bg-orange-200'
             }`}>
-              <DollarSign className={gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'} size={24} />
+              <PiggyBank className={estadisticas.gananciaBruta >= 0 ? 'text-blue-700' : 'text-orange-700'} size={24} />
             </div>
           </div>
           <div className="text-sm text-gray-600 font-medium">
-            {gananciaNeta >= 0 ? '✓ Resultado positivo' : '⚠ Resultado negativo'}
+            Ventas - Costos
           </div>
         </div>
 
-        {/* Margen de Ganancia */}
+        {/* Margen Bruto % */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Margen del Mes
+                Margen Bruto
               </div>
               <div className={`text-2xl font-bold ${
-                gananciaNeta >= 0 ? 'text-blue-600' : 'text-orange-600'
+                margenBruto >= 30 ? 'text-blue-600' : margenBruto >= 15 ? 'text-yellow-600' : 'text-orange-600'
               }`}>
-                {estadisticas.ventasTotales > 0
-                  ? ((gananciaNeta / estadisticas.ventasTotales) * 100).toFixed(1)
-                  : 0}%
+                {margenBruto.toFixed(1)}%
               </div>
             </div>
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -178,15 +248,64 @@ const Estadisticas = () => {
             </div>
           </div>
           <div className="text-sm text-gray-500">
-            Rentabilidad
+            Antes de gastos
+          </div>
+        </div>
+
+        {/* Ganancia Neta */}
+        <div className={`rounded-xl shadow-sm border p-6 ${
+          estadisticas.gananciaNeta >= 0 ? 'bg-gradient-to-br from-green-50 to-emerald-50' : 'bg-gradient-to-br from-red-50 to-rose-50'
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Ganancia Neta
+              </div>
+              <div className={`text-2xl font-bold ${
+                estadisticas.gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {estadisticas.gananciaNeta >= 0 ? '$' : '-$'}
+                {Math.abs(estadisticas.gananciaNeta).toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className={`p-3 rounded-lg ${
+              estadisticas.gananciaNeta >= 0 ? 'bg-green-200' : 'bg-red-200'
+            }`}>
+              <DollarSign className={estadisticas.gananciaNeta >= 0 ? 'text-green-700' : 'text-red-700'} size={24} />
+            </div>
+          </div>
+          <div className="text-sm text-gray-600 font-medium">
+            {estadisticas.gananciaNeta >= 0 ? '✓ Resultado positivo' : '⚠ Resultado negativo'}
+          </div>
+        </div>
+
+        {/* Margen Neto % */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Margen Neto
+              </div>
+              <div className={`text-2xl font-bold ${
+                margenNeto >= 20 ? 'text-green-600' : margenNeto >= 10 ? 'text-yellow-600' : margenNeto >= 0 ? 'text-orange-600' : 'text-red-600'
+              }`}>
+                {margenNeto.toFixed(1)}%
+              </div>
+            </div>
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <BarChart3 className="text-purple-600" size={24} />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            Después de gastos
           </div>
         </div>
       </div>
 
       {/* Resumen de últimos 6 meses */}
       <div className="bg-gradient-to-r from-teal-50 to-blue-50 rounded-xl shadow-sm border p-6 mb-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="mb-4">
+          <div className="flex items-center space-x-3 mb-2">
             <div className="p-3 bg-white rounded-lg shadow-sm">
               <Calendar className="text-teal-600" size={24} />
             </div>
@@ -195,24 +314,42 @@ const Estadisticas = () => {
               <p className="text-sm text-gray-600">Análisis del período completo</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-8">
-            <div className="text-right">
-              <div className="text-xs text-gray-500 uppercase mb-1">Total Ventas</div>
-              <div className="text-xl font-bold text-green-600">
-                ${totalVentas6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-4">
+          <div className="text-center bg-white rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 uppercase mb-1">Ventas</div>
+            <div className="text-lg font-bold text-green-600">
+              ${totalVentas6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
             </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-500 uppercase mb-1">Total Gastos</div>
-              <div className="text-xl font-bold text-red-600">
-                ${totalGastos6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+          </div>
+
+          <div className="text-center bg-white rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 uppercase mb-1">Costos Productos</div>
+            <div className="text-lg font-bold text-orange-600">
+              -${totalCostoProductos6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
             </div>
-            <div className="text-right">
-              <div className="text-xs text-gray-500 uppercase mb-1">Ganancia Neta</div>
-              <div className={`text-xl font-bold ${ganancia6Meses >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                ${Math.abs(ganancia6Meses).toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+          </div>
+
+          <div className="text-center bg-white rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 uppercase mb-1">Costos Adicionales</div>
+            <div className="text-lg font-bold text-orange-600">
+              -${totalCostosAdicionales6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+
+          <div className="text-center bg-white rounded-lg p-3 shadow-sm">
+            <div className="text-xs text-gray-500 uppercase mb-1">Gastos Operativos</div>
+            <div className="text-lg font-bold text-red-600">
+              -${totalGastos6Meses.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+
+          <div className="text-center bg-gradient-to-br from-blue-100 to-cyan-100 rounded-lg p-3 shadow-sm border-2 border-blue-300">
+            <div className="text-xs text-blue-700 font-semibold uppercase mb-1">Ganancia Neta</div>
+            <div className={`text-lg font-bold ${ganancia6Meses >= 0 ? 'text-blue-700' : 'text-red-700'}`}>
+              {ganancia6Meses >= 0 ? '$' : '-$'}
+              {Math.abs(ganancia6Meses).toLocaleString('es-CO', { minimumFractionDigits: 2 })}
             </div>
           </div>
         </div>
@@ -223,8 +360,8 @@ const Estadisticas = () => {
         {/* Gráfica de Líneas: Ventas vs Gastos */}
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="mb-6">
-            <h3 className="text-lg font-bold text-gray-800">Ventas vs Gastos</h3>
-            <p className="text-sm text-gray-500">Comparación mensual de ingresos y egresos</p>
+            <h3 className="text-lg font-bold text-gray-800">Ventas vs Gastos Operativos</h3>
+            <p className="text-sm text-gray-500">Comparación mensual (sin incluir compras de inventario)</p>
           </div>
           <ResponsiveContainer width="100%" height={350}>
             <LineChart data={datosGrafica}>
@@ -262,7 +399,7 @@ const Estadisticas = () => {
                 dataKey="gastos"
                 stroke="#ef4444"
                 strokeWidth={3}
-                name="Gastos"
+                name="Gastos Operativos"
                 dot={{ fill: '#ef4444', r: 6, strokeWidth: 2, stroke: '#fff' }}
                 activeDot={{ r: 8 }}
               />
@@ -274,7 +411,7 @@ const Estadisticas = () => {
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="mb-6">
             <h3 className="text-lg font-bold text-gray-800">Ganancia Neta Mensual</h3>
-            <p className="text-sm text-gray-500">Utilidad después de gastos por mes</p>
+            <p className="text-sm text-gray-500">Utilidad después de gastos operativos</p>
           </div>
           <ResponsiveContainer width="100%" height={350}>
             <BarChart data={datosGrafica}>

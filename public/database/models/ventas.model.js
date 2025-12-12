@@ -291,7 +291,7 @@ function obtenerEstadisticasVentas(callback) {
   db.get(
     `SELECT
       COUNT(*) as total_ventas,
-      SUM(v.total) as total_vendido,
+    SUM(v.monto_pagado) as total_vendido,
       SUM(CASE WHEN v.estado = 'Pendiente' THEN (v.total - v.monto_pagado) ELSE 0 END) as total_pendiente
     FROM ventas v
     WHERE v.estado != 'Cancelado'

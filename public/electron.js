@@ -5,8 +5,9 @@ const fs = require('fs');
 const isDev = !app.isPackaged;
 const url = require('url');
 
-
 // Registrar protocolo personalizado para cargar imágenes locales
+app.setAppUserModelId('com.dalu.app'); // Identificador para agrupar ventanas y mostrar icono correcto
+
 app.whenReady().then(() => {
   protocol.registerFileProtocol('dalu-file', (request, callback) => {
     const url = request.url.replace('dalu-file://', '');
@@ -18,22 +19,34 @@ app.whenReady().then(() => {
   });
 });
 
-
 const db = require('./database');
-// Ya no importas funciones individuales
-
 const BackupService = require('./database/backupService');
 
 let mainWindow;
 let backupService;
 
+// Función para obtener la ruta correcta del icono
+function getIconPath() {
+  if (isDev) {
+    return path.join(__dirname, 'icons', 'icon.ico');  // ✅ CORRECTO
+  } else {
+    return path.join(process.resourcesPath, 'icons', 'icon.ico');  // ✅ CORRECTO
+  }
+}
+
+
 
 function createWindow() {
+  const iconPath = getIconPath();
+
+  console.log('🖼️ Ruta del icono:', iconPath);
+  console.log('🖼️ ¿Existe?:', fs.existsSync(iconPath));
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Dalú',
-    icon: path.join(__dirname, '../build/icons/logooo1.ico'),
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -41,11 +54,36 @@ function createWindow() {
     }
   });
 
+  // ✅ IMPORTANTE: Forzar icono en Windows de múltiples formas
+  if (process.platform === 'win32') {
+    const { nativeImage } = require('electron');
+
+    // Intentar cargar el icono
+    if (fs.existsSync(iconPath)) {
+      const icon = nativeImage.createFromPath(iconPath);
+
+      if (!icon.isEmpty()) {
+        // Establecer el icono de la ventana
+        mainWindow.setIcon(icon);
+
+        // Establecer el icono de la app
+        app.setAppUserModelId('com.dalu.app');
+
+        // En Windows, también setear en el overlay (barra de tareas)
+        mainWindow.setOverlayIcon(icon, 'Dalú');
+
+        console.log('✅ Icono establecido correctamente');
+      } else {
+        console.log('⚠️ El icono está vacío');
+      }
+    } else {
+      console.log('❌ No se encontró el icono en:', iconPath);
+    }
+  }
+
   // CORREGIDO: Inicialización del Backup Service
   const dbPath = path.join(app.getPath('userData'), 'dalu.db');
   backupService = new BackupService(dbPath);
-
-
 
   // CORREGIDO: Cargar la app correctamente
   if (isDev) {
@@ -96,6 +134,7 @@ function createWindow() {
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
     console.log(`[RENDERER] ${message}`);
   });
+
   mainWindow.on('closed', () => (mainWindow = null));
 }
 
@@ -205,8 +244,8 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
     };
 
     // Usar la función de db.js
-        db.productos.agregar(datosProducto, (err, resultado) => {
-        if (err) {
+    db.productos.agregar(datosProducto, (err, resultado) => {
+      if (err) {
         // Si falla, eliminar imagen guardada
         if (rutaImagen) eliminarImagen(rutaImagen);
         console.error('❌ Error al agregar producto:', err);
@@ -267,7 +306,7 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
       };
 
       // Usar la función de db.js
-        db.productos.actualizar(id, datosParaActualizar, (err, resultado) => {
+      db.productos.actualizar(id, datosParaActualizar, (err, resultado) => {
         if (err) {
           console.error('❌ Error al actualizar producto:', err);
           reject(err);
@@ -309,7 +348,8 @@ ipcMain.handle('eliminar-producto', async (event, id) => {
       const rutaImagen = row ? row.imagen : null;
 
       // Usar la función de db.js para eliminar (CASCADE se encarga de las variantes)
-        db.productos.eliminar(id, (err, resultado) => {        if (err) {
+      db.productos.eliminar(id, (err, resultado) => {
+        if (err) {
           console.error('❌ Error al eliminar producto:', err);
           reject(err);
           return;
@@ -333,7 +373,7 @@ ipcMain.handle('eliminar-producto', async (event, id) => {
 ipcMain.handle('obtener-estadisticas', async () => {
   return new Promise((resolve, reject) => {
     db.productos.obtenerEstadisticas((err, stats) => {
-    if (err) reject(err);
+      if (err) reject(err);
       else resolve(stats);
     });
   });
@@ -342,7 +382,7 @@ ipcMain.handle('obtener-estadisticas', async () => {
 // Actualizar stock de variante
 ipcMain.handle('actualizar-stock-variante', async (event, varianteId, nuevaCantidad) => {
   return new Promise((resolve, reject) => {
-db.productos.actualizarStockVariante(varianteId, nuevaCantidad, (err, result) => {
+    db.productos.actualizarStockVariante(varianteId, nuevaCantidad, (err, result) => {
       if (err) {
         console.error('❌ Error al actualizar stock de variante:', err);
         reject(err);
@@ -403,8 +443,8 @@ ipcMain.handle('obtener-url-imagen', async (event, rutaImagen) => {
 // Obtener todos los gastos
 ipcMain.handle('obtener-gastos', async () => {
   return new Promise((resolve, reject) => {
-     db.gastos.obtener((err, gastos) => {
-     if (err) {
+    db.gastos.obtener((err, gastos) => {
+      if (err) {
         console.error('❌ Error al obtener gastos:', err);
         reject(err);
       } else {
@@ -418,7 +458,7 @@ ipcMain.handle('obtener-gastos', async () => {
 // Agregar gasto
 ipcMain.handle('agregar-gasto', async (event, gasto) => {
   return new Promise((resolve, reject) => {
-db.gastos.agregar(gasto, (err, resultado) => {
+    db.gastos.agregar(gasto, (err, resultado) => {
       if (err) {
         console.error('❌ Error al agregar gasto:', err);
         reject(err);
@@ -433,7 +473,7 @@ db.gastos.agregar(gasto, (err, resultado) => {
 // Actualizar gasto
 ipcMain.handle('actualizar-gasto', async (event, id, datos) => {
   return new Promise((resolve, reject) => {
-db.gastos.actualizar(id, datos, (err, resultado) => {
+    db.gastos.actualizar(id, datos, (err, resultado) => {
       if (err) {
         console.error('❌ Error al actualizar gasto:', err);
         reject(err);
@@ -448,7 +488,7 @@ db.gastos.actualizar(id, datos, (err, resultado) => {
 // Eliminar gasto
 ipcMain.handle('eliminar-gasto', async (event, id) => {
   return new Promise((resolve, reject) => {
-db.gastos.eliminar(id, (err, resultado) => {
+    db.gastos.eliminar(id, (err, resultado) => {
       if (err) {
         console.error('❌ Error al eliminar gasto:', err);
         reject(err);
@@ -463,7 +503,7 @@ db.gastos.eliminar(id, (err, resultado) => {
 // Buscar gastos
 ipcMain.handle('buscar-gastos', async (event, termino) => {
   return new Promise((resolve, reject) => {
-db.gastos.buscar(termino, (err, gastos) => {
+    db.gastos.buscar(termino, (err, gastos) => {
       if (err) reject(err);
       else resolve(gastos);
     });
@@ -473,8 +513,8 @@ db.gastos.buscar(termino, (err, gastos) => {
 // Obtener gastos por categoría
 ipcMain.handle('obtener-gastos-categoria', async (event, categoria) => {
   return new Promise((resolve, reject) => {
-db.gastos.obtenerPorCategoria(categoria, (err, gastos) => {
-     if (err) reject(err);
+    db.gastos.obtenerPorCategoria(categoria, (err, gastos) => {
+      if (err) reject(err);
       else resolve(gastos);
     });
   });
@@ -514,6 +554,7 @@ ipcMain.handle('obtener-gastos-mes', async () => {
 
 const { Notification } = require('electron');
 
+// HANDLERS PARA DEUDAS
 
 // Obtener todas las deudas
 ipcMain.handle('obtener-deudas', async () => {
@@ -934,7 +975,7 @@ function mostrarRecordatorioDeuda(deuda) {
 // Generar número de venta
 ipcMain.handle('generar-numero-venta', async () => {
   return new Promise((resolve, reject) => {
-db.ventas.generarNumeroVenta((err, numero) => {
+    db.ventas.generarNumeroVenta((err, numero) => {
       if (err) reject(err);
       else resolve(numero);
     });
@@ -975,7 +1016,7 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
 
     // 3. Usar la función crearVenta del módulo
-db.ventas.crear(datosVentaDB, async (err, resultado) => {
+    db.ventas.crear(datosVentaDB, async (err, resultado) => {
       if (err) {
         console.error('❌ Error al crear venta:', err);
         reject(err);
@@ -1083,7 +1124,7 @@ async function guardarClienteNuevo(datosCliente) {
         VALUES (?, ?, ?, ?)
       `;
 
-      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
+      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function (err) {
         if (err) {
           console.error('Error al crear cliente:', err);
           reject(err);
@@ -1166,7 +1207,7 @@ async function guardarClienteNuevo(datosCliente) {
         VALUES (?, ?, ?, ?)
       `;
 
-      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function(err) {
+      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function (err) {
         if (err) {
           console.error('Error al crear cliente:', err);
           reject(err);
@@ -1246,7 +1287,7 @@ async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, 
 // Obtener todas las ventas
 ipcMain.handle('obtener-ventas', async () => {
   return new Promise((resolve, reject) => {
-db.ventas.obtener((err, ventas) => {
+    db.ventas.obtener((err, ventas) => {
       if (err) {
         console.error('❌ Error al obtener ventas:', err);
         reject(err);
@@ -1522,7 +1563,6 @@ ipcMain.handle('obtener-historial-abonos', async (event, deudaId) => {
 ipcMain.handle('obtener-dashboard-stats', async () => {
   return new Promise((resolve, reject) => {
     db.db.serialize(() => {
-      // Obtener fecha del mes actual y anterior
       const fechaActual = new Date();
       const primerDiaMesActual = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1);
       const primerDiaMesAnterior = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - 1, 1);
@@ -1533,6 +1573,12 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
         ventasMesAnterior: 0,
         gastosTotales: 0,
         gastosMesAnterior: 0,
+        gastosInventario: 0, // NUEVO: Gastos de inventario del mes
+        gastosInventarioMesAnterior: 0, // NUEVO
+        costoProductosVendidos: 0,
+        costosAdicionales: 0,
+        gananciaBruta: 0,
+        gananciaNeta: 0,
         deudasPendientes: 0,
         clientesConDeuda: 0,
         itemsInventario: 0,
@@ -1543,9 +1589,9 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
 
       // 1. Ventas del mes actual
       db.db.get(`
-        SELECT SUM(total) as total
+        SELECT SUM(monto_pagado) as total
         FROM ventas
-        WHERE estado = 'Pagado'
+        WHERE estado != 'Cancelado'
         AND date(fecha) >= date('now', 'start of month')
       `, [], (err, row) => {
         if (!err && row) {
@@ -1554,9 +1600,9 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
 
         // 2. Ventas del mes anterior
         db.db.get(`
-          SELECT SUM(total) as total
+          SELECT SUM(monto_pagado) as total
           FROM ventas
-          WHERE estado = 'Pagado'
+          WHERE estado != 'Cancelado'
           AND date(fecha) >= date('now', 'start of month', '-1 month')
           AND date(fecha) < date('now', 'start of month')
         `, [], (err, row) => {
@@ -1564,58 +1610,128 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
             estadisticas.ventasMesAnterior = row.total || 0;
           }
 
-          // 3. Gastos del mes actual
+          // 3. MODIFICADO: Gastos operativos del mes actual (EXCLUYENDO Inventario y Proveedores)
           db.db.get(`
             SELECT SUM(monto) as total
             FROM gastos
             WHERE date(fecha) >= date('now', 'start of month')
+            AND categoria NOT IN ('Inventario', 'Proveedores')
           `, [], (err, row) => {
             if (!err && row) {
               estadisticas.gastosTotales = row.total || 0;
             }
 
-            // 4. Gastos del mes anterior
+            // 4. MODIFICADO: Gastos operativos del mes anterior (EXCLUYENDO Inventario y Proveedores)
             db.db.get(`
               SELECT SUM(monto) as total
               FROM gastos
               WHERE date(fecha) >= date('now', 'start of month', '-1 month')
               AND date(fecha) < date('now', 'start of month')
+              AND categoria NOT IN ('Inventario', 'Proveedores')
             `, [], (err, row) => {
               if (!err && row) {
                 estadisticas.gastosMesAnterior = row.total || 0;
               }
 
-              // 5. Deudas pendientes (CORREGIDO - usar deudas_clientes)
+              // 5. NUEVO: Gastos de inventario del mes actual
               db.db.get(`
-                SELECT SUM(monto_pendiente) as total, COUNT(DISTINCT cliente_id) as clientes
-                FROM deudas_clientes
-                WHERE estado = 'Pendiente'
+                SELECT SUM(monto) as total
+                FROM gastos
+                WHERE date(fecha) >= date('now', 'start of month')
+                AND categoria IN ('Inventario', 'Proveedores')
               `, [], (err, row) => {
                 if (!err && row) {
-                  estadisticas.deudasPendientes = row.total || 0;
-                  estadisticas.clientesConDeuda = row.clientes || 0;
+                  estadisticas.gastosInventario = row.total || 0;
                 }
 
-                // 6. Items en inventario y stock bajo
+                // 6. NUEVO: Gastos de inventario del mes anterior
                 db.db.get(`
-                  SELECT
-                    SUM(v.cantidad) as total_items,
-                    SUM(CASE WHEN v.cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
-                  FROM variantes_producto v
+                  SELECT SUM(monto) as total
+                  FROM gastos
+                  WHERE date(fecha) >= date('now', 'start of month', '-1 month')
+                  AND date(fecha) < date('now', 'start of month')
+                  AND categoria IN ('Inventario', 'Proveedores')
                 `, [], (err, row) => {
-                  if (err) {
-                    console.error('❌ Error al obtener inventario:', err);
-                  }
-
                   if (!err && row) {
-                    estadisticas.itemsInventario = row.total_items || 0;
-                    estadisticas.productosStockBajo = row.stock_bajo || 0;
+                    estadisticas.gastosInventarioMesAnterior = row.total || 0;
                   }
 
-                  // 7. Actividad reciente (últimas 10)
-                  obtenerActividadReciente((actividadesResult) => {
-                    actividades = actividadesResult;
-                    resolve({ estadisticas, actividades });
+                  // 7. Costo de productos vendidos del mes actual
+                  db.db.get(`
+                    SELECT COALESCE(SUM(vp.cantidad * p.costo_base), 0) as total
+                    FROM venta_productos vp
+                    INNER JOIN productos p ON vp.producto_id = p.id
+                    INNER JOIN ventas v ON vp.venta_id = v.id
+                    WHERE v.estado != 'Cancelado'
+                    AND date(v.fecha) >= date('now', 'start of month')
+                  `, [], (err, row) => {
+                    if (!err && row) {
+                      estadisticas.costoProductosVendidos = row.total || 0;
+                    }
+
+                    // 8. Costos adicionales del mes actual
+                    db.db.get(`
+                      SELECT COALESCE(SUM(ca.monto), 0) as total
+                      FROM costos_adicionales ca
+                      INNER JOIN ventas v ON ca.venta_id = v.id
+                      WHERE v.estado != 'Cancelado'
+                      AND date(v.fecha) >= date('now', 'start of month')
+                    `, [], (err, row) => {
+                      if (!err && row) {
+                        estadisticas.costosAdicionales = row.total || 0;
+                      }
+
+                      // CALCULAR GANANCIAS (sin contar gastos de inventario)
+                      estadisticas.gananciaBruta = estadisticas.ventasTotales -
+                                                   estadisticas.costoProductosVendidos -
+                                                   estadisticas.costosAdicionales;
+
+                      estadisticas.gananciaNeta = estadisticas.gananciaBruta -
+                                                 estadisticas.gastosTotales; // Solo gastos operativos
+
+                      // 9. Deudas pendientes
+                      db.db.get(`
+                        SELECT SUM(monto_pendiente) as total, COUNT(DISTINCT cliente_id) as clientes
+                        FROM deudas_clientes
+                        WHERE estado = 'Pendiente'
+                      `, [], (err, row) => {
+                        if (!err && row) {
+                          estadisticas.deudasPendientes = row.total || 0;
+                          estadisticas.clientesConDeuda = row.clientes || 0;
+                        }
+
+                        // 10. Items en inventario y stock bajo
+                        db.db.get(`
+                          SELECT
+                            SUM(v.cantidad) as total_items,
+                            SUM(CASE WHEN v.cantidad < 10 THEN 1 ELSE 0 END) as stock_bajo
+                          FROM variantes_producto v
+                        `, [], (err, row) => {
+                          if (err) {
+                            console.error('❌ Error al obtener inventario:', err);
+                          }
+
+                          if (!err && row) {
+                            estadisticas.itemsInventario = row.total_items || 0;
+                            estadisticas.productosStockBajo = row.stock_bajo || 0;
+                          }
+
+                          // 11. Actividad reciente
+                          obtenerActividadReciente((actividadesResult) => {
+                            actividades = actividadesResult;
+
+                            console.log('📊 Estadísticas calculadas:');
+                            console.log('  - Ventas totales:', estadisticas.ventasTotales);
+                            console.log('  - Gastos operativos:', estadisticas.gastosTotales);
+                            console.log('  - Gastos inventario:', estadisticas.gastosInventario, '(NO se cuentan en ganancia)');
+                            console.log('  - Ganancia bruta:', estadisticas.gananciaBruta);
+                            console.log('  - Ganancia neta:', estadisticas.gananciaNeta);
+
+                            resolve({ estadisticas, actividades });
+                          });
+                        });
+                      });
+                    });
                   });
                 });
               });
@@ -1626,8 +1742,6 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
     });
   });
 });
-
-
 
 
 function obtenerActividadReciente(callback) {
@@ -1663,7 +1777,7 @@ function obtenerActividadReciente(callback) {
       }
 
       // Inventario reciente (productos nuevos agregados)
-            db.db.all(`
+      db.db.all(`
               SELECT 'Inventario' as tipo,
                      'Producto agregado: ' || p.nombre as descripcion,
                      '+' || COALESCE(SUM(v.cantidad), 0) || ' unidades' as monto,
@@ -1675,14 +1789,14 @@ function obtenerActividadReciente(callback) {
               ORDER BY p.fecha_creado DESC
               LIMIT 2
             `, [], (err, inventario) => {
-              if (err) {
-                console.error('❌ Error al obtener inventario reciente:', err);
-              }
-              if (!err && inventario) {
-                actividades.push(...inventario);
-              }
+        if (err) {
+          console.error('❌ Error al obtener inventario reciente:', err);
+        }
+        if (!err && inventario) {
+          actividades.push(...inventario);
+        }
 
-// Deudas de clientes recientes
+        // Deudas de clientes recientes
         db.db.all(`
           SELECT 'Deuda' as tipo,
                  d.cliente_nombre || ' debe $' || printf('%.2f', d.monto_pendiente) as descripcion,
@@ -1715,67 +1829,139 @@ function obtenerActividadReciente(callback) {
 
 ipcMain.handle('obtener-datos-grafica', async () => {
   return new Promise((resolve, reject) => {
-    // Obtener últimos 6 meses
     const meses = [];
-    const fechaActual = new Date();
+    const hoy = new Date();
 
+    // Generar últimos 6 meses
     for (let i = 5; i >= 0; i--) {
-      const fecha = new Date(fechaActual.getFullYear(), fechaActual.getMonth() - i, 1);
-      const mesNombre = fecha.toLocaleDateString('es-CO', { month: 'short' });
-      const año = fecha.getFullYear();
-      const mes = fecha.getMonth() + 1;
-
+      const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
       meses.push({
-        mes: mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1),
-        año: año,
-        mesNumero: mes
+        fecha: fecha,
+        mes: fecha.toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }),
+        ventas: 0,
+        costoProductos: 0,
+        costosAdicionales: 0,
+        gastos: 0,
+        ganancia: 0
       });
     }
 
-    // Obtener datos de cada mes
-    let procesados = 0;
-    const datos = [];
+    let promesas = [];
 
-    meses.forEach((mesInfo, index) => {
-      const primerDia = `${mesInfo.año}-${String(mesInfo.mesNumero).padStart(2, '0')}-01`;
-      const ultimoDia = new Date(mesInfo.año, mesInfo.mesNumero, 0).getDate();
-      const ultimoDiaFecha = `${mesInfo.año}-${String(mesInfo.mesNumero).padStart(2, '0')}-${ultimoDia}`;
+    // 1. Obtener ventas por mes
+    meses.forEach((mes, index) => {
+      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
+      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
 
-      // Ventas del mes
-      db.db.get(`
-        SELECT COALESCE(SUM(total), 0) as total
-        FROM ventas
-        WHERE estado = 'Pagado'
-        AND date(fecha) >= date(?)
-        AND date(fecha) <= date(?)
-      `, [primerDia, ultimoDiaFecha], (err, ventasRow) => {
-        const ventas = ventasRow ? ventasRow.total : 0;
-
-        // Gastos del mes
-        db.db.get(`
-          SELECT COALESCE(SUM(monto), 0) as total
-          FROM gastos
-          WHERE date(fecha) >= date(?)
-          AND date(fecha) <= date(?)
-        `, [primerDia, ultimoDiaFecha], (err, gastosRow) => {
-          const gastos = gastosRow ? gastosRow.total : 0;
-          const ganancia = ventas - gastos;
-
-          datos[index] = {
-            mes: mesInfo.mes,
-            ventas: ventas,
-            gastos: gastos,
-            ganancia: ganancia
-          };
-
-          procesados++;
-
-          if (procesados === meses.length) {
-            resolve(datos);
-          }
-        });
-      });
+      promesas.push(
+        new Promise((resolveVenta) => {
+          db.db.get(`
+            SELECT COALESCE(SUM(monto_pagado), 0) as total
+            FROM ventas
+            WHERE estado != 'Cancelado'
+            AND date(fecha) BETWEEN date(?) AND date(?)
+          `, [inicioMes.toISOString().split('T')[0], finMes.toISOString().split('T')[0]],
+          (err, row) => {
+            if (!err && row) {
+              meses[index].ventas = row.total || 0;
+            }
+            resolveVenta();
+          });
+        })
+      );
     });
+
+    // 2. Obtener costo de productos vendidos por mes
+    meses.forEach((mes, index) => {
+      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
+      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
+
+      promesas.push(
+        new Promise((resolveCosto) => {
+          db.db.get(`
+            SELECT COALESCE(SUM(vp.cantidad * p.costo_base), 0) as total
+            FROM venta_productos vp
+            INNER JOIN productos p ON vp.producto_id = p.id
+            INNER JOIN ventas v ON vp.venta_id = v.id
+            WHERE v.estado != 'Cancelado'
+            AND date(v.fecha) BETWEEN date(?) AND date(?)
+          `, [inicioMes.toISOString().split('T')[0], finMes.toISOString().split('T')[0]],
+          (err, row) => {
+            if (!err && row) {
+              meses[index].costoProductos = row.total || 0;
+            }
+            resolveCosto();
+          });
+        })
+      );
+    });
+
+    // 3. Obtener costos adicionales por mes
+    meses.forEach((mes, index) => {
+      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
+      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
+
+      promesas.push(
+        new Promise((resolveCostoAd) => {
+          db.db.get(`
+            SELECT COALESCE(SUM(ca.monto), 0) as total
+            FROM costos_adicionales ca
+            INNER JOIN ventas v ON ca.venta_id = v.id
+            WHERE v.estado != 'Cancelado'
+            AND date(v.fecha) BETWEEN date(?) AND date(?)
+          `, [inicioMes.toISOString().split('T')[0], finMes.toISOString().split('T')[0]],
+          (err, row) => {
+            if (!err && row) {
+              meses[index].costosAdicionales = row.total || 0;
+            }
+            resolveCostoAd();
+          });
+        })
+      );
+    });
+
+    // 4. Obtener gastos OPERATIVOS por mes (excluyendo Inventario y Proveedores)
+    meses.forEach((mes, index) => {
+      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
+      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
+
+      promesas.push(
+        new Promise((resolveGasto) => {
+          db.db.get(`
+            SELECT COALESCE(SUM(monto), 0) as total
+            FROM gastos
+            WHERE date(fecha) BETWEEN date(?) AND date(?)
+            AND categoria NOT IN ('Inventario', 'Proveedores')
+          `, [inicioMes.toISOString().split('T')[0], finMes.toISOString().split('T')[0]],
+          (err, row) => {
+            if (!err && row) {
+              meses[index].gastos = row.total || 0;
+            }
+            resolveGasto();
+          });
+        })
+      );
+    });
+
+    // Esperar todas las consultas
+    Promise.all(promesas)
+      .then(() => {
+        // Calcular ganancia CORRECTA: Ventas - Costo Productos - Costos Adicionales - Gastos
+        meses.forEach(mes => {
+          mes.ganancia = mes.ventas - mes.costoProductos - mes.costosAdicionales - mes.gastos;
+        });
+
+        console.log('📈 Datos de gráfica generados (últimos 6 meses):');
+        meses.forEach(mes => {
+          console.log(`  ${mes.mes}: Ventas=$${mes.ventas.toFixed(2)}, Costos=$${mes.costoProductos.toFixed(2)}, CostosAd=$${mes.costosAdicionales.toFixed(2)}, Gastos=$${mes.gastos.toFixed(2)}, Ganancia=$${mes.ganancia.toFixed(2)}`);
+        });
+
+        resolve(meses);
+      })
+      .catch(err => {
+        console.error('❌ Error al generar datos de gráfica:', err);
+        reject(err);
+      });
   });
 });
 
@@ -1796,7 +1982,7 @@ ipcMain.handle('obtener-top-productos', async () => {
       FROM venta_productos vp
       INNER JOIN productos p ON vp.producto_id = p.id
       INNER JOIN ventas v ON vp.venta_id = v.id
-      WHERE v.estado = 'Pagado'
+      WHERE v.estado != 'Cancelado'
       AND date(v.fecha) >= date(?)
       GROUP BY p.id, p.nombre, p.referencia
       ORDER BY cantidad DESC

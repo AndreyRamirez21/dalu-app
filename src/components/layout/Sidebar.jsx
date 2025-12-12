@@ -7,7 +7,7 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
         <div className="p-6 border-b">
           <div className="flex flex-col items-center space-y-2">
             <img
-              src={process.env.PUBLIC_URL + '/logito.png'}
+              src={process.env.PUBLIC_URL + '/logooo1.png'}
               alt="Dalú Logo"
               className="w-[100px] h-[100px] object-contain"
             />
