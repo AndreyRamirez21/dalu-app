@@ -1,10 +1,114 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { X, Plus, Trash2, ShoppingCart, DollarSign, Package, CreditCard, Minus, User, Phone, Mail, CreditCard as IdCard, Search, ChevronDown } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import { ModalMensaje } from '../common/ModalMensaje';
 
 
 const { ipcRenderer } = window.require('electron');
+
+
+// ✅ Modal para ver imagen ampliada
+const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
+  if (!imagenBase64) return null;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+      onClick={onCerrar}
+    >
+      <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden">
+        <button
+          onClick={onCerrar}
+          className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-lg hover:bg-gray-100 transition z-10"
+        >
+          <X size={24} className="text-gray-700" />
+        </button>
+
+        <div className="p-6">
+          <h3 className="text-xl font-bold text-gray-800 mb-4">{nombreProducto}</h3>
+          <img
+            src={imagenBase64}
+            alt={nombreProducto}
+            className="max-w-full max-h-[70vh] object-contain mx-auto rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ✅ Componente de imagen clickeable
+const ImagenProducto = memo(({ rutaImagen, nombreProducto, onClickImagen }) => {
+  const [imagenBase64, setImagenBase64] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let montado = true;
+
+    const cargarImagen = async () => {
+      if (!rutaImagen) {
+        if (montado) setCargando(false);
+        return;
+      }
+
+      try {
+        setCargando(true);
+        const ipc = window.require ? window.require('electron').ipcRenderer : null;
+        if (!ipc) throw new Error('IPC no disponible');
+        const base64Data = await ipc.invoke('cargar-imagen', rutaImagen);
+        if (montado) {
+          if (base64Data) {
+            setImagenBase64(base64Data);
+            setError(false);
+          } else {
+            setError(true);
+          }
+          setCargando(false);
+        }
+      } catch (err) {
+        console.error('Error al cargar imagen:', err);
+        if (montado) {
+          setError(true);
+          setCargando(false);
+        }
+      }
+    };
+
+    cargarImagen();
+
+    return () => {
+      montado = false;
+    };
+  }, [rutaImagen]);
+
+if (cargando) {
+    return (
+      <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center">
+        <span className="text-xs text-gray-500">Cargando...</span>
+      </div>
+    );
+  }
+
+  if (error || !imagenBase64) {
+    return (
+      <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center">
+        <Package size={24} className="text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imagenBase64}
+      alt={nombreProducto}
+      className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-75 transition"
+      onClick={() => onClickImagen && onClickImagen(imagenBase64)}
+    />
+  );
+});
+
 
 const ComboBoxField = ({ label, value, onChange, options, placeholder, disabled }) => {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -104,6 +208,8 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   const [mensajeModal, setMensajeModal] = useState("");
   const [tipoMensaje, setTipoMensaje] = useState("info"); // 'exito' | 'error' | 'info'
 
+const [imagenAmpliada, setImagenAmpliada] = useState(null);
+const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
 
   // Productos
   const [categorias, setCategorias] = useState([]);
@@ -619,13 +725,26 @@ const handleSubmit = async () => {
                     <div className="border-t pt-4">
                       <h5 className="font-medium text-gray-700 mb-3">Producto Seleccionado:</h5>
                       <div className="border rounded-lg p-4 bg-gray-50">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <div className="font-bold text-lg text-gray-800">{productoActual.nombre}</div>
-                            <div className="text-sm text-teal-600">Ref: {productoActual.referencia || 'N/A'}</div>
-                            <div className="text-sm text-gray-600 mt-1">Precio base: ${productoActual.precio_venta_base}</div>
-                          </div>
-                        </div>
+                            <div className="flex items-start space-x-4 mb-3">
+                              {/* ✅ IMAGEN DEL PRODUCTO */}
+                              <ImagenProducto
+                                rutaImagen={productoActual.imagen}
+                                nombreProducto={productoActual.nombre}
+                                    onClickImagen={(img) => {
+                                      setImagenAmpliada(img);
+                                      setNombreProductoAmpliado(productoActual.nombre);
+
+                                  console.log('Imagen clickeada');
+                                }}
+                              />
+
+                              {/* INFORMACIÓN DEL PRODUCTO */}
+                              <div className="flex-1">
+                                <div className="font-bold text-lg text-gray-800">{productoActual.nombre}</div>
+                                <div className="text-sm text-teal-600">Ref: {productoActual.referencia || 'N/A'}</div>
+                                <div className="text-sm text-gray-600 mt-1">Precio base: ${productoActual.precio_venta_base}</div>
+                              </div>
+                            </div>
 
                         {productoActual.variantes && productoActual.variantes.length > 0 ? (
                           <div>
@@ -966,67 +1085,77 @@ const handleSubmit = async () => {
           </div>
 
           {/* Footer */}
-          <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              {paso === 1 && <span>{productosSeleccionados.length} producto(s) agregado(s)</span>}
-              {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
-              {paso === 3 && <span>Total: ${total.toFixed(2)}</span>}
-            </div>
-            <div className="flex space-x-3">
-              {paso > 1 && (
-                <button
-                  onClick={() => setPaso(paso - 1)}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
-                >
-                  Atrás
-                </button>
-              )}
-              <button
-                onClick={onClose}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
-              >
-                Cancelar
-              </button>
-              {paso < 3 ? (
-                    <button
-                      onClick={() => {
-                        if (paso === 1 && productosSeleccionados.length === 0) {
-                          setMensajeModal("Agrega al menos un producto");
-                          setTipoMensaje('error');
-                          setMostrarMensaje(true);
-                          return;
-                        }
-                        setPaso(paso + 1);
-                      }}
-                  className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
-                >
-                  Continuar
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={loading}
-                  className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium disabled:opacity-50 flex items-center space-x-2"
-                >
-                  <ShoppingCart size={20} />
-                  <span>Confirmar Venta</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+                    <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
+                      <div className="text-sm text-gray-600">
+                        {paso === 1 && <span>{productosSeleccionados.length} producto(s) agregado(s)</span>}
+                        {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
+                        {paso === 3 && <span>Total: ${total.toFixed(2)}</span>}
+                      </div>
+                      <div className="flex space-x-3">
+                        {paso > 1 && (
+                          <button
+                            onClick={() => setPaso(paso - 1)}
+                            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                          >
+                            Atrás
+                          </button>
+                        )}
+                        <button
+                          onClick={onClose}
+                          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                        >
+                          Cancelar
+                        </button>
+                        {paso < 3 ? (
+                          <button
+                            onClick={() => {
+                              if (paso === 1 && productosSeleccionados.length === 0) {
+                                setMensajeModal("Agrega al menos un producto");
+                                setTipoMensaje('error');
+                                setMostrarMensaje(true);
+                                return;
+                              }
+                              setPaso(paso + 1);
+                            }}
+                            className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+                          >
+                            Continuar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleSubmit}
+                            disabled={loading}
+                            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium disabled:opacity-50 flex items-center space-x-2"
+                          >
+                            <ShoppingCart size={20} />
+                            <span>Confirmar Venta</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-        {mostrarMensaje && (
-          <ModalMensaje
-            mensaje={mensajeModal}
-            tipo={tipoMensaje}
-            autoCloseMs={tipoMensaje === 'exito' ? 2200 : 0}
-            onCerrar={() => setMostrarMensaje(false)}
-          />
-        )}
+                {/* ✅ Modal de Imagen Ampliada */}
+                {imagenAmpliada && (
+                  <ModalImagen
+                    imagenBase64={imagenAmpliada}
+                    nombreProducto={nombreProductoAmpliado}
+                    onCerrar={() => setImagenAmpliada(null)}
+                  />
+                )}
 
-    </>
-  );
-};
-export default ModalAgregarVenta;
+                {/* ✅ Modal de Mensajes */}
+                {mostrarMensaje && (
+                  <ModalMensaje
+                    mensaje={mensajeModal}
+                    tipo={tipoMensaje}
+                    autoCloseMs={tipoMensaje === 'exito' ? 2200 : 0}
+                    onCerrar={() => setMostrarMensaje(false)}
+                  />
+                )}
+              </>
+
+            );
+          };
+  export default ModalAgregarVenta;

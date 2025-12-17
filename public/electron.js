@@ -233,16 +233,17 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
       rutaImagen = guardarImagen(producto.referencia, producto.imagen);
     }
 
-    // Preparar datos con la ruta de imagen
-    const datosProducto = {
-      referencia: producto.referencia,
-      nombre: producto.nombre,
-      categoria: producto.categoria,
-      costo_base: producto.costo_base,
-      precio_venta_base: producto.precio_venta_base,
-      variantes: producto.variantes || []
-    };
-
+// Preparar datos con la ruta de imagen Y COSTOS ADICIONALES
+const datosProducto = {
+  referencia: producto.referencia,
+  nombre: producto.nombre,
+  categoria: producto.categoria,
+  costo_base: producto.costo_base,
+  precio_calculado: producto.precio_calculado,  // ← AGREGAR ESTA LÍNEA
+  precio_venta_base: producto.precio_venta_base,
+  variantes: producto.variantes || [],
+  costos_adicionales: producto.costos_adicionales || []
+};
     // Usar la función de db.js
     db.productos.agregar(datosProducto, (err, resultado) => {
       if (err) {
@@ -295,16 +296,17 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
         }
       }
 
-      // Preparar datos para actualizar
-      const datosParaActualizar = {
-        referencia: datosActualizados.referencia,
-        nombre: datosActualizados.nombre,
-        categoria: datosActualizados.categoria,
-        costo_base: datosActualizados.costo_base,
-        precio_venta_base: datosActualizados.precio_venta_base,
-        variantes: datosActualizados.variantes || []
-      };
-
+        // Preparar datos para actualizar CON COSTOS ADICIONALES
+        const datosParaActualizar = {
+          referencia: datosActualizados.referencia,
+          nombre: datosActualizados.nombre,
+          categoria: datosActualizados.categoria,
+          costo_base: datosActualizados.costo_base,
+          precio_calculado: datosActualizados.precio_calculado,  // ← AGREGAR ESTA LÍNEA
+          precio_venta_base: datosActualizados.precio_venta_base,
+          variantes: datosActualizados.variantes || [],
+          costos_adicionales: datosActualizados.costos_adicionales || []
+        };
       // Usar la función de db.js
       db.productos.actualizar(id, datosParaActualizar, (err, resultado) => {
         if (err) {
@@ -1993,6 +1995,33 @@ ipcMain.handle('obtener-top-productos', async () => {
         reject(err);
       } else {
         resolve(rows || []);
+      }
+    });
+  });
+});
+
+
+ipcMain.handle('obtener-estadisticas-costos-productos', async () => {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      SELECT
+        COUNT(DISTINCT ca.producto_id) as productos_con_costos,
+        SUM(ca.monto) as total_costos_adicionales,
+        COUNT(ca.id) as total_registros
+      FROM costos_adicionales_producto ca
+      INNER JOIN productos p ON ca.producto_id = p.id
+    `;
+
+    db.db.get(sql, [], (err, row) => {
+      if (err) {
+        console.error('❌ Error al obtener estadísticas de costos adicionales:', err);
+        reject(err);
+      } else {
+        resolve({
+          productos_con_costos: row?.productos_con_costos || 0,
+          total_costos_adicionales: row?.total_costos_adicionales || 0,
+          total_registros: row?.total_registros || 0
+        });
       }
     });
   });

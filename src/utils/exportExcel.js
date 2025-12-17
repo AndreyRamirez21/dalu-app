@@ -32,9 +32,21 @@ export function exportarInventarioExcel(productos) {
   const hoja = XLSX.utils.json_to_sheet(datosExcel);
 
   // ===== AGREGAR FILA DE TOTALES =====
-  const totalStock = datosExcel.reduce((sum, item) => sum + item.Stock, 0);
-  const totalCosto = datosExcel.reduce((sum, item) => sum + item.CostoBase, 0);
-  const totalPrecioVenta = datosExcel.reduce((sum, item) => sum + item.PrecioVenta, 0);
+const totalStock = datosExcel.reduce(
+  (sum, item) => sum + item.Stock,
+  0
+);
+
+const totalCosto = datosExcel.reduce(
+  (sum, item) => sum + item.CostoBase * item.Stock,
+  0
+);
+
+const totalPrecioVenta = datosExcel.reduce(
+  (sum, item) => sum + item.PrecioVenta * item.Stock,
+  0
+);
+
 
   const filaTotales = datosExcel.length + 1; // Siguiente fila después de los datos
 

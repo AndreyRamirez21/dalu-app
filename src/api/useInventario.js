@@ -4,17 +4,13 @@ import { useState, useEffect } from 'react';
 // Helper para IPC de Electron
 const getIPC = () => {
   try {
-    // Intentar acceder a electron desde window.require
     if (typeof window !== 'undefined' && window.require) {
       const electron = window.require('electron');
       return electron.ipcRenderer;
     }
-
-    // Fallback: verificar si ipcRenderer está disponible directamente
     if (typeof window !== 'undefined' && window.ipcRenderer) {
       return window.ipcRenderer;
     }
-
     console.warn('IPC no disponible - no estamos en entorno Electron');
     return null;
   } catch (error) {
@@ -22,6 +18,7 @@ const getIPC = () => {
     return null;
   }
 };
+
 export const useInventario = () => {
   const [vista, setVista] = useState('lista');
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,19 +31,56 @@ export const useInventario = () => {
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [productosExpandidos, setProductosExpandidos] = useState({});
 
-  const categorias = ['Todos', 'Deluxe', 'Essence', 'Pantuflas', 'Antifaces', 'Humidificadores', 'Fundas', 'Scrunchies', 'Varios'];
-  const tallasDisponibles = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'];
+  // ✅ ACTUALIZADO: Nuevas categorías agregadas
+  const categorias = [
+    'Todos',
+    'Deluxe',
+    'Essence',
+    'Pantuflas',
+    'Antifaces',
+    'Humidificadores',
+    'Fundas',
+    'Scrunchies',
+    'Rizadores',
+    'Gorros en Satín',
+    'Lámparas',
+    'Cuelleros',
+    'Varios'
+  ];
 
-  const formularioInicial = {
-    referencia: '',
-    nombre: '',
-    categoria: 'Deluxe',
-    costo_base: '',
-    precio_venta_base: '',
-    variantes: [],
-    imagen: null,
-    imagenPreview: null
-  };
+  // ✅ ACTUALIZADO: Solo tallas de ropa (sin números de calzado)
+  const tallasDisponibles = [
+    'XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'
+  ];
+
+  // ✅ NUEVO: Conceptos predefinidos para costos adicionales
+  const conceptosCostosDisponibles = [
+    'Bolsa protectora',
+    'Bolsa de despacho',
+    'Etiqueta tarjeta',
+    'Sticker',
+    'Olor',
+    'Etiqueta de referencia',
+    'Marquilla',
+    'Hilo',
+    'Protector zona v',
+    'Envio',
+    'Costo extra (bolsa de regalo decoración personalizada)'
+  ];
+
+  // ✅ ACTUALIZADO: Formulario inicial con costos adicionales
+const formularioInicial = {
+  referencia: '',
+  nombre: '',
+  categoria: 'Deluxe',
+  costo_base: '',
+  precio_venta_base: '',
+  precio_calculado: 0,  // ← AGREGAR ESTO
+  variantes: [],
+  costos_adicionales: [],
+  imagen: null,
+  imagenPreview: null
+};
 
   const [formulario, setFormulario] = useState(formularioInicial);
 
@@ -72,10 +106,18 @@ export const useInventario = () => {
     }
   };
 
-  // Cargar productos al montar
   useEffect(() => {
     cargarProductos();
   }, []);
+
+  // ✅ NUEVO: Actualizar precio_calculado cuando cambien los costos
+  useEffect(() => {
+    const nuevoPrecioCalculado = calcularPrecioSugerido();
+    setFormulario(prev => ({
+      ...prev,
+      precio_calculado: nuevoPrecioCalculado
+    }));
+  }, [formulario.costo_base, formulario.costos_adicionales]);
 
   // Productos filtrados
   const productosFiltrados = productos.filter(p => {
@@ -126,38 +168,33 @@ export const useInventario = () => {
     setFormulario(prev => ({ ...prev, [name]: value }));
   };
 
-  // ✅ CORREGIDO: Manejo de imagen mejorado
   const handleImagenChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validar que sea imagen
     if (!file.type.startsWith('image/')) {
       setNotificacion({ mensaje: 'Por favor selecciona una imagen válida (JPG, PNG, etc.)', tipo: 'advertencia' });
-      e.target.value = ''; // Limpiar input
+      e.target.value = '';
       return;
     }
 
-    // Validar tamaño (máximo 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setNotificacion({ mensaje: 'La imagen no debe pesar más de 5MB', tipo: 'advertencia' });
-      e.target.value = ''; // Limpiar input
+      e.target.value = '';
       return;
     }
 
-    // Leer archivo para preview
     const reader = new FileReader();
     reader.onload = (event) => {
       setFormulario(prev => ({
         ...prev,
         imagen: file,
-        imagenPreview: event.target.result // Base64 completo con data:image/...
+        imagenPreview: event.target.result
       }));
     };
     reader.readAsDataURL(file);
   };
 
-  // ✅ CORREGIDO: Eliminar imagen
   const eliminarImagen = () => {
     setFormulario(prev => ({
       ...prev,
@@ -165,27 +202,48 @@ export const useInventario = () => {
       imagenPreview: null
     }));
 
-    // Limpiar el input file
     const inputFile = document.querySelector('input[type="file"][accept="image/*"]');
     if (inputFile) {
       inputFile.value = '';
     }
   };
 
+  // ✅ ACTUALIZADO: Agregar variante con control de modo manual
   const agregarVariante = () => {
     setFormulario(prev => ({
       ...prev,
-      variantes: [...prev.variantes, { talla: 'S', cantidad: 0, ajuste_precio: 0 }]
+      variantes: [...prev.variantes, { talla: 'S', cantidad: 0, ajuste_precio: 0, tallaManual: false }]
     }));
   };
+const actualizarVariante = (index, campo, valor) => {
+  setFormulario(prev => {
+    const nuevasVariantes = [...prev.variantes];
 
-  const actualizarVariante = (index, campo, valor) => {
-    setFormulario(prev => {
-      const nuevasVariantes = [...prev.variantes];
-      nuevasVariantes[index] = { ...nuevasVariantes[index], [campo]: valor };
-      return { ...prev, variantes: nuevasVariantes };
-    });
-  };
+    // Si se está cambiando la talla y es "manual", activar modo manual
+    if (campo === 'talla' && valor === '__MANUAL__') {
+      nuevasVariantes[index] = {
+        ...nuevasVariantes[index],
+        talla: '',
+        tallaManual: true
+      };
+    } else if (campo === 'tallaManual') {
+      // Permite desactivar el modo manual
+      nuevasVariantes[index] = {
+        ...nuevasVariantes[index],
+        tallaManual: valor,
+        talla: valor ? nuevasVariantes[index].talla : 'S'
+      };
+    } else {
+      // Para cualquier otro cambio (incluido escribir en el input)
+      nuevasVariantes[index] = {
+        ...nuevasVariantes[index],
+        [campo]: valor
+      };
+    }
+
+    return { ...prev, variantes: nuevasVariantes };
+  });
+};
 
   const eliminarVariante = (index) => {
     setFormulario(prev => ({
@@ -193,6 +251,74 @@ export const useInventario = () => {
       variantes: prev.variantes.filter((_, i) => i !== index)
     }));
   };
+
+  // ✅ ACTUALIZADO: Agregar costo adicional con control de modo manual
+  const agregarCostoAdicional = () => {
+    setFormulario(prev => ({
+      ...prev,
+      costos_adicionales: [
+        ...prev.costos_adicionales,
+        { concepto: '', monto: 0, conceptoManual: false }
+      ]
+    }));
+  };
+
+  const actualizarCostoAdicional = (index, campo, valor) => {
+    setFormulario(prev => {
+      const nuevosCostos = [...prev.costos_adicionales];
+
+      // Si se está cambiando el concepto y es "manual", activar modo manual
+      if (campo === 'concepto' && valor === '__MANUAL__') {
+        nuevosCostos[index] = {
+          ...nuevosCostos[index],
+          concepto: '',
+          conceptoManual: true
+        };
+      } else if (campo === 'conceptoManual') {
+        // Permite desactivar el modo manual
+        nuevosCostos[index] = {
+          ...nuevosCostos[index],
+          conceptoManual: valor,
+          concepto: valor ? nuevosCostos[index].concepto : ''
+        };
+      } else {
+        // Para cualquier otro cambio (incluido escribir en el input)
+        nuevosCostos[index] = {
+          ...nuevosCostos[index],
+          [campo]: valor
+        };
+      }
+
+      return { ...prev, costos_adicionales: nuevosCostos };
+    });
+  };
+  const eliminarCostoAdicional = (index) => {
+    setFormulario(prev => ({
+      ...prev,
+      costos_adicionales: prev.costos_adicionales.filter((_, i) => i !== index)
+    }));
+  };
+
+  // ✅ NUEVO: Calcular total de costos adicionales
+  const calcularTotalCostosAdicionales = () => {
+    return formulario.costos_adicionales.reduce((total, costo) => {
+      return total + (parseFloat(costo.monto) || 0);
+    }, 0);
+  };
+
+const calcularPrecioSugerido = () => {
+  const costoBase = parseFloat(formulario.costo_base) || 0;
+  const totalCostosAdicionales = calcularTotalCostosAdicionales();
+
+  // ✅ margen SOLO al costo base
+  const precioCalculado = (costoBase / 0.65) + totalCostosAdicionales;
+
+  // Redondear a miles
+  const precioRedondeado = Math.ceil(precioCalculado / 1000) * 1000;
+
+  return precioRedondeado;
+};
+
 
   const resetFormulario = () => {
     setFormulario(formularioInicial);
@@ -231,22 +357,30 @@ export const useInventario = () => {
       return;
     }
 
-    const nuevoProducto = {
-      referencia: formulario.referencia.trim(),
-      nombre: formulario.nombre.trim(),
-      categoria: formulario.categoria,
-      costo_base: parseFloat(formulario.costo_base),
-      precio_venta_base: parseFloat(formulario.precio_venta_base),
-      variantes: formulario.variantes.map(v => ({
-        talla: v.talla,
-        cantidad: parseInt(v.cantidad),
-        ajuste_precio: parseFloat(v.ajuste_precio) || 0
-      })),
-      imagen: formulario.imagen ? {
-        name: formulario.imagen.name,
-        data: formulario.imagenPreview // Base64
-      } : null
-    };
+// ✅ ACTUALIZADO: Preparar datos con costos adicionales y precio calculado
+const nuevoProducto = {
+  referencia: formulario.referencia.trim(),
+  nombre: formulario.nombre.trim(),
+  categoria: formulario.categoria,
+  costo_base: parseFloat(formulario.costo_base),
+  precio_calculado: calcularPrecioSugerido(),  // ← AGREGAR ESTO
+  precio_venta_base: parseFloat(formulario.precio_venta_base),
+  variantes: formulario.variantes.map(v => ({
+    talla: v.talla,
+    cantidad: parseInt(v.cantidad),
+    ajuste_precio: parseFloat(v.ajuste_precio) || 0
+  })),
+  costos_adicionales: formulario.costos_adicionales
+    .filter(c => c.concepto.trim() !== '')
+    .map(c => ({
+      concepto: c.concepto.trim(),
+      monto: parseFloat(c.monto)
+    })),
+  imagen: formulario.imagen ? {
+    name: formulario.imagen.name,
+    data: formulario.imagenPreview
+  } : null
+};
 
     try {
       await ipc.invoke('agregar-producto', nuevoProducto);
@@ -262,13 +396,11 @@ export const useInventario = () => {
     }
   };
 
-  // ✅ CORREGIDO: Cargar imagen al editar
   const handleEditarProducto = async (producto) => {
     const ipc = getIPC();
 
     setProductoEditar(producto);
 
-    // Cargar preview de imagen si existe
     let imagenPreview = null;
     if (producto.imagen && ipc) {
       try {
@@ -278,20 +410,27 @@ export const useInventario = () => {
       }
     }
 
-    setFormulario({
-      referencia: producto.referencia,
-      nombre: producto.nombre,
-      categoria: producto.categoria,
-      costo_base: producto.costo_base.toString(),
-      precio_venta_base: producto.precio_venta_base.toString(),
-      variantes: producto.variantes.map(v => ({
-        talla: v.talla,
-        cantidad: v.cantidad,
-        ajuste_precio: v.ajuste_precio || 0
-      })),
-      imagen: null, // No enviamos el archivo, solo si se selecciona uno nuevo
-      imagenPreview: imagenPreview // Base64 de la imagen existente
-    });
+setFormulario({
+  referencia: producto.referencia,
+  nombre: producto.nombre,
+  categoria: producto.categoria,
+  costo_base: producto.costo_base.toString(),
+  precio_venta_base: producto.precio_venta_base.toString(),
+  precio_calculado: producto.precio_calculado || 0,  // ← AGREGAR ESTO
+  variantes: producto.variantes.map(v => ({
+    talla: v.talla,
+    cantidad: v.cantidad,
+    ajuste_precio: v.ajuste_precio || 0,
+    tallaManual: false
+  })),
+  costos_adicionales: (producto.costos_adicionales || []).map(c => ({
+    concepto: c.concepto,
+    monto: c.monto,
+    conceptoManual: false
+  })),
+  imagen: null,
+  imagenPreview: imagenPreview
+});
 
     setVista('editar');
   };
@@ -329,23 +468,29 @@ export const useInventario = () => {
       return;
     }
 
-    const datosActualizados = {
-      referencia: formulario.referencia.trim(),
-      nombre: formulario.nombre.trim(),
-      categoria: formulario.categoria,
-      costo_base: parseFloat(formulario.costo_base),
-      precio_venta_base: parseFloat(formulario.precio_venta_base),
-      variantes: formulario.variantes.map(v => ({
-        talla: v.talla,
-        cantidad: parseInt(v.cantidad),
-        ajuste_precio: parseFloat(v.ajuste_precio) || 0
-      })),
-      // Solo enviamos imagen si se seleccionó una nueva
-      imagen: formulario.imagen ? {
-        name: formulario.imagen.name,
-        data: formulario.imagenPreview
-      } : null
-    };
+const datosActualizados = {
+  referencia: formulario.referencia.trim(),
+  nombre: formulario.nombre.trim(),
+  categoria: formulario.categoria,
+  costo_base: parseFloat(formulario.costo_base),
+  precio_calculado: calcularPrecioSugerido(),  // ← AGREGAR ESTO
+  precio_venta_base: parseFloat(formulario.precio_venta_base),
+  variantes: formulario.variantes.map(v => ({
+    talla: v.talla,
+    cantidad: parseInt(v.cantidad),
+    ajuste_precio: parseFloat(v.ajuste_precio) || 0
+  })),
+  costos_adicionales: formulario.costos_adicionales
+    .filter(c => c.concepto.trim() !== '')
+    .map(c => ({
+      concepto: c.concepto.trim(),
+      monto: parseFloat(c.monto)
+    })),
+  imagen: formulario.imagen ? {
+    name: formulario.imagen.name,
+    data: formulario.imagenPreview
+  } : null
+};
 
     try {
       await ipc.invoke('actualizar-producto', productoEditar.id, datosActualizados);
@@ -409,6 +554,7 @@ export const useInventario = () => {
     // Constantes
     categorias,
     tallasDisponibles,
+    conceptosCostosDisponibles,
 
     // Datos computados
     productosFiltrados,
@@ -424,11 +570,16 @@ export const useInventario = () => {
     getEstadoStyle,
     getEstadoTexto,
     handleInputChange,
-    handleImagenChange, // ✅ Ahora exportada correctamente
-    eliminarImagen, // ✅ Ahora exportada correctamente
+    handleImagenChange,
+    eliminarImagen,
     agregarVariante,
     actualizarVariante,
     eliminarVariante,
+    agregarCostoAdicional,
+    actualizarCostoAdicional,
+    eliminarCostoAdicional,
+    calcularTotalCostosAdicionales,
+    calcularPrecioSugerido,  // ← AGREGAR ESTO
     resetFormulario,
     handleGuardarProducto,
     handleEditarProducto,

@@ -19,18 +19,19 @@ function initDatabase() {
     db.run(`CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(nombre)`);
 
     // ==================== TABLA DE PRODUCTOS ====================
-    db.run(`CREATE TABLE IF NOT EXISTS productos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      referencia TEXT UNIQUE NOT NULL,
-      nombre TEXT NOT NULL,
-      categoria TEXT NOT NULL,
-      costo_base REAL NOT NULL,
-      precio_venta_base REAL NOT NULL,
-      tiene_variantes INTEGER DEFAULT 0,
-      imagen TEXT,
-      fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
-      fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
-    )`);
+db.run(`CREATE TABLE IF NOT EXISTS productos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  referencia TEXT UNIQUE NOT NULL,
+  nombre TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  costo_base REAL NOT NULL,
+  precio_calculado REAL,
+  precio_venta_base REAL NOT NULL,
+  tiene_variantes INTEGER DEFAULT 0,
+  imagen TEXT,
+  fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
+  fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
+)`);
 
     // Agregar columna imagen si no existe
     db.run(`ALTER TABLE productos ADD COLUMN imagen TEXT`, () => {});
@@ -46,6 +47,24 @@ function initDatabase() {
       FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE,
       UNIQUE(producto_id, talla)
     )`);
+
+    // ✅ NUEVA: TABLA DE COSTOS ADICIONALES DEL PRODUCTO
+    db.run(`CREATE TABLE IF NOT EXISTS costos_adicionales_producto (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      producto_id INTEGER NOT NULL,
+      concepto TEXT NOT NULL,
+      monto REAL NOT NULL,
+      fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE
+    )`, (err) => {
+      if (err) {
+        console.error('❌ Error al crear tabla costos_adicionales_producto:', err);
+      } else {
+        console.log('✅ Tabla costos_adicionales_producto creada/verificada');
+      }
+    });
+
+    db.run(`CREATE INDEX IF NOT EXISTS idx_costos_producto ON costos_adicionales_producto(producto_id)`);
 
     // ==================== TABLA DE VENTAS ====================
     db.run(`CREATE TABLE IF NOT EXISTS ventas (
@@ -85,7 +104,7 @@ function initDatabase() {
       FOREIGN KEY(variante_id) REFERENCES variantes_producto(id)
     )`);
 
-    // ==================== TABLA DE COSTOS ADICIONALES ====================
+    // ==================== TABLA DE COSTOS ADICIONALES (DE VENTAS) ====================
     db.run(`CREATE TABLE IF NOT EXISTS costos_adicionales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       venta_id INTEGER NOT NULL,

@@ -3,73 +3,117 @@ const db = require('../config/connection');
 // ==================== FUNCIONES PARA PRODUCTOS E INVENTARIO ====================
 
 function agregarProducto(datos, callback) {
-  const { referencia, nombre, categoria, costo_base, precio_venta_base, variantes } = datos;
+  const {
+    referencia,
+    nombre,
+    categoria,
+    costo_base,
+    precio_calculado,
+    precio_venta_base,
+    variantes,
+    costos_adicionales
+  } = datos;
 
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
 
-    // Insertar producto principal
-    const sqlProducto = `INSERT INTO productos(referencia, nombre, categoria, costo_base, precio_venta_base, tiene_variantes)
-                         VALUES(?, ?, ?, ?, ?, ?)`;
+    const sqlProducto = `
+      INSERT INTO productos
+      (referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tiene_variantes)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
 
-    const tieneVariantes = variantes && variantes.length > 0 ? 1 : 0;
+    const tieneVariantes = variantes?.length > 0 ? 1 : 0;
 
     db.run(
       sqlProducto,
-      [referencia, nombre, categoria, costo_base, precio_venta_base, tieneVariantes],
+      [referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tieneVariantes],
       function (err) {
         if (err) {
           db.run('ROLLBACK');
-          callback(err, null);
-          return;
+          return callback(err);
         }
 
         const productoId = this.lastID;
 
-        // Si hay variantes, insertarlas
-        if (variantes && variantes.length > 0) {
-          const sqlVariante = `INSERT INTO variantes_producto(producto_id, talla, cantidad, ajuste_precio)
-                               VALUES(?, ?, ?, ?)`;
+        const costosValidos = (costos_adicionales || []).filter(
+          c => c.concepto && c.monto
+        );
 
-          let variantesInsertadas = 0;
-          let errorOcurrido = false;
+        const insertarVariantes = () => {
+          if (!variantes || variantes.length === 0) {
+            db.run('COMMIT');
+            return callback(null, { id: productoId });
+          }
 
-          variantes.forEach((variante) => {
+          const sqlVariante = `
+            INSERT INTO variantes_producto
+            (producto_id, talla, cantidad, ajuste_precio)
+            VALUES (?, ?, ?, ?)
+          `;
+
+          let insertadas = 0;
+
+          variantes.forEach(v => {
             db.run(
               sqlVariante,
-              [productoId, variante.talla, variante.cantidad, variante.ajuste_precio || 0],
-              (err) => {
-                if (err && !errorOcurrido) {
-                  errorOcurrido = true;
+              [productoId, v.talla, v.cantidad, v.ajuste_precio || 0],
+              err => {
+                if (err) {
                   db.run('ROLLBACK');
-                  callback(err, null);
-                  return;
+                  return callback(err);
                 }
 
-                variantesInsertadas++;
-
-                if (variantesInsertadas === variantes.length && !errorOcurrido) {
+                insertadas++;
+                if (insertadas === variantes.length) {
                   db.run('COMMIT');
-                  callback(null, { id: productoId, ...datos });
+                  callback(null, { id: productoId });
                 }
               }
             );
           });
-        } else {
-          db.run('COMMIT');
-          callback(null, { id: productoId, ...datos });
+        };
+
+        if (costosValidos.length === 0) {
+          return insertarVariantes();
         }
+
+        const sqlCosto = `
+          INSERT INTO costos_adicionales_producto
+          (producto_id, concepto, monto)
+          VALUES (?, ?, ?)
+        `;
+
+        let insertados = 0;
+
+        costosValidos.forEach(c => {
+          db.run(sqlCosto, [productoId, c.concepto, c.monto], err => {
+            if (err) {
+              db.run('ROLLBACK');
+              return callback(err);
+            }
+
+            insertados++;
+            if (insertados === costosValidos.length) {
+              insertarVariantes();
+            }
+          });
+        });
       }
     );
   });
 }
 
+
 function obtenerProductos(callback) {
   const sql = `SELECT p.*,
-               GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|') as variantes_data
+               (SELECT GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|')
+                FROM variantes_producto v
+                WHERE v.producto_id = p.id) as variantes_data,
+               (SELECT GROUP_CONCAT(ca.id || ':' || ca.concepto || ':' || ca.monto, '|')
+                FROM costos_adicionales_producto ca
+                WHERE ca.producto_id = p.id) as costos_adicionales_data
                FROM productos p
-               LEFT JOIN variantes_producto v ON p.id = v.producto_id
-               GROUP BY p.id
                ORDER BY p.fecha_creado DESC`;
 
   db.all(sql, [], (err, rows) => {
@@ -78,10 +122,11 @@ function obtenerProductos(callback) {
       return;
     }
 
-    // Procesar las variantes
+    // Procesar las variantes y costos adicionales
     const productos = rows.map((row) => {
       const producto = { ...row };
 
+      // Procesar variantes
       if (row.variantes_data) {
         producto.variantes = row.variantes_data.split('|').map((v) => {
           const [id, talla, cantidad, ajuste_precio] = v.split(':');
@@ -96,7 +141,22 @@ function obtenerProductos(callback) {
         producto.variantes = [];
       }
 
+      // Procesar costos adicionales
+      if (row.costos_adicionales_data && row.costos_adicionales_data !== '') {
+        producto.costos_adicionales = row.costos_adicionales_data.split('|').map((c) => {
+          const [id, concepto, monto] = c.split(':');
+          return {
+            id: parseInt(id),
+            concepto,
+            monto: parseFloat(monto)
+          };
+        });
+      } else {
+        producto.costos_adicionales = [];
+      }
+
       delete producto.variantes_data;
+      delete producto.costos_adicionales_data;
       return producto;
     });
 
@@ -106,11 +166,14 @@ function obtenerProductos(callback) {
 
 function obtenerProductosPorCategoria(categoria, callback) {
   const sql = `SELECT p.*,
-               GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|') as variantes_data
+               (SELECT GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|')
+                FROM variantes_producto v
+                WHERE v.producto_id = p.id) as variantes_data,
+               (SELECT GROUP_CONCAT(ca.id || ':' || ca.concepto || ':' || ca.monto, '|')
+                FROM costos_adicionales_producto ca
+                WHERE ca.producto_id = p.id) as costos_adicionales_data
                FROM productos p
-               LEFT JOIN variantes_producto v ON p.id = v.producto_id
                WHERE p.categoria = ?
-               GROUP BY p.id
                ORDER BY p.fecha_creado DESC`;
 
   db.all(sql, [categoria], (err, rows) => {
@@ -136,7 +199,21 @@ function obtenerProductosPorCategoria(categoria, callback) {
         producto.variantes = [];
       }
 
+      if (row.costos_adicionales_data && row.costos_adicionales_data !== '') {
+        producto.costos_adicionales = row.costos_adicionales_data.split('|').map((c) => {
+          const [id, concepto, monto] = c.split(':');
+          return {
+            id: parseInt(id),
+            concepto,
+            monto: parseFloat(monto)
+          };
+        });
+      } else {
+        producto.costos_adicionales = [];
+      }
+
       delete producto.variantes_data;
+      delete producto.costos_adicionales_data;
       return producto;
     });
 
@@ -146,11 +223,14 @@ function obtenerProductosPorCategoria(categoria, callback) {
 
 function buscarProductos(termino, callback) {
   const sql = `SELECT p.*,
-               GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|') as variantes_data
+               (SELECT GROUP_CONCAT(v.id || ':' || v.talla || ':' || v.cantidad || ':' || v.ajuste_precio, '|')
+                FROM variantes_producto v
+                WHERE v.producto_id = p.id) as variantes_data,
+               (SELECT GROUP_CONCAT(ca.id || ':' || ca.concepto || ':' || ca.monto, '|')
+                FROM costos_adicionales_producto ca
+                WHERE ca.producto_id = p.id) as costos_adicionales_data
                FROM productos p
-               LEFT JOIN variantes_producto v ON p.id = v.producto_id
                WHERE p.nombre LIKE ? OR p.referencia LIKE ? OR p.categoria LIKE ?
-               GROUP BY p.id
                ORDER BY p.fecha_creado DESC`;
 
   const searchTerm = `%${termino}%`;
@@ -178,7 +258,21 @@ function buscarProductos(termino, callback) {
         producto.variantes = [];
       }
 
+      if (row.costos_adicionales_data && row.costos_adicionales_data !== '') {
+        producto.costos_adicionales = row.costos_adicionales_data.split('|').map((c) => {
+          const [id, concepto, monto] = c.split(':');
+          return {
+            id: parseInt(id),
+            concepto,
+            monto: parseFloat(monto)
+          };
+        });
+      } else {
+        producto.costos_adicionales = [];
+      }
+
       delete producto.variantes_data;
+      delete producto.costos_adicionales_data;
       return producto;
     });
 
@@ -187,79 +281,132 @@ function buscarProductos(termino, callback) {
 }
 
 function actualizarProducto(id, datos, callback) {
-  const { referencia, nombre, categoria, costo_base, precio_venta_base, variantes } = datos;
+  const {
+    referencia,
+    nombre,
+    categoria,
+    costo_base,
+    precio_calculado,
+    precio_venta_base,
+    variantes,
+    costos_adicionales
+  } = datos;
 
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
 
-    // Actualizar producto principal
-    const sqlProducto = `UPDATE productos
-                         SET referencia = ?, nombre = ?, categoria = ?, costo_base = ?,
-                             precio_venta_base = ?, tiene_variantes = ?,
-                             fecha_actualizado = datetime('now', 'localtime')
-                         WHERE id = ?`;
+    const sqlProducto = `
+      UPDATE productos
+      SET referencia = ?, nombre = ?, categoria = ?, costo_base = ?,
+          precio_calculado = ?, precio_venta_base = ?, tiene_variantes = ?,
+          fecha_actualizado = datetime('now', 'localtime')
+      WHERE id = ?
+    `;
 
     const tieneVariantes = variantes && variantes.length > 0 ? 1 : 0;
 
     db.run(
       sqlProducto,
-      [referencia, nombre, categoria, costo_base, precio_venta_base, tieneVariantes, id],
+      [referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tieneVariantes, id],
       function (err) {
         if (err) {
           db.run('ROLLBACK');
-          callback(err, null);
-          return;
+          return callback(err);
         }
 
-        // Eliminar variantes antiguas
-        db.run('DELETE FROM variantes_producto WHERE producto_id = ?', [id], (err) => {
-          if (err) {
-            db.run('ROLLBACK');
-            callback(err, null);
-            return;
-          }
+        db.run(
+          'DELETE FROM costos_adicionales_producto WHERE producto_id = ?',
+          [id],
+          (err) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return callback(err);
+            }
 
-          // Insertar nuevas variantes
-          if (variantes && variantes.length > 0) {
-            const sqlVariante = `INSERT INTO variantes_producto(producto_id, talla, cantidad, ajuste_precio)
-                                 VALUES(?, ?, ?, ?)`;
+            const costosValidos = (costos_adicionales || []).filter(
+              c => c.concepto && c.monto
+            );
 
-            let variantesInsertadas = 0;
-            let errorOcurrido = false;
-
-            variantes.forEach((variante) => {
+            const actualizarVariantes = () => {
               db.run(
-                sqlVariante,
-                [id, variante.talla, variante.cantidad, variante.ajuste_precio || 0],
+                'DELETE FROM variantes_producto WHERE producto_id = ?',
+                [id],
                 (err) => {
-                  if (err && !errorOcurrido) {
-                    errorOcurrido = true;
+                  if (err) {
                     db.run('ROLLBACK');
-                    callback(err, null);
-                    return;
+                    return callback(err);
                   }
 
-                  variantesInsertadas++;
-
-                  if (variantesInsertadas === variantes.length && !errorOcurrido) {
+                  if (!variantes || variantes.length === 0) {
                     db.run('COMMIT');
-                    callback(null, { id, ...datos });
+                    return callback(null, { id, ...datos });
                   }
+
+                  const sqlVariante = `
+                    INSERT INTO variantes_producto
+                    (producto_id, talla, cantidad, ajuste_precio)
+                    VALUES (?, ?, ?, ?)
+                  `;
+
+                  let insertadas = 0;
+
+                  variantes.forEach((v) => {
+                    db.run(
+                      sqlVariante,
+                      [id, v.talla, v.cantidad, v.ajuste_precio || 0],
+                      (err) => {
+                        if (err) {
+                          db.run('ROLLBACK');
+                          return callback(err);
+                        }
+
+                        insertadas++;
+                        if (insertadas === variantes.length) {
+                          db.run('COMMIT');
+                          callback(null, { id, ...datos });
+                        }
+                      }
+                    );
+                  });
                 }
               );
+            };
+
+            if (costosValidos.length === 0) {
+              return actualizarVariantes();
+            }
+
+            const sqlCosto = `
+              INSERT INTO costos_adicionales_producto
+              (producto_id, concepto, monto)
+              VALUES (?, ?, ?)
+            `;
+
+            let insertados = 0;
+
+            costosValidos.forEach((c) => {
+              db.run(sqlCosto, [id, c.concepto, c.monto], (err) => {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return callback(err);
+                }
+
+                insertados++;
+                if (insertados === costosValidos.length) {
+                  actualizarVariantes();
+                }
+              });
             });
-          } else {
-            db.run('COMMIT');
-            callback(null, { id, ...datos });
           }
-        });
+        );
       }
     );
   });
 }
 
+
 function eliminarProducto(id, callback) {
-  // El CASCADE en la definición de la tabla se encarga de eliminar las variantes
+  // El CASCADE en la definición de la tabla se encarga de eliminar las variantes y costos adicionales
   db.run('DELETE FROM productos WHERE id = ?', [id], function (err) {
     if (err) {
       callback(err, null);

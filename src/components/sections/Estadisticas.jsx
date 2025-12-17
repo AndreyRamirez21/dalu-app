@@ -9,7 +9,8 @@ import {
   Calendar,
   PiggyBank,
   Package,
-  Info
+  Info,
+  Tag
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
@@ -27,6 +28,12 @@ const Estadisticas = () => {
     costosAdicionales: 0,
     gananciaBruta: 0,
     gananciaNeta: 0
+  });
+
+  const [costoProductosInventario, setCostoProductosInventario] = useState({
+    productos_con_costos: 0,
+    total_costos_adicionales: 0,
+    total_registros: 0
   });
 
   const [datosGrafica, setDatosGrafica] = useState([]);
@@ -52,6 +59,10 @@ const Estadisticas = () => {
       // Cargar top productos más vendidos
       const productos = await ipcRenderer.invoke('obtener-top-productos');
       setTopProductos(productos || []);
+
+      // ✅ NUEVO: Cargar estadísticas de costos adicionales de productos
+      const costosProductos = await ipcRenderer.invoke('obtener-estadisticas-costos-productos');
+      setCostoProductosInventario(costosProductos);
     } catch (error) {
       console.error('Error al cargar estadísticas:', error);
     } finally {
@@ -201,7 +212,55 @@ const Estadisticas = () => {
         </div>
       </div>
 
-      {/* FILA 2 - Ganancias y Márgenes */}
+      {/* ✅ NUEVA FILA: Costos Adicionales de Productos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Total Costos Adicionales de Productos */}
+        <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-xl shadow-sm border border-amber-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-amber-700 uppercase mb-1">
+                Costos Extras Productos
+              </div>
+              <div className="text-2xl font-bold text-amber-700">
+                ${costoProductosInventario.total_costos_adicionales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div className="p-3 bg-amber-200 rounded-lg">
+              <Tag className="text-amber-700" size={24} />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-amber-600 font-medium">
+              {costoProductosInventario.total_registros} costos registrados
+            </span>
+            <span className="text-amber-600">
+              Inventario
+            </span>
+          </div>
+        </div>
+
+        {/* Productos con Costos Adicionales */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
+                Productos con Extras
+              </div>
+              <div className="text-2xl font-bold text-gray-800">
+                {costoProductosInventario.productos_con_costos}
+              </div>
+            </div>
+            <div className="p-3 bg-teal-100 rounded-lg">
+              <Package className="text-teal-600" size={24} />
+            </div>
+          </div>
+          <div className="text-sm text-gray-500">
+            Productos en inventario
+          </div>
+        </div>
+      </div>
+
+      {/* FILA GANANCIAS - Ganancias y Márgenes */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         {/* Ganancia Bruta */}
         <div className={`rounded-xl shadow-sm border p-6 ${
@@ -445,7 +504,6 @@ const Estadisticas = () => {
           </ResponsiveContainer>
         </div>
       </div>
-
       {/* Top Productos Más Vendidos */}
       <div className="bg-white rounded-xl shadow-sm border p-6">
         <div className="mb-6">
