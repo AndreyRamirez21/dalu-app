@@ -188,6 +188,99 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
 
     console.log('✅ Tablas creadas correctamente');
   });
-}
+
+  //----------------------------------------------------------
+  //--------------- TABLAS DE MARCAS ALIADAS------------------
+  //----------------------------------------------------------
+
+  // Tabla de Marcas Aliadas
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS marcas_aliadas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT NOT NULL UNIQUE,
+      contacto_nombre TEXT,
+      contacto_telefono TEXT,
+      contacto_email TEXT,
+      porcentaje_comision REAL DEFAULT 0,
+      notas TEXT,
+      activo INTEGER DEFAULT 1,
+      fecha_creacion TEXT DEFAULT (datetime('now', 'localtime')),
+      fecha_actualizacion TEXT DEFAULT (datetime('now', 'localtime'))
+    );
+  `);
+
+  // Tabla de Productos de Marcas Aliadas
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS productos_marca_aliada (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      marca_aliada_id INTEGER NOT NULL,
+      referencia TEXT NOT NULL UNIQUE,
+      nombre TEXT NOT NULL,
+      categoria TEXT NOT NULL,
+      costo_base REAL NOT NULL,
+      precio_venta_base REAL NOT NULL,
+      imagen TEXT,
+      fecha_creacion TEXT DEFAULT (datetime('now', 'localtime')),
+      fecha_actualizacion TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (marca_aliada_id) REFERENCES marcas_aliadas (id) ON DELETE CASCADE
+    );
+  `);
+
+  // Tabla de Variantes de Productos de Marca Aliada
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS variantes_marca_aliada (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      producto_marca_id INTEGER NOT NULL,
+      talla TEXT NOT NULL,
+      cantidad INTEGER DEFAULT 0,
+      ajuste_precio REAL DEFAULT 0,
+      FOREIGN KEY (producto_marca_id) REFERENCES productos_marca_aliada (id) ON DELETE CASCADE
+    );
+  `);
+
+  // Tabla de Ventas de Marca Aliada (para tracking separado)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ventas_marca_aliada (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      venta_id INTEGER NOT NULL,
+      marca_aliada_id INTEGER NOT NULL,
+      producto_marca_id INTEGER NOT NULL,
+      variante_id INTEGER,
+      cantidad INTEGER NOT NULL,
+      precio_unitario REAL NOT NULL,
+      subtotal REAL NOT NULL,
+      comision_marca REAL,
+      ganancia_tienda REAL,
+      fecha_venta TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (marca_aliada_id) REFERENCES marcas_aliadas (id),
+      FOREIGN KEY (producto_marca_id) REFERENCES productos_marca_aliada (id),
+      FOREIGN KEY (variante_id) REFERENCES variantes_marca_aliada (id)
+    );
+  `);
+
+  // Índices para mejorar rendimiento
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_productos_marca_marca_id
+    ON productos_marca_aliada(marca_aliada_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_variantes_marca_producto_id
+    ON variantes_marca_aliada(producto_marca_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ventas_marca_marca_id
+    ON ventas_marca_aliada(marca_aliada_id);
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_ventas_marca_venta_id
+    ON ventas_marca_aliada(venta_id);
+  `);
+
+  console.log('✅ Tablas de Marcas Aliadas creadas exitosamente');
+};
+
 
 module.exports = initDatabase;

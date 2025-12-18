@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3, HardDrive } from 'lucide-react';
+import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3, HardDrive,Store } from 'lucide-react';
 
 const Sidebar = ({ activeSection, setActiveSection }) => {
   return (
@@ -94,7 +94,7 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
                 <button
                   onClick={() => setActiveSection('estadisticas')}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
-                    setActiveSection === 'estadisticas'
+                    activeSection === 'estadisticas'
                       ? 'bg-teal-50 text-teal-600'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -103,17 +103,31 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
                   <span className="font-medium">Estadísticas</span>
                 </button>
 
+
                                 <button
                                   onClick={() => setActiveSection('backups')}
                                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
-                                    setActiveSection === 'backups'
+                                    activeSection === 'backups'
                                       ? 'bg-teal-50 text-teal-600'
                                       : 'text-gray-600 hover:bg-gray-100'
                                   }`}
                                 >
                                   <HardDrive size={20} />
-                                  <span className="font-medium">GestionBackups</span>
+                                  <span className="font-medium">Respaldos</span>
                                 </button>
+
+                                <button
+                                onClick={() => setActiveSection('marcas-aliadas')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition ${
+                                activeSection === 'marcas'
+                                ? 'bg-teal-50 text-teal-600'
+                                : 'text-gray-600 hover:bg-gray-100'
+                                }`}
+                                 >
+                                 <Store size={20} />
+                                 <span className="font-medium">Marcas alidas</span>
+                                 </button>
+
 
 
 

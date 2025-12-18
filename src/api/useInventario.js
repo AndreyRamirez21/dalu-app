@@ -30,6 +30,8 @@ export const useInventario = () => {
   const [notificacion, setNotificacion] = useState(null);
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [productosExpandidos, setProductosExpandidos] = useState({});
+  const [referenciasExpandidas, setReferenciasExpandidas] = useState({}); // ← NUEVO
+
 
   // ✅ ACTUALIZADO: Nuevas categorías agregadas
   const categorias = [
@@ -127,6 +129,39 @@ const formularioInicial = {
     return coincideBusqueda && coincideCategoria;
   });
 
+    const calcularStockTotal = (variantes) => {
+      if (!variantes || variantes.length === 0) return 0;
+      return variantes.reduce((total, v) => total + v.cantidad, 0);
+    };
+
+
+
+// ✅ NUEVO: Agrupar productos por nombre
+const productosAgrupados = productosFiltrados.reduce((grupos, producto) => {
+  const clave = `${producto.nombre}-${producto.categoria}`; // Agrupar por nombre + categoría
+
+  if (!grupos[clave]) {
+    grupos[clave] = {
+      id: clave, // ID único para el grupo
+      nombre: producto.nombre,
+      categoria: producto.categoria,
+      referencias: [],
+      stockTotal: 0,
+      imagen: producto.imagen // Tomar la primera imagen encontrada
+    };
+  }
+
+  // Agregar esta referencia al grupo
+  grupos[clave].referencias.push(producto);
+  grupos[clave].stockTotal += calcularStockTotal(producto.variantes);
+
+  return grupos;
+}, {});
+
+// Convertir objeto a array
+const productosAgrupadosArray = Object.values(productosAgrupados);
+
+
   const toggleExpandirProducto = (productoId) => {
     setProductosExpandidos(prev => ({
       ...prev,
@@ -134,10 +169,14 @@ const formularioInicial = {
     }));
   };
 
-  const calcularStockTotal = (variantes) => {
-    if (!variantes || variantes.length === 0) return 0;
-    return variantes.reduce((total, v) => total + v.cantidad, 0);
+  // ✅ NUEVO: Toggle para referencias individuales
+  const toggleExpandirReferencia = (referenciaId) => {
+    setReferenciasExpandidas(prev => ({
+      ...prev,
+      [referenciaId]: !prev[referenciaId]
+    }));
   };
+
 
   // Estadísticas
   const totalProductos = productos.length;
@@ -549,6 +588,7 @@ const datosActualizados = {
     setNotificacion,
     modalConfirmacion,
     productosExpandidos,
+    referenciasExpandidas, // ← AGREGAR ESTO
     formulario,
 
     // Constantes
@@ -558,6 +598,8 @@ const datosActualizados = {
 
     // Datos computados
     productosFiltrados,
+    productosAgrupados: productosAgrupadosArray, // ← AGREGAR ESTO
+
     totalProductos,
     stockBajo,
     agotados,
@@ -566,6 +608,7 @@ const datosActualizados = {
     cargarProductos,
     totalUnidades,
     toggleExpandirProducto,
+    toggleExpandirReferencia, // ← AGREGAR ESTO
     calcularStockTotal,
     getEstadoStyle,
     getEstadoTexto,

@@ -1,7 +1,6 @@
 const { app, BrowserWindow, ipcMain, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
-
 const isDev = !app.isPackaged;
 const url = require('url');
 
@@ -2078,6 +2077,385 @@ ipcMain.handle('restaurar-backup', async (event, fileName) => {
     console.error('Error al restaurar backup:', error);
     return { success: false, error: error.message };
   }
+});
+
+
+// ==================== MARCAS ALIADAS (CORREGIDO PARA SQLITE3) ====================
+
+// Obtener todas las marcas
+ipcMain.handle('obtener-marcas-aliadas', async () => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT
+        m.*,
+        COUNT(DISTINCT p.id) as total_productos,
+        COALESCE(SUM(v.cantidad), 0) as total_stock
+      FROM marcas_aliadas m
+      LEFT JOIN productos_marca_aliada p ON m.id = p.marca_aliada_id
+      LEFT JOIN variantes_marca_aliada v ON p.id = v.producto_marca_id
+      GROUP BY m.id
+      ORDER BY m.nombre ASC
+    `;
+
+    db.db.all(query, [], (err, marcas) => {
+      if (err) {
+        console.error('Error al obtener marcas:', err);
+        reject(err);
+      } else {
+        resolve(marcas);
+      }
+    });
+  });
+});
+
+// Agregar marca aliada
+ipcMain.handle('agregar-marca-aliada', async (event, marca) => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      INSERT INTO marcas_aliadas (
+        nombre, contacto_nombre, contacto_telefono, contacto_email,
+        porcentaje_comision, notas, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.db.run(
+      query,
+      [
+        marca.nombre,
+        marca.contacto_nombre,
+        marca.contacto_telefono,
+        marca.contacto_email,
+        marca.porcentaje_comision,
+        marca.notas,
+        marca.activo
+      ],
+      function (err) {
+        if (err) {
+          console.error('Error al agregar marca:', err);
+          reject(err);
+        } else {
+          resolve({ id: this.lastID });
+        }
+      }
+    );
+  });
+});
+
+// Actualizar marca aliada
+ipcMain.handle('actualizar-marca-aliada', async (event, id, marca) => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      UPDATE marcas_aliadas SET
+        nombre = ?,
+        contacto_nombre = ?,
+        contacto_telefono = ?,
+        contacto_email = ?,
+        porcentaje_comision = ?,
+        notas = ?,
+        activo = ?,
+        fecha_actualizacion = datetime('now', 'localtime')
+      WHERE id = ?
+    `;
+
+    db.db.run(
+      query,
+      [
+        marca.nombre,
+        marca.contacto_nombre,
+        marca.contacto_telefono,
+        marca.contacto_email,
+        marca.porcentaje_comision,
+        marca.notas,
+        marca.activo,
+        id
+      ],
+      function (err) {
+        if (err) {
+          console.error('Error al actualizar marca:', err);
+          reject(err);
+        } else {
+          resolve({ success: true });
+        }
+      }
+    );
+  });
+});
+
+// Eliminar marca aliada
+ipcMain.handle('eliminar-marca-aliada', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    db.db.run('DELETE FROM marcas_aliadas WHERE id = ?', [id], function (err) {
+      if (err) {
+        console.error('Error al eliminar marca:', err);
+        reject(err);
+      } else {
+        resolve({ success: true });
+      }
+    });
+  });
+});
+
+// Obtener productos de una marca
+ipcMain.handle('obtener-productos-marca-aliada', async (event, marcaId) => {
+  return new Promise((resolve, reject) => {
+    // Primero obtener productos
+    const queryProductos = `
+      SELECT * FROM productos_marca_aliada
+      WHERE marca_aliada_id = ?
+      ORDER BY nombre ASC
+    `;
+
+    db.db.all(queryProductos, [marcaId], (err, productos) => {
+      if (err) {
+        console.error('Error al obtener productos de marca:', err);
+        reject(err);
+        return;
+      }
+
+      // Si no hay productos, devolver array vacío
+      if (productos.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      // Obtener variantes para cada producto
+      let productosCompletados = 0;
+      productos.forEach((producto) => {
+        const queryVariantes = `
+          SELECT * FROM variantes_marca_aliada
+          WHERE producto_marca_id = ?
+          ORDER BY talla ASC
+        `;
+
+        db.db.all(queryVariantes, [producto.id], (err, variantes) => {
+          if (err) {
+            console.error('Error al obtener variantes:', err);
+            producto.variantes = [];
+          } else {
+            producto.variantes = variantes;
+          }
+
+          productosCompletados++;
+          if (productosCompletados === productos.length) {
+            resolve(productos);
+          }
+        });
+      });
+    });
+  });
+});
+
+// Agregar producto de marca aliada
+ipcMain.handle('agregar-producto-marca-aliada', async (event, producto) => {
+  return new Promise((resolve, reject) => {
+    // Guardar imagen si existe
+    let rutaImagen = null;
+    if (producto.imagen) {
+      const imagenesDir = path.join(app.getPath('userData'), 'imagenes');
+      if (!fs.existsSync(imagenesDir)) {
+        fs.mkdirSync(imagenesDir, { recursive: true });
+      }
+      rutaImagen = path.join(imagenesDir, `marca_${Date.now()}_${producto.imagen.name}`);
+      const base64Data = producto.imagen.data.replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(rutaImagen, base64Data, 'base64');
+    }
+
+    // Insertar producto
+    const queryProducto = `
+      INSERT INTO productos_marca_aliada (
+        marca_aliada_id, referencia, nombre, categoria,
+        costo_base, precio_venta_base, imagen
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.db.run(
+      queryProducto,
+      [
+        producto.marca_aliada_id,
+        producto.referencia,
+        producto.nombre,
+        producto.categoria,
+        producto.costo_base,
+        producto.precio_venta_base,
+        rutaImagen
+      ],
+      function (err) {
+        if (err) {
+          console.error('Error al agregar producto de marca:', err);
+          // Eliminar imagen si falla
+          if (rutaImagen && fs.existsSync(rutaImagen)) {
+            fs.unlinkSync(rutaImagen);
+          }
+          reject(err);
+          return;
+        }
+
+        const productoId = this.lastID;
+
+        // Insertar variantes
+        if (!producto.variantes || producto.variantes.length === 0) {
+          resolve({ id: productoId });
+          return;
+        }
+
+        const queryVariante = `
+          INSERT INTO variantes_marca_aliada (
+            producto_marca_id, talla, cantidad, ajuste_precio
+          ) VALUES (?, ?, ?, ?)
+        `;
+
+        let variantesInsertadas = 0;
+        let errorVariante = null;
+
+        producto.variantes.forEach((variante) => {
+          db.db.run(
+            queryVariante,
+            [productoId, variante.talla, variante.cantidad, variante.ajuste_precio],
+            (err) => {
+              if (err && !errorVariante) {
+                errorVariante = err;
+              }
+              variantesInsertadas++;
+
+              if (variantesInsertadas === producto.variantes.length) {
+                if (errorVariante) {
+                  console.error('Error al insertar variantes:', errorVariante);
+                  reject(errorVariante);
+                } else {
+                  resolve({ id: productoId });
+                }
+              }
+            }
+          );
+        });
+      }
+    );
+  });
+});
+
+// Actualizar producto de marca aliada
+ipcMain.handle('actualizar-producto-marca-aliada', async (event, id, producto) => {
+  return new Promise((resolve, reject) => {
+    // Actualizar imagen si hay una nueva
+    let rutaImagen = null;
+    if (producto.imagen) {
+      const imagenesDir = path.join(app.getPath('userData'), 'imagenes');
+      if (!fs.existsSync(imagenesDir)) {
+        fs.mkdirSync(imagenesDir, { recursive: true });
+      }
+      rutaImagen = path.join(imagenesDir, `marca_${Date.now()}_${producto.imagen.name}`);
+      const base64Data = producto.imagen.data.replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(rutaImagen, base64Data, 'base64');
+
+      // Eliminar imagen anterior si existe
+      db.db.get('SELECT imagen FROM productos_marca_aliada WHERE id = ?', [id], (err, row) => {
+        if (!err && row && row.imagen && fs.existsSync(row.imagen)) {
+          fs.unlinkSync(row.imagen);
+        }
+      });
+    }
+
+    // Actualizar producto
+    const updateQuery = rutaImagen
+      ? `UPDATE productos_marca_aliada SET
+          referencia = ?, nombre = ?, categoria = ?,
+          costo_base = ?, precio_venta_base = ?, imagen = ?,
+          fecha_actualizacion = datetime('now', 'localtime')
+         WHERE id = ?`
+      : `UPDATE productos_marca_aliada SET
+          referencia = ?, nombre = ?, categoria = ?,
+          costo_base = ?, precio_venta_base = ?,
+          fecha_actualizacion = datetime('now', 'localtime')
+         WHERE id = ?`;
+
+    const params = rutaImagen
+      ? [producto.referencia, producto.nombre, producto.categoria,
+         producto.costo_base, producto.precio_venta_base, rutaImagen, id]
+      : [producto.referencia, producto.nombre, producto.categoria,
+         producto.costo_base, producto.precio_venta_base, id];
+
+    db.db.run(updateQuery, params, function (err) {
+      if (err) {
+        console.error('Error al actualizar producto:', err);
+        reject(err);
+        return;
+      }
+
+      // Eliminar variantes anteriores
+      db.db.run('DELETE FROM variantes_marca_aliada WHERE producto_marca_id = ?', [id], (err) => {
+        if (err) {
+          console.error('Error al eliminar variantes:', err);
+          reject(err);
+          return;
+        }
+
+        // Insertar nuevas variantes
+        if (!producto.variantes || producto.variantes.length === 0) {
+          resolve({ success: true });
+          return;
+        }
+
+        const queryVariante = `
+          INSERT INTO variantes_marca_aliada (
+            producto_marca_id, talla, cantidad, ajuste_precio
+          ) VALUES (?, ?, ?, ?)
+        `;
+
+        let variantesInsertadas = 0;
+        let errorVariante = null;
+
+        producto.variantes.forEach((variante) => {
+          db.db.run(
+            queryVariante,
+            [id, variante.talla, variante.cantidad, variante.ajuste_precio],
+            (err) => {
+              if (err && !errorVariante) {
+                errorVariante = err;
+              }
+              variantesInsertadas++;
+
+              if (variantesInsertadas === producto.variantes.length) {
+                if (errorVariante) {
+                  console.error('Error al insertar variantes:', errorVariante);
+                  reject(errorVariante);
+                } else {
+                  resolve({ success: true });
+                }
+              }
+            }
+          );
+        });
+      });
+    });
+  });
+});
+
+// Eliminar producto de marca aliada
+ipcMain.handle('eliminar-producto-marca-aliada', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    // Obtener ruta de imagen para eliminarla
+    db.db.get('SELECT imagen FROM productos_marca_aliada WHERE id = ?', [id], (err, producto) => {
+      if (err) {
+        console.error('Error al obtener producto:', err);
+        reject(err);
+        return;
+      }
+
+      // Eliminar producto (CASCADE eliminará variantes)
+      db.db.run('DELETE FROM productos_marca_aliada WHERE id = ?', [id], function (err) {
+        if (err) {
+          console.error('Error al eliminar producto de marca:', err);
+          reject(err);
+        } else {
+          // Eliminar imagen del sistema de archivos
+          if (producto && producto.imagen && fs.existsSync(producto.imagen)) {
+            fs.unlinkSync(producto.imagen);
+          }
+          resolve({ success: true });
+        }
+      });
+    });
+  });
 });
 // ==================== APP LIFECYCLE ====================
 

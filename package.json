@@ -92,13 +92,14 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icons/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
-
     },
     "nsis": {
       "oneClick": false,
@@ -115,5 +116,4 @@
       "perMachine": false
     }
   }
-
 }

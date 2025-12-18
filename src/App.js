@@ -9,6 +9,7 @@ import Inventario from './components/sections/Inventario';
 import Clientes from './components/sections/Clientes';
 import Estadisticas from './components/sections/Estadisticas';
 import Backups from './components/sections/GestionBackups';
+import { MarcasAliadas } from './components/sections/marcas/MarcasAliadas';
 
 const App = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -31,6 +32,8 @@ const App = () => {
         return <Estadisticas />;
       case 'backups':
         return <Backups />;
+      case 'marcas-aliadas':
+        return <MarcasAliadas />;
       default:
         return <Dashboard />;
 
@@ -70,7 +73,12 @@ const App = () => {
             backups: {
             title: 'Gestión de Backups',
             subtitle: 'Gestion de los respaldos de la base de datos.'
-            }
+            },
+
+      marcas: {
+      title: 'Gestión de marcas aliadas',
+      subtitle: 'Gestion de tus marcas aliadas.'
+      }
     };
     return titles[activeSection] || titles.dashboard;
   };
