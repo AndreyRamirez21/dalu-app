@@ -11,7 +11,9 @@ import {
   UserCheck,
   Gift,
   Edit,
-  Trash2
+  Trash2,
+  CreditCard,
+  CheckCircle
 } from 'lucide-react';
 
 const { ipcRenderer } = window.require('electron');
@@ -55,18 +57,81 @@ const Clientes = () => {
   };
 
   const getNivelFidelidad = (numCompras) => {
-    if (numCompras >= 10) return { nivel: 'Diamante', color: 'bg-purple-100 text-purple-700', icon: '💎' };
-    if (numCompras >= 5) return { nivel: 'Oro', color: 'bg-yellow-100 text-yellow-700', icon: '🥇' };
-    if (numCompras >= 3) return { nivel: 'Plata', color: 'bg-gray-100 text-gray-700', icon: '🥈' };
-    return { nivel: 'Nuevo', color: 'bg-blue-100 text-blue-700', icon: '⭐' };
+    if (numCompras >= 6) return { nivel: 'Premium', color: 'bg-blue-100 text-blue-700', icon: '💎' };
+    if (numCompras >= 3) return { nivel: 'Gold', color: 'bg-yellow-100 text-yellow-700', icon: '🥇' };
+    if (numCompras >= 1) return { nivel: 'Activo', color: 'bg-green-100 text-green-700', icon: '⭐' };
+    return { nivel: 'Nuevo', color: 'bg-gray-100 text-gray-700', icon: '👤' };
   };
 
-  const getDescuentoFidelidad = (numCompras) => {
-    if (numCompras >= 10) return 15;
-    if (numCompras >= 5) return 10;
-    if (numCompras >= 3) return 5;
-    return 0;
-  };
+const getIconoEstadoFidelidad = (cliente) => {
+  const { numero_compras, compras_con_tarjeta, tarjeta_fidelidad_entregada,
+          descuento_aplicado_3, descuento_aplicado_6, fecha_primera_compra } = cliente;
+
+  console.log('🔍 Cliente:', cliente.nombre, {
+    numero_compras,
+    compras_con_tarjeta,
+    tarjeta_fidelidad_entregada,
+    descuento_aplicado_3,
+    descuento_aplicado_6
+  });
+
+  // Verificar si pasaron 10 meses
+  const fechaPrimeraCompra = fecha_primera_compra ? new Date(fecha_primera_compra) : null;
+  const hace10Meses = fechaPrimeraCompra ?
+    (Date.now() - fechaPrimeraCompra.getTime()) / (1000 * 60 * 60 * 24 * 30) > 10 : false;
+
+  // Alerta: Entregar tarjeta en la 1ra compra
+  if (numero_compras === 1 && !tarjeta_fidelidad_entregada) {
+    return {
+      icono: '🎁',
+      mensaje: 'Entregar tarjeta de fidelidad',
+      color: 'text-purple-600 bg-purple-50',
+      border: 'border-purple-300'
+    };
+  }
+
+  // Alerta: Descuento del 10% disponible (3ra compra)
+  if (numero_compras === 3 && compras_con_tarjeta >= 2 && !descuento_aplicado_3) {
+    return {
+      icono: '🎉',
+      mensaje: '10% descuento disponible',
+      color: 'text-green-600 bg-green-50',
+      border: 'border-green-300'
+    };
+  }
+
+  // Alerta: Descuento del 15% disponible (6ta compra)
+  if (numero_compras === 6 && compras_con_tarjeta >= 5 && !descuento_aplicado_6 && !hace10Meses) {
+    return {
+      icono: '💎',
+      mensaje: '15% descuento disponible',
+      color: 'text-blue-600 bg-blue-50',
+      border: 'border-blue-300'
+    };
+  }
+
+  // Alerta: Fidelidad vencida
+  if (hace10Meses && numero_compras < 3) {
+    return {
+      icono: '⏰',
+      mensaje: 'Fidelidad vencida',
+      color: 'text-red-600 bg-red-50',
+      border: 'border-red-300'
+    };
+  }
+
+  // Cliente activo con tarjeta
+  if (tarjeta_fidelidad_entregada && numero_compras >= 1) {
+    return {
+      icono: '✅',
+      mensaje: `${compras_con_tarjeta || 0} compras con tarjeta`,
+      color: 'text-gray-600 bg-gray-50',
+      border: 'border-gray-200'
+    };
+  }
+
+  return null;
+};
 
   const clientesFiltrados = clientes.filter(cliente =>
     cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -115,36 +180,50 @@ const Clientes = () => {
         </div>
       </div>
 
-      {/* Programa de Fidelidad Info */}
+      {/* Programa de Fidelidad Info - ACTUALIZADO */}
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6 mb-8">
         <div className="flex items-center space-x-3 mb-4">
           <Gift className="text-purple-600" size={28} />
           <h3 className="text-xl font-bold text-gray-800">Programa de Fidelidad</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <span className="text-2xl">🥈</span>
-              <div className="font-bold text-gray-800">Nivel Plata</div>
-            </div>
-            <div className="text-sm text-gray-600">3-4 compras</div>
-            <div className="text-lg font-bold text-teal-600 mt-1">5% descuento</div>
+
+        <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
+          <div className="flex items-center space-x-2 mb-2">
+            <CreditCard className="text-purple-600" size={20} />
+            <h4 className="font-bold text-gray-800">¿Cómo funciona?</h4>
           </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
+          <ol className="text-sm text-gray-700 space-y-1 ml-6 list-decimal">
+            <li>En la <strong>segunda compra</strong>, entrega la tarjeta de fidelidad al cliente</li>
+            <li>El cliente debe presentar la tarjeta en cada compra para acumular beneficios</li>
+            <li>Los descuentos se aplican automáticamente al cumplir los requisitos</li>
+          </ol>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg p-4 border border-green-200">
             <div className="flex items-center space-x-2 mb-2">
-              <span className="text-2xl">🥇</span>
-              <div className="font-bold text-gray-800">Nivel Oro</div>
+              <span className="text-2xl">🎉</span>
+              <div className="font-bold text-gray-800">Descuento 10%</div>
             </div>
-            <div className="text-sm text-gray-600">5-9 compras</div>
-            <div className="text-lg font-bold text-yellow-600 mt-1">10% descuento</div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div>✓ En la <strong>3ra compra</strong></div>
+              <div>✓ Haber presentado tarjeta en compras #2 y #3</div>
+            </div>
+            <div className="text-lg font-bold text-green-600 mt-2">10% OFF</div>
           </div>
-          <div className="bg-white rounded-lg p-4 border border-gray-200">
+
+          <div className="bg-white rounded-lg p-4 border border-blue-200">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-2xl">💎</span>
-              <div className="font-bold text-gray-800">Nivel Diamante</div>
+              <div className="font-bold text-gray-800">Descuento 15%</div>
             </div>
-            <div className="text-sm text-gray-600">10+ compras</div>
-            <div className="text-lg font-bold text-purple-600 mt-1">15% descuento</div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div>✓ En la <strong>6ta compra</strong></div>
+              <div>✓ Haber presentado tarjeta desde compra #2 hasta #6</div>
+              <div>✓ Compra mayor a <strong>$30,000</strong></div>
+              <div>✓ Dentro de <strong>10 meses</strong> desde 1ra compra</div>
+            </div>
+            <div className="text-lg font-bold text-blue-600 mt-2">15% OFF</div>
           </div>
         </div>
       </div>
@@ -181,15 +260,15 @@ const Clientes = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Contacto</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Compras</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Total Gastado</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Nivel Fidelidad</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Descuento</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Nivel</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Estado Fidelidad</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Última Compra</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {clientesFiltrados.map((cliente) => {
                   const fidelidad = getNivelFidelidad(cliente.numero_compras);
-                  const descuento = getDescuentoFidelidad(cliente.numero_compras);
+                  const estadoFidelidad = getIconoEstadoFidelidad(cliente);
 
                   return (
                     <tr key={cliente.id} className="hover:bg-gray-50 transition">
@@ -239,12 +318,13 @@ const Clientes = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {descuento > 0 ? (
-                          <div className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full font-bold">
-                            {descuento}% OFF
+                        {estadoFidelidad ? (
+                          <div className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${estadoFidelidad.color} ${estadoFidelidad.border}`}>
+                            <span className="text-2xl mb-1">{estadoFidelidad.icono}</span>
+                            <span className="text-xs font-medium">{estadoFidelidad.mensaje}</span>
                           </div>
                         ) : (
-                          <span className="text-gray-400 text-sm">Sin descuento</span>
+                          <span className="text-gray-400 text-sm">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-center">

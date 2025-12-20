@@ -38,12 +38,18 @@ function crearVenta(datosVenta, callback) {
     cambio,
     metodo_pago,
     notas,
-    costos_adicionales
+    costos_adicionales,
+    descuento_porcentaje,  // ✅ Recibir desde frontend
+    descuento_monto        // ✅ Recibir desde frontend
   } = datosVenta;
 
   console.log('🔵 Iniciando creación de venta');
   console.log('🔵 Productos recibidos:', productos);
   console.log('🔵 Costos adicionales recibidos:', costos_adicionales);
+  console.log('💰 Descuento recibido:', {
+    porcentaje: descuento_porcentaje,
+    monto: descuento_monto
+  });
 
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
@@ -57,10 +63,36 @@ function crearVenta(datosVenta, callback) {
 
       const estado = monto_pagado >= total ? 'Pagado' : 'Pendiente';
 
+      // ✅ CRÍTICO: Asegurarse de que los valores no sean undefined
+      const porcentajeDescuento = descuento_porcentaje !== undefined ? descuento_porcentaje : 0;
+      const montoDescuento = descuento_monto !== undefined ? descuento_monto : 0;
+
+      console.log('💾 Guardando venta con descuento:', {
+        porcentaje: porcentajeDescuento,
+        monto: montoDescuento
+      });
+
       db.run(
-        `INSERT INTO ventas (numero_venta, cliente_id, cliente_nombre, subtotal, total, monto_pagado, cambio, estado, metodo_pago, notas)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [numeroVenta, cliente_id || null, cliente_nombre, subtotal, total, monto_pagado, cambio || 0, estado, metodo_pago, notas || null],
+        `INSERT INTO ventas (
+          numero_venta, cliente_id, cliente_nombre, subtotal, total,
+          monto_pagado, cambio, estado, metodo_pago, notas,
+          descuento_porcentaje, descuento_monto
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          numeroVenta,
+          cliente_id || null,
+          cliente_nombre,
+          subtotal,
+          total,
+          monto_pagado,
+          cambio || 0,
+          estado,
+          metodo_pago,
+          notas || null,
+          porcentajeDescuento,  // ✅ Usar la variable validada
+          montoDescuento        // ✅ Usar la variable validada
+        ],
         function (err) {
           if (err) {
             console.error('❌ Error al insertar venta:', err);
@@ -71,6 +103,10 @@ function crearVenta(datosVenta, callback) {
 
           const ventaId = this.lastID;
           console.log('✅ Venta insertada con ID:', ventaId);
+          console.log('✅ Descuento guardado:', {
+            porcentaje: porcentajeDescuento,
+            monto: montoDescuento
+          });
 
           if (!productos || productos.length === 0) {
             console.log('⚠️ No hay productos para guardar');
@@ -291,7 +327,7 @@ function obtenerEstadisticasVentas(callback) {
   db.get(
     `SELECT
       COUNT(*) as total_ventas,
-    SUM(v.monto_pagado) as total_vendido,
+      SUM(v.monto_pagado) as total_vendido,
       SUM(CASE WHEN v.estado = 'Pendiente' THEN (v.total - v.monto_pagado) ELSE 0 END) as total_pendiente
     FROM ventas v
     WHERE v.estado != 'Cancelado'

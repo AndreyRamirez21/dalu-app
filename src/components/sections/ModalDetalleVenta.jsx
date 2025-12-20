@@ -206,26 +206,40 @@ const formatDate = (dateString) => {
             </div>
           )}
 
-          {/* Resumen Financiero */}
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border">
-            <h4 className="font-bold text-gray-800 mb-4">Resumen Financiero</h4>
-            <div className="space-y-3">
+{/* Resumen Financiero */}
+        <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border">
+          <h4 className="font-bold text-gray-800 mb-4">Resumen Financiero</h4>
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Subtotal productos:</span>
+              <span className="font-medium text-gray-800">${Number(detalleCompleto.subtotal || 0).toFixed(2)}</span>
+            </div>
+
+            {totalCostosAdicionales > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Subtotal productos:</span>
-                <span className="font-medium text-gray-800">${Number(detalleCompleto.subtotal || 0).toFixed(2)}</span>
+                <span className="text-gray-600">Costos adicionales:</span>
+                <span className="font-medium text-gray-800">${Number(totalCostosAdicionales).toFixed(2)}</span>
               </div>
+            )}
 
-              {totalCostosAdicionales > 0 && (
+            {/* ✅ MOSTRAR DESCUENTO DE FIDELIDAD CON DISEÑO DESTACADO */}
+            {detalleCompleto.descuento_porcentaje > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 -mx-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Costos adicionales:</span>
-                  <span className="font-medium text-gray-800">${Number(totalCostosAdicionales).toFixed(2)}</span>
+                  <span className="text-green-700 font-medium">
+                    🎉 Descuento de fidelidad ({detalleCompleto.descuento_porcentaje}%):
+                  </span>
+                  <span className="font-bold text-green-600">
+                    -${Number(detalleCompleto.descuento_monto || 0).toFixed(2)}
+                  </span>
                 </div>
-              )}
-
-              <div className="border-t pt-3 flex justify-between">
-                <span className="font-bold text-gray-800">Total:</span>
-                <span className="font-bold text-xl text-teal-600">${Number(detalleCompleto.total).toFixed(2)}</span>
               </div>
+            )}
+
+            <div className="border-t pt-3 flex justify-between">
+              <span className="font-bold text-gray-800">Total:</span>
+              <span className="font-bold text-xl text-teal-600">${Number(detalleCompleto.total).toFixed(2)}</span>
+            </div>
 
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Monto pagado:</span>

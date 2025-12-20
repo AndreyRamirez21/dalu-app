@@ -79,19 +79,28 @@ module.exports = {
     obtenerHistorialAbonos: deudasClientesModel.obtenerHistorialAbonos
   },
 
-  // ==================== CLIENTES ====================
-  clientes: {
-    agregar: clientesModel.agregarCliente,
-    obtener: clientesModel.obtenerClientes,
-    obtenerPorId: clientesModel.obtenerClientePorId,
-    obtenerPorCedula: clientesModel.obtenerClientePorCedula,
-    buscar: clientesModel.buscarClientes,
-    actualizar: clientesModel.actualizarCliente,
-    eliminar: clientesModel.eliminarCliente,
-    actualizarEstadisticas: clientesModel.actualizarEstadisticasCliente,
-    obtenerEstadisticas: clientesModel.obtenerEstadisticasCliente,
-    obtenerTop: clientesModel.obtenerTopClientes
-  },
+// ==================== CLIENTES ====================
+clientes: {
+  agregar: clientesModel.agregarCliente,
+  obtener: clientesModel.obtenerClientes,
+  obtenerPorId: clientesModel.obtenerClientePorId,
+  obtenerPorCedula: clientesModel.obtenerClientePorCedula,
+  buscar: clientesModel.buscarClientes,
+  actualizar: clientesModel.actualizarCliente,
+  eliminar: clientesModel.eliminarCliente,
+  actualizarEstadisticas: clientesModel.actualizarEstadisticasCliente,
+  obtenerEstadisticas: clientesModel.obtenerEstadisticasCliente,
+  obtenerTop: clientesModel.obtenerTopClientes,
+
+  // 🎯 AGREGAR ESTAS LÍNEAS DE FIDELIDAD:
+  verificarDescuentoFidelidad: clientesModel.verificarDescuentoFidelidad,
+  registrarEntregaTarjeta: clientesModel.registrarEntregaTarjeta,
+  registrarPresentacionTarjeta: clientesModel.registrarPresentacionTarjeta,
+  marcarDescuentoAplicado3: clientesModel.marcarDescuentoAplicado3,
+  marcarDescuentoAplicado6: clientesModel.marcarDescuentoAplicado6,
+  reiniciarFidelidad: clientesModel.reiniciarFidelidad,
+  verificarYReiniciarFidelidad: clientesModel.verificarYReiniciarFidelidad
+},
 
   // ==================== EXPORTACIONES LEGACY (compatibilidad con código anterior) ====================
   // Ventas
@@ -146,15 +155,24 @@ module.exports = {
   obtenerEstadisticasDeudasClientes: deudasClientesModel.obtenerEstadisticasDeudasClientes,
   obtenerHistorialAbonos: deudasClientesModel.obtenerHistorialAbonos,
 
-  // Clientes
-  agregarCliente: clientesModel.agregarCliente,
-  obtenerClientes: clientesModel.obtenerClientes,
-  obtenerClientePorId: clientesModel.obtenerClientePorId,
-  obtenerClientePorCedula: clientesModel.obtenerClientePorCedula,
-  buscarClientes: clientesModel.buscarClientes,
-  actualizarCliente: clientesModel.actualizarCliente,
-  eliminarCliente: clientesModel.eliminarCliente,
-  actualizarEstadisticasCliente: clientesModel.actualizarEstadisticasCliente,
-  obtenerEstadisticasCliente: clientesModel.obtenerEstadisticasCliente,
-  obtenerTopClientes: clientesModel.obtenerTopClientes
+// Clientes
+agregarCliente: clientesModel.agregarCliente,
+obtenerClientes: clientesModel.obtenerClientes,
+obtenerClientePorId: clientesModel.obtenerClientePorId,
+obtenerClientePorCedula: clientesModel.obtenerClientePorCedula,
+buscarClientes: clientesModel.buscarClientes,
+actualizarCliente: clientesModel.actualizarCliente,
+eliminarCliente: clientesModel.eliminarCliente,
+actualizarEstadisticasCliente: clientesModel.actualizarEstadisticasCliente,
+obtenerEstadisticasCliente: clientesModel.obtenerEstadisticasCliente,
+obtenerTopClientes: clientesModel.obtenerTopClientes,
+
+// 🎯 AGREGAR ESTAS LÍNEAS DE FIDELIDAD:
+verificarDescuentoFidelidad: clientesModel.verificarDescuentoFidelidad,
+registrarEntregaTarjeta: clientesModel.registrarEntregaTarjeta,
+registrarPresentacionTarjeta: clientesModel.registrarPresentacionTarjeta,
+marcarDescuentoAplicado3: clientesModel.marcarDescuentoAplicado3,
+marcarDescuentoAplicado6: clientesModel.marcarDescuentoAplicado6,
+reiniciarFidelidad: clientesModel.reiniciarFidelidad,
+verificarYReiniciarFidelidad: clientesModel.verificarYReiniciarFidelidad
 };

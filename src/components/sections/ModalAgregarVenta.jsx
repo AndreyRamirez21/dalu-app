@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { X, Plus, Trash2, ShoppingCart, DollarSign, Package, CreditCard, Minus, User, Phone, Mail, CreditCard as IdCard, Search, ChevronDown } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingCart, DollarSign, Package, CreditCard, Minus,Gift, Award, Sparkles, User, Phone, Mail, CreditCard as IdCard, Search, ChevronDown } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import { ModalMensaje } from '../common/ModalMensaje';
+import {useFidelidadVenta} from '../../api/useFidelidadVenta';
 
 
 const { ipcRenderer } = window.require('electron');
@@ -202,14 +203,30 @@ useEffect(() => {
 const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   const { generarNumeroVenta, crearVenta, loading } = useVentas();
 
+  // ✅ HOOK DE FIDELIDAD (MANTENER ESTO)
+  const {
+    descuentoAplicable,
+    mostrarAlertaTarjeta,
+    tarjetaPresentada,
+    verificarFidelidadCliente,
+    registrarPresentacionTarjeta,
+    calcularMontoDescuento, // ⬅️ AGREGAR ESTA LÍNEA
+    aplicarDescuentoFidelidad,
+    procesarFidelidadPostVenta,
+    resetearFidelidad,
+    requiereEntregarTarjeta,
+    descuentoActivo,      // ← AGREGAR
+    toggleDescuento
+  } = useFidelidadVenta();
+
   const [paso, setPaso] = useState(1);
   const [numeroVenta, setNumeroVenta] = useState('');
   const [mostrarMensaje, setMostrarMensaje] = useState(false);
   const [mensajeModal, setMensajeModal] = useState("");
-  const [tipoMensaje, setTipoMensaje] = useState("info"); // 'exito' | 'error' | 'info'
+  const [tipoMensaje, setTipoMensaje] = useState("info");
 
-const [imagenAmpliada, setImagenAmpliada] = useState(null);
-const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
+  const [imagenAmpliada, setImagenAmpliada] = useState(null);
+  const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
 
   // Productos
   const [categorias, setCategorias] = useState([]);
@@ -233,6 +250,7 @@ const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
     correo: '',
     celular: ''
   });
+
 
   // Pago
   const [metodoPago, setMetodoPago] = useState('Efectivo');
@@ -315,62 +333,59 @@ const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
     }
   };
 
-const agregarProducto = (producto, variante) => {
-if (variante && variante.cantidad <= 0) {
-  setMensajeModal(`Sin stock disponible para ${producto.nombre} - Talla ${variante.talla}`);
-  setTipoMensaje('error');
-  setMostrarMensaje(true);
-  return;
-}
-
-
-  const productoExistente = productosSeleccionados.find(
-    p => p.producto_id === producto.id && p.variante_id === variante?.id
-  );
-
-  if (productoExistente) {
-    const nuevaCantidad = productoExistente.cantidad + 1;
-    if (nuevaCantidad > productoExistente.stock_disponible) {
-      setMensajeModal(`Stock insuficiente. Disponible: ${productoExistente.stock_disponible}`);
+  const agregarProducto = (producto, variante) => {
+    if (variante && variante.cantidad <= 0) {
+      setMensajeModal(`Sin stock disponible para ${producto.nombre} - Talla ${variante.talla}`);
       setTipoMensaje('error');
       setMostrarMensaje(true);
       return;
     }
 
+    const productoExistente = productosSeleccionados.find(
+      p => p.producto_id === producto.id && p.variante_id === variante?.id
+    );
 
-    setProductosSeleccionados(productosSeleccionados.map(p =>
-      p.producto_id === producto.id && p.variante_id === variante?.id
-        ? { ...p, cantidad: nuevaCantidad, subtotal: nuevaCantidad * p.precio_unitario }
-        : p
-    ));
-  } else {
-    const precioUnitario = variante
-      ? parseFloat(producto.precio_venta_base) + parseFloat(variante.ajuste_precio || 0)
-      : parseFloat(producto.precio_venta_base);
+    if (productoExistente) {
+      const nuevaCantidad = productoExistente.cantidad + 1;
+      if (nuevaCantidad > productoExistente.stock_disponible) {
+        setMensajeModal(`Stock insuficiente. Disponible: ${productoExistente.stock_disponible}`);
+        setTipoMensaje('error');
+        setMostrarMensaje(true);
+        return;
+      }
 
-    const nuevoProducto = {
-      producto_id: producto.id,
-      variante_id: variante?.id || null,
-      nombre: producto.nombre,
-      referencia: producto.referencia || 'N/A',
-      talla: variante?.talla || null,
-      cantidad: 1,
-      precio_unitario: precioUnitario,
-      subtotal: precioUnitario,
-      stock_disponible: variante?.cantidad || 0
-    };
+      setProductosSeleccionados(productosSeleccionados.map(p =>
+        p.producto_id === producto.id && p.variante_id === variante?.id
+          ? { ...p, cantidad: nuevaCantidad, subtotal: nuevaCantidad * p.precio_unitario }
+          : p
+      ));
+    } else {
+      const precioUnitario = variante
+        ? parseFloat(producto.precio_venta_base) + parseFloat(variante.ajuste_precio || 0)
+        : parseFloat(producto.precio_venta_base);
 
-    setProductosSeleccionados([...productosSeleccionados, nuevoProducto]);
-  }
+      const nuevoProducto = {
+        producto_id: producto.id,
+        variante_id: variante?.id || null,
+        nombre: producto.nombre,
+        referencia: producto.referencia || 'N/A',
+        talla: variante?.talla || null,
+        cantidad: 1,
+        precio_unitario: precioUnitario,
+        subtotal: precioUnitario,
+        stock_disponible: variante?.cantidad || 0
+      };
 
-  // AGREGAR ESTAS LÍNEAS AL FINAL:
-  setCategoriaSeleccionada('');
-  setNombreSeleccionado('');
-  setReferenciaSeleccionada('');
-  setNombresDisponibles([]);
-  setReferenciasDisponibles([]);
-  setProductoActual(null);
-};
+      setProductosSeleccionados([...productosSeleccionados, nuevoProducto]);
+    }
+
+    setCategoriaSeleccionada('');
+    setNombreSeleccionado('');
+    setReferenciaSeleccionada('');
+    setNombresDisponibles([]);
+    setReferenciasDisponibles([]);
+    setProductoActual(null);
+  };
 
   const actualizarCantidad = (index, nuevaCantidad) => {
     if (nuevaCantidad < 1) return;
@@ -384,7 +399,6 @@ if (variante && variante.cantidad <= 0) {
       return;
     }
 
-
     setProductosSeleccionados(productosSeleccionados.map((p, i) =>
       i === index
         ? { ...p, cantidad: nuevaCantidad, subtotal: nuevaCantidad * p.precio_unitario }
@@ -396,31 +410,29 @@ if (variante && variante.cantidad <= 0) {
     setProductosSeleccionados(productosSeleccionados.filter((_, i) => i !== index));
   };
 
-const agregarCostoAdicional = () => {
-  const monto = parseFloat(costoAdicional);
+  const agregarCostoAdicional = () => {
+    const monto = parseFloat(costoAdicional);
 
-  if (!costoAdicional || monto <= 0 || isNaN(monto)) {
-    setMensajeModal("Ingresa un monto válido para los costos adicionales");
-    setTipoMensaje('error');
+    if (!costoAdicional || monto <= 0 || isNaN(monto)) {
+      setMensajeModal("Ingresa un monto válido para los costos adicionales");
+      setTipoMensaje('error');
+      setMostrarMensaje(true);
+      return;
+    }
+
+    const costoParaAgregar = {
+      concepto: 'Costos Adicionales',
+      monto: monto
+    };
+
+    setCostosAdicionales([...costosAdicionales, costoParaAgregar]);
+
+    setMensajeModal("Costo adicional agregado exitosamente");
+    setTipoMensaje('exito');
     setMostrarMensaje(true);
-    return;
-  }
 
-  // Solo guardamos el monto, el concepto siempre será "Costos Adicionales"
-  const costoParaAgregar = {
-    concepto: 'Costos Adicionales',
-    monto: monto
+    setCostoAdicional('');
   };
-
-  setCostosAdicionales([...costosAdicionales, costoParaAgregar]);
-
-  setMensajeModal("Costo adicional agregado exitosamente");
-  setTipoMensaje('exito');
-  setMostrarMensaje(true);
-
-  setCostoAdicional('');
-};
-
 
   const eliminarCostoAdicional = (index) => {
     setCostosAdicionales(costosAdicionales.filter((_, i) => i !== index));
@@ -440,7 +452,8 @@ const agregarCostoAdicional = () => {
     }
   };
 
-  const seleccionarCliente = (cliente) => {
+  // ✅ USAR LA FUNCIÓN DEL HOOK
+  const seleccionarCliente = async (cliente) => {
     setDatosCliente({
       id: cliente.id,
       nombre: cliente.nombre,
@@ -450,7 +463,13 @@ const agregarCostoAdicional = () => {
     });
     setBuscarCliente('');
     setClientesEncontrados([]);
+
+    // ✅ Usar función del hook
+    await verificarFidelidadCliente(cliente.id);
   };
+
+  // ❌ ELIMINAR ESTA FUNCIÓN COMPLETA - YA ESTÁ EN EL HOOK
+  // const verificarFidelidadCliente = async (clienteId) => { ... }
 
   const limpiarCliente = () => {
     setDatosCliente({
@@ -460,19 +479,30 @@ const agregarCostoAdicional = () => {
       correo: '',
       celular: ''
     });
+    // ✅ Usar función del hook
+    resetearFidelidad();
   };
 
   const calcularSubtotal = () => {
     return productosSeleccionados.reduce((sum, p) => sum + p.subtotal, 0);
   };
 
-const calcularCostosTotal = () => {
-  return costosAdicionales.reduce((sum, c) => sum + c.monto, 0);
-};
-
-  const calcularTotal = () => {
-    return calcularSubtotal() + calcularCostosTotal();
+  const calcularCostosTotal = () => {
+    return costosAdicionales.reduce((sum, c) => sum + c.monto, 0);
   };
+
+  // ✅ USAR LA FUNCIÓN DEL HOOK
+  const calcularTotal = () => {
+    const subtotal = calcularSubtotal();
+    const costos = calcularCostosTotal();
+    // ✅ Aplicar descuento de fidelidad desde el hook
+    const totalConDescuento = aplicarDescuentoFidelidad(subtotal + costos);
+    return Math.max(0, totalConDescuento);
+  };
+
+  // ❌ ELIMINAR ESTAS FUNCIONES - YA ESTÁN EN EL HOOK
+  // const aplicarDescuentoFidelidad = (porcentaje) => { ... }
+  // const removerDescuentoFidelidad = () => { ... }
 
   const calcularCambio = () => {
     const total = calcularTotal();
@@ -480,17 +510,13 @@ const calcularCostosTotal = () => {
     return Math.max(0, pagado - total);
   };
 
-const handleSubmit = async () => {
-    console.log('🔍 Estado de costosAdicionales:', costosAdicionales); // ← AGREGAR ESTO PRIMERO
-      console.log('🔍 Productos seleccionados:', productosSeleccionados); // ← Y ESTO
-
-
-  if (productosSeleccionados.length === 0) {
-    setMensajeModal("Agrega al menos un producto");
-    setTipoMensaje('error');
-    setMostrarMensaje(true);
-    return;
-  }
+  const handleSubmit = async () => {
+    if (productosSeleccionados.length === 0) {
+      setMensajeModal("Agrega al menos un producto");
+      setTipoMensaje('error');
+      setMostrarMensaje(true);
+      return;
+    }
 
     const total = calcularTotal();
     const pagado = parseFloat(montoPagado) || 0;
@@ -502,6 +528,13 @@ const handleSubmit = async () => {
       return;
     }
 
+    // ✅ Validar presentación de tarjeta si hay descuento
+    if (descuentoAplicable > 0 && !tarjetaPresentada) {
+      setMensajeModal("El cliente debe presentar su tarjeta de fidelidad para aplicar el descuento");
+      setTipoMensaje("error");
+      setMostrarMensaje(true);
+      return;
+    }
 
     let clienteData = null;
     if (datosCliente.nombre.trim()) {
@@ -514,51 +547,178 @@ const handleSubmit = async () => {
       };
     }
 
+    // ✅ CRÍTICO: Calcular correctamente el descuento
+    const subtotalBase = calcularSubtotal() + calcularCostosTotal();
+    const montoDescuento = descuentoActivo ? calcularMontoDescuento(subtotalBase) : 0;
+    const porcentajeDescuento = descuentoActivo ? descuentoAplicable : 0;
+
+    // 🔥 LOGGING PARA DEBUGGING
+    console.log('📝 Valores de descuento antes de enviar:');
+    console.log('  - descuentoActivo:', descuentoActivo);
+    console.log('  - descuentoAplicable:', descuentoAplicable);
+    console.log('  - subtotalBase:', subtotalBase);
+    console.log('  - montoDescuento:', montoDescuento);
+    console.log('  - porcentajeDescuento:', porcentajeDescuento);
+
     const datosVenta = {
       cliente: clienteData,
       productos: productosSeleccionados,
-      costos_adicionales: costosAdicionales,  // ← Verifica que esto esté aquí
+      costos_adicionales: costosAdicionales,
       subtotal: calcularSubtotal(),
       total: total,
       monto_pagado: pagado,
       cambio: metodoPago === 'Efectivo' ? calcularCambio() : 0,
       metodo_pago: metodoPago,
-      notas: notas
+      notas: descuentoAplicable > 0
+        ? `Descuento de fidelidad aplicado: ${descuentoAplicable}%`
+        : notas,
+      // ✅ FIDELIDAD: Información completa
+      presento_tarjeta: tarjetaPresentada,
+      descuento_fidelidad_aplicado: descuentoAplicable > 0,
+      tipo_descuento: descuentoAplicable > 0 ? `${descuentoAplicable}%` : null,
+      // ✅ CRÍTICO: Estos campos se guardan en la tabla ventas
+      descuento_porcentaje: porcentajeDescuento,  // ✅ Asegurar que NO sea undefined
+      descuento_monto: montoDescuento             // ✅ Asegurar que NO sea undefined
     };
 
-
-  console.log('📤 Enviando datos de venta:', datosVenta); // ← Este log debe aparecer
-
+    console.log('📝 Datos de venta completos a enviar:', datosVenta);
+    console.log('💰 Descuento final:', {
+      porcentaje: porcentajeDescuento,
+      monto: montoDescuento,
+      activo: descuentoActivo,
+    });
 
     const resultado = await crearVenta(datosVenta);
 
     if (resultado.success) {
+      // ✅ Procesar fidelidad usando el hook
+      if (datosCliente.id) {
+        await procesarFidelidadPostVenta(datosCliente.id, total);
+      }
+
       setMensajeModal(
         `Venta ${resultado.numero_venta} creada exitosamente` +
-        (resultado.tiene_deuda ? ' — Se generó una deuda pendiente' : '')
+        (resultado.tiene_deuda ? ' — Se generó una deuda pendiente' : '') +
+        (descuentoAplicable > 0 ? ` — Descuento del ${descuentoAplicable}% aplicado` : '')
       );
       setTipoMensaje("exito");
       setMostrarMensaje(true);
 
-      // cerrar auto y luego ejecutar onSuccess
       setTimeout(() => {
         onSuccess();
-      }, 2000);
+      }, 2500);
 
     } else {
       setMensajeModal('Error al crear la venta: ' + resultado.error);
       setTipoMensaje("error");
       setMostrarMensaje(true);
     }
-
-      };
+  };
 
   const total = calcularTotal();
   const cambio = calcularCambio();
   const subtotal = calcularSubtotal();
 
-  // Obtener lista de referencias como strings
+  // ✅ COMPONENTE AlertaFidelidad CORREGIDO
+  const AlertaFidelidad = () => {
+    if (!datosCliente.id) return null;
+
+    // Alerta: Entregar tarjeta de fidelidad (1ra compra)
+    if (requiereEntregarTarjeta) {
+      return (
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
+          <div className="flex items-start space-x-3">
+            <Gift className="text-purple-600 mt-1" size={24} />
+            <div className="flex-1">
+              <h4 className="font-bold text-purple-900">🎁 Entregar Tarjeta de Fidelidad</h4>
+              <p className="text-sm text-purple-700 mt-1">
+                Esta es la primera compra del cliente.
+                <strong> Entregar la tarjeta de fidelidad</strong> para que pueda
+                acumular beneficios desde ahora.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ NUEVO: Mostrar checkbox si tiene tarjeta Y no tiene descuento aplicable
+    // Esto permite registrar las compras 2, 3, 4, 5 con tarjeta
+    if (!requiereEntregarTarjeta && descuentoAplicable === 0) {
+      return (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-4 mb-4">
+          <div className="flex items-start space-x-3">
+            <Award className="text-blue-600 mt-1" size={24} />
+            <div className="flex-1">
+              <h4 className="font-bold text-blue-900">💳 Tarjeta de Fidelidad</h4>
+              <p className="text-sm text-blue-700 mt-1">
+                Marca si el cliente presenta su tarjeta en esta compra.
+              </p>
+              <label className="flex items-center space-x-2 text-sm text-blue-800 mt-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tarjetaPresentada}
+                  onChange={() => registrarPresentacionTarjeta()}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                />
+                <span className="font-medium">Cliente presentó tarjeta de fidelidad</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Alerta: Descuento disponible (compra 3 o 6)
+    // Alerta: Descuento disponible (compra 3 o 6)
+    if (descuentoAplicable > 0) {
+      return (
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4 mb-4">
+          <div className="flex items-start space-x-3">
+            <Award className="text-green-600 mt-1" size={24} />
+            <div className="flex-1">
+              <h4 className="font-bold text-green-900">
+                🎉 ¡Descuento del {descuentoAplicable}% Disponible!
+              </h4>
+              <p className="text-sm text-green-700 mt-1">
+                El cliente califica para un descuento de fidelidad.
+              </p>
+
+              {/* ✅ CHECKBOX PARA PRESENTACIÓN DE TARJETA */}
+              <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tarjetaPresentada}
+                  onChange={() => registrarPresentacionTarjeta()}
+                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+                />
+                <span className="font-medium">Cliente presentó tarjeta</span>
+              </label>
+
+              {/* ✅ NUEVO: CHECKBOX PARA APLICAR DESCUENTO */}
+              {tarjetaPresentada && (
+                <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer border-t pt-3">
+                  <input
+                    type="checkbox"
+                    checked={descuentoActivo}
+                    onChange={() => toggleDescuento()}
+                    className="w-5 h-5 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+                  />
+                  <span className="font-bold text-base">✅ Aplicar descuento del {descuentoAplicable}%</span>
+                </label>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+
+  };
+
   const referenciasOptions = referenciasDisponibles.map(p => p.referencia || 'N/A');
+
 
   return (
     <>
@@ -864,6 +1024,7 @@ const handleSubmit = async () => {
                     <strong>Opcional:</strong> Los datos del cliente son opcionales. Si los proporcionas, se guardarán en la base de datos para futuras ventas.
                   </p>
                 </div>
+              <AlertaFidelidad />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -992,18 +1153,29 @@ const handleSubmit = async () => {
                       <span className="text-gray-600">Subtotal ({productosSeleccionados.length} productos):</span>
                       <span className="font-medium">${subtotal.toFixed(2)}</span>
                     </div>
+
                     {costosAdicionales.length > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">Costos adicionales:</span>
                         <span className="font-medium">${calcularCostosTotal().toFixed(2)}</span>
                       </div>
                     )}
+
+                    {/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
+                    {descuentoActivo && descuentoAplicable > 0 && (
+                      <div className="flex justify-between text-sm text-green-600 font-medium">
+                        <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
+                        <span>-${calcularMontoDescuento(subtotal + calcularCostosTotal()).toFixed(2)}</span>
+                      </div>
+                    )}
+
                     {datosCliente.nombre && (
                       <div className="flex justify-between text-sm pt-2 border-t">
                         <span className="text-gray-600">Cliente:</span>
                         <span className="font-medium">{datosCliente.nombre}</span>
                       </div>
                     )}
+
                     <div className="border-t pt-2 flex justify-between">
                       <span className="font-bold text-lg text-gray-800">Total:</span>
                       <span className="font-bold text-2xl text-teal-600">${total.toFixed(2)}</span>

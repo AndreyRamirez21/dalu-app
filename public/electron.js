@@ -19,6 +19,8 @@ app.whenReady().then(() => {
 });
 
 const db = require('./database');
+const clientesModel = require('./database/models/clientes.model'); // ← AGREGAR ESTA LÍNEA
+
 const BackupService = require('./database/backupService');
 
 let mainWindow;
@@ -856,6 +858,11 @@ ipcMain.handle('obtener-clientes-con-estadisticas', async () => {
         c.cedula,
         c.correo,
         c.celular,
+        c.tarjeta_fidelidad_entregada,
+        c.fecha_primera_compra,
+        c.compras_con_tarjeta,
+        c.descuento_aplicado_3,
+        c.descuento_aplicado_6,
         COUNT(CASE WHEN v.estado = 'Pagado' THEN v.id END) as numero_compras,
         SUM(CASE WHEN v.estado = 'Pagado' THEN v.total ELSE 0 END) as total_compras,
         MAX(CASE WHEN v.estado = 'Pagado' THEN v.fecha END) as ultima_compra
@@ -868,6 +875,7 @@ ipcMain.handle('obtener-clientes-con-estadisticas', async () => {
         console.error('Error al obtener clientes:', err);
         reject(err);
       } else {
+        console.log('✅ Clientes con estadísticas:', rows.length);
         resolve(rows);
       }
     });
@@ -943,7 +951,110 @@ ipcMain.handle('eliminar-cliente', async (event, clienteId) => {
   });
 });
 
+// ==================== HANDLERS DE FIDELIDAD ====================
 
+// Verificar estado de fidelidad del cliente
+ipcMain.handle('verificar-fidelidad-cliente', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    db.clientes.verificarDescuentoFidelidad(clienteId, (err, resultado) => {
+      if (err) {
+        console.error('❌ Error al verificar fidelidad:', err);
+        reject(err);
+      } else {
+        resolve(resultado);
+      }
+    });
+  });
+});
+
+
+
+
+
+// Marcar descuento del 10% aplicado
+ipcMain.handle('marcar-descuento-3-aplicado', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    db.clientes.marcarDescuentoAplicado3(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+// Marcar descuento del 15% aplicado
+ipcMain.handle('marcar-descuento-6-aplicado', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    db.clientes.marcarDescuentoAplicado6(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+// Reiniciar fidelidad manualmente
+ipcMain.handle('reiniciar-fidelidad-cliente', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    db.clientes.reiniciarFidelidad(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+// Verificar y reiniciar fidelidades vencidas (ejecutar periódicamente)
+ipcMain.handle('verificar-fidelidades-vencidas', async () => {
+  return new Promise((resolve, reject) => {
+    db.clientes.verificarYReiniciarFidelidad((err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+ipcMain.handle('verificar-descuento-fidelidad', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.verificarDescuentoFidelidad(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+ipcMain.handle('registrar-entrega-tarjeta', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.registrarEntregaTarjeta(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+ipcMain.handle('registrar-presentacion-tarjeta', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.registrarPresentacionTarjeta(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+ipcMain.handle('marcar-descuento-aplicado-3', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.marcarDescuentoAplicado3(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+ipcMain.handle('marcar-descuento-aplicado-6', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.marcarDescuentoAplicado6(clienteId, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
 
 
 // ==================== SISTEMA DE RECORDATORIOS ====================
@@ -983,159 +1094,188 @@ ipcMain.handle('generar-numero-venta', async () => {
   });
 });
 
-// Reemplaza el handler 'crear-venta' en tu archivo IPC principal
-
 ipcMain.handle('crear-venta', async (event, datosVenta) => {
   return new Promise((resolve, reject) => {
     console.log('📝 Creando venta con datos:', datosVenta);
 
-    // 1. Manejar cliente si existe
-    let clienteId = null;
-    let clienteNombre = 'Cliente General';
-
-    if (datosVenta.cliente && datosVenta.cliente.nombre) {
-      clienteId = datosVenta.cliente.id || null;
-      clienteNombre = datosVenta.cliente.nombre;
-    }
-
-    // 2. Preparar datos de venta
-    const datosVentaDB = {
-      cliente_id: clienteId,
-      cliente_nombre: clienteNombre,
-      productos: datosVenta.productos,
-      costos_adicionales: datosVenta.costos_adicionales,
-      subtotal: datosVenta.subtotal,
-      total: datosVenta.total,
-      monto_pagado: datosVenta.monto_pagado,
-      cambio: datosVenta.cambio,
-      metodo_pago: datosVenta.metodo_pago,
-      notas: datosVenta.notas
-    };
-
-    console.log('📦 Productos a guardar:', datosVenta.productos);
-    console.log('💰 Costos adicionales a guardar:', datosVenta.costos_adicionales); // ← AGREGAR ESTE LOG
-
-
-    // 3. Usar la función crearVenta del módulo
-    db.ventas.crear(datosVentaDB, async (err, resultado) => {
+    // =====================================================
+    // 1️⃣ RESOLVER CLIENTE ANTES DE CREAR LA VENTA
+    // =====================================================
+    resolverCliente(datosVenta, (err, clienteId, clienteNombre) => {
       if (err) {
-        console.error('❌ Error al crear venta:', err);
+        console.error('❌ Error al resolver cliente:', err);
         reject(err);
         return;
       }
 
-      console.log('✅ Venta creada con ID:', resultado.id);
+      // =====================================================
+      // 2️⃣ ARMAR DATOS DEFINITIVOS DE LA VENTA
+      // =====================================================
+      const datosVentaDB = {
+        cliente_id: clienteId,
+        cliente_nombre: clienteNombre,
+        productos: datosVenta.productos,
+        costos_adicionales: datosVenta.costos_adicionales,
+        subtotal: datosVenta.subtotal,
+        total: datosVenta.total,
+        monto_pagado: datosVenta.monto_pagado,
+        cambio: datosVenta.cambio,
+        metodo_pago: datosVenta.metodo_pago,
+        notas: datosVenta.notas,
+        descuento_porcentaje: datosVenta.descuento_porcentaje || 0,
+        descuento_monto: datosVenta.descuento_monto || 0
+      };
 
-      try {
-        // 4. Verificar que los productos se guardaron
-        db.db.all(
-          'SELECT * FROM venta_productos WHERE venta_id = ?',
-          [resultado.id],
-          (err, productosGuardados) => {
-            if (err) {
-              console.error('❌ Error al verificar productos:', err);
-            } else {
-              console.log('✅ Productos guardados en DB:', productosGuardados);
-            }
-          }
-        );
+      console.log('💰 Descuento aplicado:', {
+        porcentaje: datosVentaDB.descuento_porcentaje,
+        monto: datosVentaDB.descuento_monto
+      });
 
+      // =====================================================
+      // 3️⃣ CREAR VENTA
+      // =====================================================
+      db.ventas.crear(datosVentaDB, (err, resultado) => {
+        if (err) {
+          console.error('❌ Error al crear venta:', err);
+          reject(err);
+          return;
+        }
 
-        // 5. Crear deuda si hay saldo pendiente
+        console.log('✅ Venta creada con ID:', resultado.id);
+
+        // =====================================================
+        // 4️⃣ CREAR DEUDA SI APLICA
+        // =====================================================
         const tieneDeuda = datosVenta.monto_pagado < datosVenta.total;
-        if (tieneDeuda) {
-          await crearDeudaCliente(
+
+        if (tieneDeuda && clienteId) {
+          crearDeudaCliente(
             resultado.id,
             clienteId,
             clienteNombre,
             datosVenta.total,
             datosVenta.monto_pagado
-          );
-        }
-
-        // 6. Actualizar estadísticas del cliente si existe
-        if (clienteId) {
-          db.db.run(`
-            UPDATE clientes
-            SET ultima_compra = datetime('now'),
-                total_compras = total_compras + ?,
-                numero_compras = numero_compras + 1
-            WHERE id = ?
-          `, [datosVenta.total, clienteId], (err) => {
-            if (err) {
-              console.error('❌ Error al actualizar cliente:', err);
-            }
+          ).catch(err => {
+            console.error('❌ Error al crear deuda:', err);
           });
         }
 
-        // 7. Si hay cliente nuevo (con datos pero sin ID), crearlo
-        if (!clienteId && datosVenta.cliente && datosVenta.cliente.nombre) {
-          const nuevoCliente = await guardarClienteNuevo(datosVenta.cliente);
+        // =====================================================
+        // 5️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE
+        // =====================================================
+        if (clienteId) {
+          db.db.run(
+            `UPDATE clientes
+             SET ultima_compra = datetime('now', 'localtime'),
+                 total_compras = total_compras + ?,
+                 numero_compras = numero_compras + 1,
+                 fecha_primera_compra = COALESCE(fecha_primera_compra, datetime('now', 'localtime'))
+             WHERE id = ?`,
+            [datosVenta.total, clienteId],
+            (err) => {
+              if (err) {
+                console.error('❌ Error al actualizar cliente:', err);
+              } else {
+                console.log('✅ Cliente actualizado:', clienteId);
+              }
+            }
+          );
 
-          // Actualizar la venta con el ID del nuevo cliente
-          if (nuevoCliente && nuevoCliente.id) {
-            db.db.run(`UPDATE ventas SET cliente_id = ? WHERE id = ?`, [nuevoCliente.id, resultado.id]);
-          }
+          // =====================================================
+          // 6️⃣ FIDELIDAD (SOLO SI APLICA)
+          // =====================================================
+console.log('ℹ️ Fidelidad será procesada desde el frontend');
+
+
+
+
         }
 
+        // =====================================================
+        // 7️⃣ RESPUESTA FINAL
+        // =====================================================
         resolve({
           success: true,
-          numero_venta: resultado.numero_venta,
           venta_id: resultado.id,
+          numero_venta: resultado.numero_venta,
           tiene_deuda: tieneDeuda
         });
-
-      } catch (innerError) {
-        console.error('❌ Error procesando detalles de venta:', innerError);
-        reject(innerError);
-      }
+      });
     });
   });
 });
 
-// Función auxiliar para guardar cliente nuevo
-async function guardarClienteNuevo(datosCliente) {
-  return new Promise((resolve, reject) => {
-    const { nombre, cedula, correo, celular } = datosCliente;
+function resolverCliente(datosVenta, callback) {
+  const cliente = datosVenta.cliente;
 
-    // Verificar si ya existe por cédula
-    if (cedula) {
-      db.db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+  // 1️⃣ Cliente EXISTENTE (seleccionado)
+  if (cliente?.id && Number.isInteger(cliente.id)) {
+    return callback(null, cliente.id, cliente.nombre);
+  }
+
+  // 2️⃣ Cliente NUEVO (nombre válido)
+  if (cliente?.nombre && cliente.nombre.trim().length > 0) {
+    guardarClienteNuevo(
+      {
+        nombre: cliente.nombre.trim(),
+        cedula: cliente.cedula || null,
+        correo: cliente.correo || null,
+        celular: cliente.celular || null
+      },
+      (err, nuevo) => {
+        if (err) return callback(err);
+        return callback(null, nuevo.id, cliente.nombre.trim());
+      }
+    );
+    return;
+  }
+
+  // 3️⃣ SIN CLIENTE
+  callback(null, null, 'Cliente General');
+}
+
+
+
+
+
+// ✅ FUNCIÓN AUXILIAR: Guardar cliente nuevo (con callback)
+function guardarClienteNuevo(datosCliente, callback) {
+  const { nombre, cedula, correo, celular } = datosCliente;
+
+  if (cedula) {
+    db.db.get(
+      'SELECT id FROM clientes WHERE cedula = ?',
+      [cedula],
+      (err, row) => {
+        if (err) return callback(err);
 
         if (row) {
-          // Ya existe, devolver el ID existente
-          resolve({ id: row.id, existente: true });
+          console.log('✅ Cliente existente:', row.id);
+          callback(null, { id: row.id, existente: true });
         } else {
-          // Crear nuevo cliente
           insertarCliente();
         }
-      });
-    } else {
-      // No tiene cédula, crear directamente
-      insertarCliente();
-    }
+      }
+    );
+  } else {
+    insertarCliente();
+  }
 
-    function insertarCliente() {
-      const query = `
-        INSERT INTO clientes (nombre, cedula, correo, celular)
-        VALUES (?, ?, ?, ?)
-      `;
-
-      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function (err) {
-        if (err) {
-          console.error('Error al crear cliente:', err);
-          reject(err);
-        } else {
-          resolve({ id: this.lastID, nuevo: true });
-        }
-      });
-    }
-  });
+  function insertarCliente() {
+    db.db.run(
+      `INSERT INTO clientes (nombre, cedula, correo, celular)
+       VALUES (?, ?, ?, ?)`,
+      [nombre, cedula || null, correo || null, celular || null],
+      function (err) {
+        if (err) return callback(err);
+        console.log('✅ Cliente creado:', this.lastID);
+        callback(null, { id: this.lastID, nuevo: true });
+      }
+    );
+  }
 }
+
+
 
 async function guardarCostoAdicional(ventaId, costo) {
   return new Promise((resolve, reject) => {
@@ -1176,49 +1316,7 @@ async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, 
   });
 }
 
-// Función auxiliar para guardar cliente nuevo
-async function guardarClienteNuevo(datosCliente) {
-  return new Promise((resolve, reject) => {
-    const { nombre, cedula, correo, celular } = datosCliente;
 
-    // Verificar si ya existe por cédula
-    if (cedula) {
-      db.db.get('SELECT id FROM clientes WHERE cedula = ?', [cedula], (err, row) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        if (row) {
-          // Ya existe, devolver el ID existente
-          resolve({ id: row.id, existente: true });
-        } else {
-          // Crear nuevo cliente
-          insertarCliente();
-        }
-      });
-    } else {
-      // No tiene cédula, crear directamente
-      insertarCliente();
-    }
-
-    function insertarCliente() {
-      const query = `
-        INSERT INTO clientes (nombre, cedula, correo, celular)
-        VALUES (?, ?, ?, ?)
-      `;
-
-      db.db.run(query, [nombre, cedula || null, correo || null, celular || null], function (err) {
-        if (err) {
-          console.error('Error al crear cliente:', err);
-          reject(err);
-        } else {
-          resolve({ id: this.lastID, nuevo: true });
-        }
-      });
-    }
-  });
-}
 
 
 async function guardarDetalleVenta(ventaId, producto) {

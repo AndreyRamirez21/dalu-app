@@ -5,8 +5,8 @@ const db = require('../config/connection');
 function agregarCliente(datos, callback) {
   const { nombre, cedula, correo, celular } = datos;
 
-  const sql = `INSERT INTO clientes(nombre, cedula, correo, celular)
-               VALUES(?, ?, ?, ?)`;
+  const sql = `INSERT INTO clientes(nombre, cedula, correo, celular, fecha_primera_compra)
+               VALUES(?, ?, ?, ?, datetime('now', 'localtime'))`;
 
   db.run(sql, [nombre, cedula || null, correo || null, celular || null], function (err) {
     if (err) {
@@ -161,6 +161,204 @@ function obtenerTopClientes(limite = 10, callback) {
   });
 }
 
+// ==================== FUNCIONES DE FIDELIDAD ====================
+
+/**
+ * Verifica si el cliente califica para descuento de fidelidad
+ * ✅ CORREGIDO: Cuenta ventas INDIVIDUALES mayores a $30,000
+ */
+function verificarDescuentoFidelidad(clienteId, callback) {
+  const sql = `
+    SELECT
+      c.*,
+      -- 🎯 Contar VENTAS INDIVIDUALES mayores a $30,000
+      (
+        SELECT COUNT(*)
+        FROM ventas v
+        WHERE v.cliente_id = c.id
+          AND v.estado = 'Pagado'
+          AND v.total >= 30000
+      ) as ventas_mayores_30k,
+
+      CASE
+        -- ✅ Primera compra: entregar tarjeta
+        WHEN c.numero_compras = 0 THEN 'entrega_tarjeta'
+
+        -- ✅ Sexta compra o más (15%) - 6 VENTAS INDIVIDUALES >= $30,000
+        WHEN (
+          SELECT COUNT(*)
+          FROM ventas v
+          WHERE v.cliente_id = c.id
+            AND v.estado = 'Pagado'
+            AND v.total >= 30000
+        ) >= 6
+        AND c.compras_con_tarjeta >= 5
+        AND c.descuento_aplicado_6 = 0
+        AND c.fecha_primera_compra IS NOT NULL
+        AND julianday('now') - julianday(c.fecha_primera_compra) <= 300
+        THEN 'descuento_15'
+
+        -- ✅ Tercera compra o más (10%) - 3 VENTAS INDIVIDUALES >= $30,000
+        WHEN (
+          SELECT COUNT(*)
+          FROM ventas v
+          WHERE v.cliente_id = c.id
+            AND v.estado = 'Pagado'
+            AND v.total >= 30000
+        ) >= 3
+        AND c.compras_con_tarjeta >= 2
+        AND c.descuento_aplicado_3 = 0
+        THEN 'descuento_10'
+
+        ELSE 'ninguno'
+      END as estado_fidelidad
+    FROM clientes c
+    WHERE c.id = ?
+  `;
+
+  db.get(sql, [clienteId], (err, row) => {
+    if (err) {
+      console.error('❌ Error al verificar fidelidad:', err);
+      callback(err, null);
+    } else {
+      console.log('🔍 Verificación fidelidad:', {
+        cliente_id: clienteId,
+        numero_compras: row?.numero_compras,
+        ventas_mayores_30k: row?.ventas_mayores_30k,  // ✅ NUEVO
+        compras_con_tarjeta: row?.compras_con_tarjeta,
+        total_compras: row?.total_compras,
+        estado: row?.estado_fidelidad
+      });
+      callback(null, row);
+    }
+  });
+}
+
+/**
+ * Registra que se entregó tarjeta de fidelidad
+ */
+function registrarEntregaTarjeta(clienteId, callback) {
+  const sql = `UPDATE clientes
+               SET tarjeta_fidelidad_entregada = 1
+               WHERE id = ?`;
+
+  db.run(sql, [clienteId], function (err) {
+    if (err) {
+      console.error('❌ Error al registrar entrega de tarjeta:', err);
+      callback(err, null);
+    } else {
+      console.log('✅ Tarjeta de fidelidad registrada para cliente:', clienteId);
+      callback(null, { success: true });
+    }
+  });
+}
+
+/**
+ * Registra que el cliente presentó la tarjeta en la compra
+ */
+function registrarPresentacionTarjeta(clienteId, callback) {
+  const sql = `UPDATE clientes
+               SET compras_con_tarjeta = compras_con_tarjeta + 1
+               WHERE id = ?`;
+
+  db.run(sql, [clienteId], function (err) {
+    if (err) {
+      console.error('❌ Error al registrar presentación de tarjeta:', err);
+      callback(err, null);
+    } else {
+      console.log('✅ Presentación de tarjeta registrada para cliente:', clienteId);
+      callback(null, { success: true });
+    }
+  });
+}
+
+/**
+ * Marca que se aplicó descuento del 10% (3ra compra)
+ */
+function marcarDescuentoAplicado3(clienteId, callback) {
+  const sql = `UPDATE clientes
+               SET descuento_aplicado_3 = 1
+               WHERE id = ?`;
+
+  db.run(sql, [clienteId], function (err) {
+    if (err) {
+      console.error('❌ Error al marcar descuento del 10%:', err);
+      callback(err, null);
+    } else {
+      console.log('✅ Descuento del 10% marcado para cliente:', clienteId);
+      callback(null, { success: true });
+    }
+  });
+}
+
+/**
+ * Marca que se aplicó descuento del 15% (6ta compra)
+ */
+function marcarDescuentoAplicado6(clienteId, callback) {
+  const sql = `UPDATE clientes
+               SET descuento_aplicado_6 = 1
+               WHERE id = ?`;
+
+  db.run(sql, [clienteId], function (err) {
+    if (err) {
+      console.error('❌ Error al marcar descuento del 15%:', err);
+      callback(err, null);
+    } else {
+      console.log('✅ Descuento del 15% marcado para cliente:', clienteId);
+      callback(null, { success: true });
+    }
+  });
+}
+
+/**
+ * Reinicia el programa de fidelidad del cliente
+ */
+function reiniciarFidelidad(clienteId, callback) {
+  const sql = `UPDATE clientes
+               SET tarjeta_fidelidad_entregada = 0,
+                   fecha_primera_compra = NULL,
+                   compras_con_tarjeta = 0,
+                   descuento_aplicado_3 = 0,
+                   descuento_aplicado_6 = 0
+               WHERE id = ?`;
+
+  db.run(sql, [clienteId], function (err) {
+    if (err) {
+      console.error('❌ Error al reiniciar fidelidad:', err);
+      callback(err, null);
+    } else {
+      console.log('✅ Fidelidad reiniciada para cliente:', clienteId);
+      callback(null, { success: true });
+    }
+  });
+}
+
+/**
+ * Verifica y reinicia fidelidad si han pasado 10 meses sin cumplir requisitos
+ */
+function verificarYReiniciarFidelidad(callback) {
+  // Clientes que no llegaron a la 3ra compra en 10 meses
+  const sql = `UPDATE clientes
+               SET tarjeta_fidelidad_entregada = 0,
+                   fecha_primera_compra = NULL,
+                   compras_con_tarjeta = 0,
+                   descuento_aplicado_3 = 0,
+                   descuento_aplicado_6 = 0
+               WHERE fecha_primera_compra IS NOT NULL
+               AND numero_compras < 3
+               AND julianday('now') - julianday(fecha_primera_compra) > 300`;
+
+  db.run(sql, [], function (err) {
+    if (err) {
+      console.error('❌ Error al verificar y reiniciar fidelidad:', err);
+      callback(err, null);
+    } else {
+      console.log(`✅ ${this.changes} clientes tuvieron su fidelidad reiniciada`);
+      callback(null, { clientes_reiniciados: this.changes });
+    }
+  });
+}
+
 module.exports = {
   agregarCliente,
   obtenerClientes,
@@ -171,5 +369,13 @@ module.exports = {
   eliminarCliente,
   actualizarEstadisticasCliente,
   obtenerEstadisticasCliente,
-  obtenerTopClientes
+  obtenerTopClientes,
+  // Funciones de fidelidad
+  verificarDescuentoFidelidad,
+  registrarEntregaTarjeta,
+  registrarPresentacionTarjeta,
+  marcarDescuentoAplicado3,
+  marcarDescuentoAplicado6,
+  reiniciarFidelidad,
+  verificarYReiniciarFidelidad
 };

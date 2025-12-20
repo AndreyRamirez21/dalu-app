@@ -12,7 +12,12 @@ function initDatabase() {
       fecha_registro DATETIME DEFAULT (datetime('now', 'localtime')),
       ultima_compra DATETIME DEFAULT (datetime('now', 'localtime')),
       total_compras REAL DEFAULT 0,
-      numero_compras INTEGER DEFAULT 0
+      numero_compras INTEGER DEFAULT 0,
+      tarjeta_fidelidad_entregada INTEGER DEFAULT 0,
+      fecha_primera_compra DATETIME,
+      compras_con_tarjeta INTEGER DEFAULT 0,
+      descuento_aplicado_3 INTEGER DEFAULT 0,
+      descuento_aplicado_6 INTEGER DEFAULT 0
     )`);
 
     db.run(`CREATE INDEX IF NOT EXISTS idx_clientes_cedula ON clientes(cedula)`);
@@ -77,6 +82,8 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
       monto_pagado REAL DEFAULT 0,
       cambio REAL DEFAULT 0,
       estado TEXT DEFAULT 'Pendiente',
+      descuento_porcentaje INTEGER DEFAULT 0,
+      descuento_monto REAL DEFAULT 0,
       metodo_pago TEXT,
       notas TEXT,
       fecha DATETIME DEFAULT (datetime('now', 'localtime')),
