@@ -177,36 +177,26 @@ function verificarDescuentoFidelidad(clienteId, callback) {
         FROM ventas v
         WHERE v.cliente_id = c.id
           AND v.estado = 'Pagado'
-          AND v.total >= 30000
+          AND v.total > 30000
       ) as ventas_mayores_30k,
 
       CASE
         -- ✅ Primera compra: entregar tarjeta
         WHEN c.numero_compras = 0 THEN 'entrega_tarjeta'
 
-        -- ✅ Sexta compra o más (15%) - 6 VENTAS INDIVIDUALES >= $30,000
-        WHEN (
-          SELECT COUNT(*)
-          FROM ventas v
-          WHERE v.cliente_id = c.id
-            AND v.estado = 'Pagado'
-            AND v.total >= 30000
-        ) >= 6
-        AND c.compras_con_tarjeta >= 5
+        -- ✅ SEXTA compra con tarjeta (15%)
+        -- Califica cuando tiene EXACTAMENTE 5 compras previas con tarjeta
+        -- Esta será la 6ta compra que active el descuento
+        WHEN c.compras_con_tarjeta = 5
         AND c.descuento_aplicado_6 = 0
         AND c.fecha_primera_compra IS NOT NULL
         AND julianday('now') - julianday(c.fecha_primera_compra) <= 300
         THEN 'descuento_15'
 
-        -- ✅ Tercera compra o más (10%) - 3 VENTAS INDIVIDUALES >= $30,000
-        WHEN (
-          SELECT COUNT(*)
-          FROM ventas v
-          WHERE v.cliente_id = c.id
-            AND v.estado = 'Pagado'
-            AND v.total >= 30000
-        ) >= 3
-        AND c.compras_con_tarjeta >= 2
+        -- ✅ TERCERA compra con tarjeta (10%)
+        -- Califica cuando tiene EXACTAMENTE 2 compras previas con tarjeta
+        -- Esta será la 3ra compra que active el descuento
+        WHEN c.compras_con_tarjeta = 2
         AND c.descuento_aplicado_3 = 0
         THEN 'descuento_10'
 
@@ -224,16 +214,15 @@ function verificarDescuentoFidelidad(clienteId, callback) {
       console.log('🔍 Verificación fidelidad:', {
         cliente_id: clienteId,
         numero_compras: row?.numero_compras,
-        ventas_mayores_30k: row?.ventas_mayores_30k,  // ✅ NUEVO
         compras_con_tarjeta: row?.compras_con_tarjeta,
-        total_compras: row?.total_compras,
+        descuento_aplicado_3: row?.descuento_aplicado_3,
+        descuento_aplicado_6: row?.descuento_aplicado_6,
         estado: row?.estado_fidelidad
       });
       callback(null, row);
     }
   });
 }
-
 /**
  * Registra que se entregó tarjeta de fidelidad
  */

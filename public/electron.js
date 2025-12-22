@@ -1098,19 +1098,15 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
   return new Promise((resolve, reject) => {
     console.log('📝 Creando venta con datos:', datosVenta);
 
-    // =====================================================
-    // 1️⃣ RESOLVER CLIENTE ANTES DE CREAR LA VENTA
-    // =====================================================
-    resolverCliente(datosVenta, (err, clienteId, clienteNombre) => {
+    // 1️⃣ RESOLVER CLIENTE
+    resolverCliente(datosVenta, async (err, clienteId, clienteNombre) => {
       if (err) {
         console.error('❌ Error al resolver cliente:', err);
         reject(err);
         return;
       }
 
-      // =====================================================
-      // 2️⃣ ARMAR DATOS DEFINITIVOS DE LA VENTA
-      // =====================================================
+      // 2️⃣ ARMAR DATOS DE LA VENTA
       const datosVentaDB = {
         cliente_id: clienteId,
         cliente_nombre: clienteNombre,
@@ -1131,10 +1127,26 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
         monto: datosVentaDB.descuento_monto
       });
 
-      // =====================================================
+      // ✅ 2.5️⃣ VERIFICAR SI ES PRIMERA COMPRA **ANTES** DE CREAR LA VENTA
+      let esPrimeraCompra = false;
+      if (clienteId) {
+        await new Promise((resolve) => {
+          db.db.get(
+            'SELECT numero_compras FROM clientes WHERE id = ?',
+            [clienteId],
+            (err, cliente) => {
+              if (!err && cliente) {
+                esPrimeraCompra = cliente.numero_compras === 0;
+                console.log(`📊 Cliente ${clienteId}: numero_compras = ${cliente.numero_compras}, esPrimeraCompra = ${esPrimeraCompra}`);
+              }
+              resolve();
+            }
+          );
+        });
+      }
+
       // 3️⃣ CREAR VENTA
-      // =====================================================
-      db.ventas.crear(datosVentaDB, (err, resultado) => {
+      db.ventas.crear(datosVentaDB, async (err, resultado) => {
         if (err) {
           console.error('❌ Error al crear venta:', err);
           reject(err);
@@ -1143,13 +1155,11 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
         console.log('✅ Venta creada con ID:', resultado.id);
 
-        // =====================================================
         // 4️⃣ CREAR DEUDA SI APLICA
-        // =====================================================
         const tieneDeuda = datosVenta.monto_pagado < datosVenta.total;
 
         if (tieneDeuda && clienteId) {
-          crearDeudaCliente(
+          await crearDeudaCliente(
             resultado.id,
             clienteId,
             clienteNombre,
@@ -1160,40 +1170,57 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
           });
         }
 
-        // =====================================================
         // 5️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE
-        // =====================================================
         if (clienteId) {
-          db.db.run(
-            `UPDATE clientes
-             SET ultima_compra = datetime('now', 'localtime'),
-                 total_compras = total_compras + ?,
-                 numero_compras = numero_compras + 1,
-                 fecha_primera_compra = COALESCE(fecha_primera_compra, datetime('now', 'localtime'))
-             WHERE id = ?`,
-            [datosVenta.total, clienteId],
-            (err) => {
-              if (err) {
-                console.error('❌ Error al actualizar cliente:', err);
-              } else {
-                console.log('✅ Cliente actualizado:', clienteId);
+          const esCompraGrande = datosVenta.total > 30000;
+
+          // ✅ USAR LA VARIABLE esPrimeraCompra QUE YA VERIFICAMOS ANTES
+          if (esPrimeraCompra && esCompraGrande) {
+            console.log('🎁 Primera compra >= $30k detectada. Auto-entregando tarjeta...');
+
+            await new Promise((resolve) => {
+              db.db.run(
+                `UPDATE clientes
+                 SET tarjeta_fidelidad_entregada = 1,
+                     compras_con_tarjeta = 1,
+                     fecha_primera_compra = datetime('now', 'localtime')
+                 WHERE id = ?`,
+                [clienteId],
+                (err) => {
+                  if (err) {
+                    console.error('❌ Error al entregar tarjeta automática:', err);
+                  } else {
+                    console.log('✅ Tarjeta entregada automáticamente y compras_con_tarjeta = 1');
+                  }
+                  resolve();
+                }
+              );
+            });
+          }
+
+          // Actualizar estadísticas generales (siempre)
+          await new Promise((resolve) => {
+            db.db.run(
+              `UPDATE clientes
+               SET ultima_compra = datetime('now', 'localtime'),
+                   total_compras = total_compras + ?,
+                   numero_compras = numero_compras + 1,
+                   fecha_primera_compra = COALESCE(fecha_primera_compra, datetime('now', 'localtime'))
+               WHERE id = ?`,
+              [datosVenta.total, clienteId],
+              (err) => {
+                if (err) {
+                  console.error('❌ Error al actualizar cliente:', err);
+                } else {
+                  console.log('✅ Cliente actualizado:', clienteId);
+                }
+                resolve();
               }
-            }
-          );
-
-          // =====================================================
-          // 6️⃣ FIDELIDAD (SOLO SI APLICA)
-          // =====================================================
-console.log('ℹ️ Fidelidad será procesada desde el frontend');
-
-
-
-
+            );
+          });
         }
 
-        // =====================================================
-        // 7️⃣ RESPUESTA FINAL
-        // =====================================================
+        // 6️⃣ RESPUESTA FINAL
         resolve({
           success: true,
           venta_id: resultado.id,
@@ -1234,10 +1261,6 @@ function resolverCliente(datosVenta, callback) {
   callback(null, null, 'Cliente General');
 }
 
-
-
-
-
 // ✅ FUNCIÓN AUXILIAR: Guardar cliente nuevo (con callback)
 function guardarClienteNuevo(datosCliente, callback) {
   const { nombre, cedula, correo, celular } = datosCliente;
@@ -1274,7 +1297,6 @@ function guardarClienteNuevo(datosCliente, callback) {
     );
   }
 }
-
 
 
 async function guardarCostoAdicional(ventaId, costo) {

@@ -8,6 +8,15 @@ import {useFidelidadVenta} from '../../api/useFidelidadVenta';
 const { ipcRenderer } = window.require('electron');
 
 
+  const METODOS_PAGO = {
+    'Efectivo': [],
+    'Tarjeta': ['Tarjeta Crédito', 'Tarjeta Débito'],
+    'Transferencia': ['Davivienda', 'Daviplata', 'Nequi'],
+    'Mixto': []
+  };
+
+
+
 // ✅ Modal para ver imagen ampliada
 const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
   if (!imagenBase64) return null;
@@ -254,6 +263,7 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
 
   // Pago
   const [metodoPago, setMetodoPago] = useState('Efectivo');
+  const [subMetodoPago, setSubMetodoPago] = useState(''); // Para Tarjeta Crédito/Débito o Davivienda/Daviplata/Nequi
   const [montoPagado, setMontoPagado] = useState('');
   const [notas, setNotas] = useState('');
 
@@ -510,6 +520,12 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
     return Math.max(0, pagado - total);
   };
 
+
+  const handleMetodoPagoChange = (metodo) => {
+    setMetodoPago(metodo);
+    setSubMetodoPago(''); // Resetear sub-método al cambiar método principal
+  };
+
   const handleSubmit = async () => {
     if (productosSeleccionados.length === 0) {
       setMensajeModal("Agrega al menos un producto");
@@ -521,6 +537,9 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
     const total = calcularTotal();
     const pagado = parseFloat(montoPagado) || 0;
 
+
+
+
     if (pagado > total && metodoPago !== 'Efectivo') {
       setMensajeModal("El cambio solo aplica para pagos en efectivo");
       setTipoMensaje("error");
@@ -528,9 +547,16 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
       return;
     }
 
+    if ((metodoPago === 'Tarjeta' || metodoPago === 'Transferencia') && !subMetodoPago) {
+      setMensajeModal(`Por favor selecciona el tipo de ${metodoPago.toLowerCase()}`);
+      setTipoMensaje("error");
+      setMostrarMensaje(true);
+      return;
+    }
+
     // ✅ Validar presentación de tarjeta si hay descuento
-    if (descuentoAplicable > 0 && !tarjetaPresentada) {
-      setMensajeModal("El cliente debe presentar su tarjeta de fidelidad para aplicar el descuento");
+    if (descuentoActivo && !tarjetaPresentada) {
+      setMensajeModal("Debes marcar que el cliente presentó su tarjeta para aplicar el descuento");
       setTipoMensaje("error");
       setMostrarMensaje(true);
       return;
@@ -552,6 +578,10 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
     const montoDescuento = descuentoActivo ? calcularMontoDescuento(subtotalBase) : 0;
     const porcentajeDescuento = descuentoActivo ? descuentoAplicable : 0;
 
+const metodoPagoCompleto = subMetodoPago
+      ? `${metodoPago} - ${subMetodoPago}`
+      : metodoPago;
+
     // 🔥 LOGGING PARA DEBUGGING
     console.log('📝 Valores de descuento antes de enviar:');
     console.log('  - descuentoActivo:', descuentoActivo);
@@ -568,14 +598,14 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
       total: total,
       monto_pagado: pagado,
       cambio: metodoPago === 'Efectivo' ? calcularCambio() : 0,
-      metodo_pago: metodoPago,
-      notas: descuentoAplicable > 0
+      metodo_pago: metodoPagoCompleto,
+      notas: (descuentoActivo && descuentoAplicable > 0)
         ? `Descuento de fidelidad aplicado: ${descuentoAplicable}%`
         : notas,
       // ✅ FIDELIDAD: Información completa
       presento_tarjeta: tarjetaPresentada,
-      descuento_fidelidad_aplicado: descuentoAplicable > 0,
-      tipo_descuento: descuentoAplicable > 0 ? `${descuentoAplicable}%` : null,
+      descuento_fidelidad_aplicado: descuentoActivo && descuentoAplicable > 0,
+      tipo_descuento: (descuentoActivo && descuentoAplicable > 0) ? `${descuentoAplicable}%` : null,
       // ✅ CRÍTICO: Estos campos se guardan en la tabla ventas
       descuento_porcentaje: porcentajeDescuento,  // ✅ Asegurar que NO sea undefined
       descuento_monto: montoDescuento             // ✅ Asegurar que NO sea undefined
@@ -590,24 +620,30 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
 
     const resultado = await crearVenta(datosVenta);
 
-    if (resultado.success) {
-      // ✅ Procesar fidelidad usando el hook
+if (resultado.success) {
       if (datosCliente.id) {
         await procesarFidelidadPostVenta(datosCliente.id, total);
       }
 
-      setMensajeModal(
-        `Venta ${resultado.numero_venta} creada exitosamente` +
-        (resultado.tiene_deuda ? ' — Se generó una deuda pendiente' : '') +
-        (descuentoAplicable > 0 ? ` — Descuento del ${descuentoAplicable}% aplicado` : '')
-      );
+      // ✅ CORREGIDO: Solo mostrar mensaje de descuento si SE APLICÓ
+      let mensajeExito = `Venta ${resultado.numero_venta} creada exitosamente`;
+
+      if (resultado.tiene_deuda) {
+        mensajeExito += ' — Se generó una deuda pendiente';
+      }
+
+      // ✅ Solo agregar mensaje de descuento si REALMENTE se aplicó
+      if (descuentoActivo && descuentoAplicable > 0) {
+        mensajeExito += ` — Descuento del ${descuentoAplicable}% aplicado`;
+      }
+
+      setMensajeModal(mensajeExito);
       setTipoMensaje("exito");
       setMostrarMensaje(true);
 
       setTimeout(() => {
         onSuccess();
       }, 2500);
-
     } else {
       setMensajeModal('Error al crear la venta: ' + resultado.error);
       setTipoMensaje("error");
@@ -1145,189 +1181,229 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
             )}
 
             {paso === 3 && (
-              <div className="space-y-6">
-                <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-lg border border-teal-200">
-                  <h4 className="font-bold text-gray-800 mb-4">Resumen de la Venta</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal ({productosSeleccionados.length} productos):</span>
-                      <span className="font-medium">${subtotal.toFixed(2)}</span>
-                    </div>
+                          <div className="space-y-6">
+                            {/* Resumen de la Venta */}
+                            <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-lg border border-teal-200">
+                              <h4 className="font-bold text-gray-800 mb-4">Resumen de la Venta</h4>
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">Subtotal ({productosSeleccionados.length} productos):</span>
+                                  <span className="font-medium">${subtotal.toFixed(2)}</span>
+                                </div>
 
-                    {costosAdicionales.length > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Costos adicionales:</span>
-                        <span className="font-medium">${calcularCostosTotal().toFixed(2)}</span>
+                                {costosAdicionales.length > 0 && (
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-600">Costos adicionales:</span>
+                                    <span className="font-medium">${calcularCostosTotal().toFixed(2)}</span>
+                                  </div>
+                                )}
+
+                                {/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
+                                {descuentoActivo && descuentoAplicable > 0 && (
+                                  <div className="flex justify-between text-sm text-green-600 font-medium">
+                                    <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
+                                    <span>-${calcularMontoDescuento(subtotal + calcularCostosTotal()).toFixed(2)}</span>
+                                  </div>
+                                )}
+
+                                {datosCliente.nombre && (
+                                  <div className="flex justify-between text-sm pt-2 border-t">
+                                    <span className="text-gray-600">Cliente:</span>
+                                    <span className="font-medium">{datosCliente.nombre}</span>
+                                  </div>
+                                )}
+
+                                <div className="border-t pt-2 flex justify-between">
+                                  <span className="font-bold text-lg text-gray-800">Total:</span>
+                                  <span className="font-bold text-2xl text-teal-600">${total.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 🔥 MÉTODOS DE PAGO PRINCIPALES */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Método de Pago
+                              </label>
+                              <div className="grid grid-cols-4 gap-2">
+                                {Object.keys(METODOS_PAGO).map((metodo) => (
+                                  <button
+                                    key={metodo}
+                                    onClick={() => handleMetodoPagoChange(metodo)}
+                                    className={`px-4 py-3 rounded-lg border-2 font-medium transition ${
+                                      metodoPago === metodo
+                                        ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                                  >
+                                    {metodo}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 🔥 SUB-MÉTODOS DE PAGO (TARJETA / TRANSFERENCIA) */}
+                            {METODOS_PAGO[metodoPago].length > 0 && (
+                              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                <label className="block text-sm font-medium text-gray-700 mb-3">
+                                  Selecciona el tipo de {metodoPago.toLowerCase()}
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {METODOS_PAGO[metodoPago].map((subMetodo) => (
+                                    <button
+                                      key={subMetodo}
+                                      onClick={() => setSubMetodoPago(subMetodo)}
+                                      className={`px-4 py-3 rounded-lg border-2 font-medium transition flex items-center justify-center space-x-2 ${
+                                        subMetodoPago === subMetodo
+                                          ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                          : 'border-gray-200 hover:border-gray-300'
+                                      }`}
+                                    >
+                                      {metodoPago === 'Tarjeta' && <CreditCard size={18} />}
+                                      {metodoPago === 'Transferencia' && <DollarSign size={18} />}
+                                      <span>{subMetodo}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Monto Pagado */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Monto Pagado
+                              </label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={montoPagado}
+                                  onChange={(e) => setMontoPagado(e.target.value)}
+                                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg font-medium"
+                                  placeholder="0.00"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between mt-2 text-sm">
+                                <span className="text-gray-600">Total a pagar:</span>
+                                <span className="font-bold text-teal-600">${total.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            {/* Cambio (solo para Efectivo) */}
+                            {metodoPago === 'Efectivo' && parseFloat(montoPagado) > 0 && (
+                              <div className={`p-4 rounded-lg border-2 ${
+                                cambio >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+                              }`}>
+                                <div className="flex justify-between items-center">
+                                  <span className={`font-medium ${cambio >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                    {cambio >= 0 ? 'Cambio a devolver:' : 'Falta por pagar:'}
+                                  </span>
+                                  <span className={`text-2xl font-bold ${cambio >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    ${Math.abs(cambio).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notas */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Notas (opcional)
+                              </label>
+                              <textarea
+                                value={notas}
+                                onChange={(e) => setNotas(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+                                rows="3"
+                                placeholder="Observaciones sobre la venta..."
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
 
-                    {/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
-                    {descuentoActivo && descuentoAplicable > 0 && (
-                      <div className="flex justify-between text-sm text-green-600 font-medium">
-                        <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
-                        <span>-${calcularMontoDescuento(subtotal + calcularCostosTotal()).toFixed(2)}</span>
-                      </div>
-                    )}
-
-                    {datosCliente.nombre && (
-                      <div className="flex justify-between text-sm pt-2 border-t">
-                        <span className="text-gray-600">Cliente:</span>
-                        <span className="font-medium">{datosCliente.nombre}</span>
-                      </div>
-                    )}
-
-                    <div className="border-t pt-2 flex justify-between">
-                      <span className="font-bold text-lg text-gray-800">Total:</span>
-                      <span className="font-bold text-2xl text-teal-600">${total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Método de Pago
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {metodosPago.map((metodo) => (
-                      <button
-                        key={metodo}
-                        onClick={() => setMetodoPago(metodo)}
-                        className={`px-4 py-3 rounded-lg border-2 font-medium transition ${
-                          metodoPago === metodo
-                            ? 'border-teal-500 bg-teal-50 text-teal-700'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        {metodo}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Monto Pagado
-                  </label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={montoPagado}
-                      onChange={(e) => setMontoPagado(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg font-medium"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between mt-2 text-sm">
-                    <span className="text-gray-600">Total a pagar:</span>
-                    <span className="font-bold text-teal-600">${total.toFixed(2)}</span>
-                  </div>
-                </div>
-
-                {metodoPago === 'Efectivo' && parseFloat(montoPagado) > 0 && (
-                  <div className={`p-4 rounded-lg border-2 ${
-                    cambio >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                  }`}>
-                    <div className="flex justify-between items-center">
-                      <span className={`font-medium ${cambio >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {cambio >= 0 ? 'Cambio a devolver:' : 'Falta por pagar:'}
-                      </span>
-                      <span className={`text-2xl font-bold ${cambio >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${Math.abs(cambio).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notas (opcional)
-                  </label>
-                  <textarea
-                    value={notas}
-                    onChange={(e) => setNotas(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
-                    rows="3"
-                    placeholder="Observaciones sobre la venta..."
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-                    <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
-                      <div className="text-sm text-gray-600">
-                        {paso === 1 && <span>{productosSeleccionados.length} producto(s) agregado(s)</span>}
-                        {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
-                        {paso === 3 && <span>Total: ${total.toFixed(2)}</span>}
-                      </div>
-                      <div className="flex space-x-3">
-                        {paso > 1 && (
+                      {/* Footer */}
+                      <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
+                        <div className="text-sm text-gray-600">
+                          {paso === 1 && <span>{productosSeleccionados.length} producto(s) agregado(s)</span>}
+                          {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
+                          {paso === 3 && (
+                            <div className="flex flex-col">
+                              <span>Total: ${total.toFixed(2)}</span>
+                              {subMetodoPago && (
+                                <span className="text-xs text-teal-600 font-medium mt-1">
+                                  Método: {metodoPago} - {subMetodoPago}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex space-x-3">
+                          {paso > 1 && (
+                            <button
+                              onClick={() => setPaso(paso - 1)}
+                              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+                            >
+                              Atrás
+                            </button>
+                          )}
                           <button
-                            onClick={() => setPaso(paso - 1)}
+                            onClick={onClose}
                             className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
                           >
-                            Atrás
+                            Cancelar
                           </button>
-                        )}
-                        <button
-                          onClick={onClose}
-                          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
-                        >
-                          Cancelar
-                        </button>
-                        {paso < 3 ? (
-                          <button
-                            onClick={() => {
-                              if (paso === 1 && productosSeleccionados.length === 0) {
-                                setMensajeModal("Agrega al menos un producto");
-                                setTipoMensaje('error');
-                                setMostrarMensaje(true);
-                                return;
-                              }
-                              setPaso(paso + 1);
-                            }}
-                            className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
-                          >
-                            Continuar
-                          </button>
-                        ) : (
-                          <button
-                            onClick={handleSubmit}
-                            disabled={loading}
-                            className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium disabled:opacity-50 flex items-center space-x-2"
-                          >
-                            <ShoppingCart size={20} />
-                            <span>Confirmar Venta</span>
-                          </button>
-                        )}
+                          {paso < 3 ? (
+                            <button
+                              onClick={() => {
+                                if (paso === 1 && productosSeleccionados.length === 0) {
+                                  setMensajeModal("Agrega al menos un producto");
+                                  setTipoMensaje('error');
+                                  setMostrarMensaje(true);
+                                  return;
+                                }
+                                setPaso(paso + 1);
+                              }}
+                              className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+                            >
+                              Continuar
+                            </button>
+                          ) : (
+                            <button
+                              onClick={handleSubmit}
+                              disabled={loading}
+                              className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium disabled:opacity-50 flex items-center space-x-2"
+                            >
+                              <ShoppingCart size={20} />
+                              <span>Confirmar Venta</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* ✅ Modal de Imagen Ampliada */}
-                {imagenAmpliada && (
-                  <ModalImagen
-                    imagenBase64={imagenAmpliada}
-                    nombreProducto={nombreProductoAmpliado}
-                    onCerrar={() => setImagenAmpliada(null)}
-                  />
-                )}
+                  {/* ✅ Modal de Imagen Ampliada */}
+                  {imagenAmpliada && (
+                    <ModalImagen
+                      imagenBase64={imagenAmpliada}
+                      nombreProducto={nombreProductoAmpliado}
+                      onCerrar={() => setImagenAmpliada(null)}
+                    />
+                  )}
 
-                {/* ✅ Modal de Mensajes */}
-                {mostrarMensaje && (
-                  <ModalMensaje
-                    mensaje={mensajeModal}
-                    tipo={tipoMensaje}
-                    autoCloseMs={tipoMensaje === 'exito' ? 2200 : 0}
-                    onCerrar={() => setMostrarMensaje(false)}
-                  />
-                )}
-              </>
+                  {/* ✅ Modal de Mensajes */}
+                  {mostrarMensaje && (
+                    <ModalMensaje
+                      mensaje={mensajeModal}
+                      tipo={tipoMensaje}
+                      autoCloseMs={tipoMensaje === 'exito' ? 2200 : 0}
+                      onCerrar={() => setMostrarMensaje(false)}
+                    />
+                  )}
+                </>
+              );
+            };
 
-            );
-          };
-  export default ModalAgregarVenta;
+            export default ModalAgregarVenta;
