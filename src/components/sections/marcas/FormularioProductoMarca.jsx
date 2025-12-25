@@ -7,10 +7,26 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // Debug: ver qué datos se están enviando
+    console.log('Formulario a guardar:', productosMarca.formulario);
+    console.log('Funciones disponibles:', {
+      handleGuardarProducto: typeof productosMarca.handleGuardarProducto,
+      handleActualizarProducto: typeof productosMarca.handleActualizarProducto
+    });
+
     if (esEdicion) {
-      productosMarca.handleActualizarProducto();
+      if (productosMarca.handleActualizarProducto) {
+        productosMarca.handleActualizarProducto();
+      } else {
+        console.error('handleActualizarProducto no está definido');
+      }
     } else {
-      productosMarca.handleGuardarProducto();
+      if (productosMarca.handleGuardarProducto) {
+        productosMarca.handleGuardarProducto();
+      } else {
+        console.error('handleGuardarProducto no está definido');
+      }
     }
   };
 
@@ -76,78 +92,35 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
                   required
                 />
               </div>
-
-              {/* Categoría */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Categoría <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="categoria"
-                  value={productosMarca.formulario.categoria}
-                  onChange={productosMarca.handleInputChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  required
-                >
-                  {productosMarca.categorias.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
             </div>
           </div>
 
-          {/* Precios */}
+          {/* Precio */}
           <div className="mb-8 pt-8 border-t">
             <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
               <DollarSign className="mr-2 text-purple-600" size={20} />
-              Precios
+              Precio de Venta
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Costo base */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Costo Base <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    name="costo_base"
-                    value={productosMarca.formulario.costo_base}
-                    onChange={productosMarca.handleInputChange}
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0"
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Costo que pagas a la marca</p>
+            <div className="max-w-md">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Precio de Venta <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  type="number"
+                  name="precio_venta_base"
+                  value={productosMarca.formulario.precio_venta_base}
+                  onChange={productosMarca.handleInputChange}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  required
+                />
               </div>
-
-              {/* Precio venta */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Precio de Venta <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                  <input
-                    type="number"
-                    name="precio_venta_base"
-                    value={productosMarca.formulario.precio_venta_base}
-                    onChange={productosMarca.handleInputChange}
-                    placeholder="0.00"
-                    step="0.01"
-                    min="0"
-                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Precio al cliente final</p>
-              </div>
+              <p className="text-xs text-gray-500 mt-1">Precio establecido por la marca</p>
             </div>
           </div>
 

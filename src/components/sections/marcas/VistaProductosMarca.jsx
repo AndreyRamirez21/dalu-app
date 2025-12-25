@@ -105,16 +105,7 @@ export const VistaProductosMarca = ({ marcasAliadas }) => {
                     Producto
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Categoría
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Costo
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">
                     Precio Venta
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Margen
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide">
                     Stock
@@ -130,7 +121,6 @@ export const VistaProductosMarca = ({ marcasAliadas }) => {
               <tbody className="divide-y divide-gray-200">
                 {productosMarca.map((producto) => {
                   const stock = calcularStockTotal(producto.variantes);
-                  const margen = ((producto.precio_venta_base - producto.costo_base) / producto.costo_base * 100).toFixed(1);
 
                   return (
                     <tr key={producto.id} className="hover:bg-gray-50 transition">
@@ -141,18 +131,7 @@ export const VistaProductosMarca = ({ marcasAliadas }) => {
                         <div className="text-sm font-medium text-gray-800">{producto.nombre}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
-                          {producto.categoria}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm text-gray-600">${producto.costo_base.toFixed(2)}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
                         <span className="text-sm font-medium text-gray-800">${producto.precio_venta_base.toFixed(2)}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm text-green-600 font-medium">{margen}%</span>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center space-x-2">

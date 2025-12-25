@@ -15,47 +15,57 @@ export const useFidelidadVenta = () => {
   const [tarjetaPresentada, setTarjetaPresentada] = useState(false);
   const [descuentoActivo, setDescuentoActivo] = useState(false);
 
-  /**
-   * Verifica el estado de fidelidad del cliente
-   */
-  const verificarFidelidadCliente = async (clienteId) => {
-    try {
-      const resultado = await ipcRenderer.invoke('verificar-descuento-fidelidad', clienteId);
+ /**
+  * ✅ Verifica el estado de fidelidad del cliente
+  * NUEVA FUNCIONALIDAD: Reinicia automáticamente si ya usó ambos descuentos y expiraron los 10 meses
+  */
+ const verificarFidelidadCliente = async (clienteId) => {
+   try {
+     // 1️⃣ Primero verificar si necesita reinicio (si ya usó ambos descuentos y expiraron 10 meses)
+     const necesitaReinicio = await ipcRenderer.invoke('reiniciar-fidelidad-si-expirada', clienteId);
 
-      console.log('🔍 Estado fidelidad recibido:', resultado);
-      console.log('  - compras_con_tarjeta:', resultado.compras_con_tarjeta);
-      console.log('  - descuento_aplicado_3:', resultado.descuento_aplicado_3);
-      console.log('  - descuento_aplicado_6:', resultado.descuento_aplicado_6);
-      console.log('  - estado_fidelidad:', resultado.estado_fidelidad);
+     if (necesitaReinicio.reiniciado) {
+       console.log('🔄 Fidelidad reiniciada automáticamente para cliente:', clienteId);
+     }
 
-      setEstadoFidelidad(resultado.estado_fidelidad);
-      setClienteActual(resultado);
-      setTarjetaPresentada(false);
-      setDescuentoAplicable(0);
-      setDescuentoActivo(false);
+     // 2️⃣ Ahora obtener el estado actualizado
+     const resultado = await ipcRenderer.invoke('verificar-descuento-fidelidad', clienteId);
 
-      // Alerta para primera compra
-      if (resultado.estado_fidelidad === 'entrega_tarjeta') {
-        setMostrarAlertaTarjeta(true);
-      } else {
-        setMostrarAlertaTarjeta(false);
-      }
+     console.log('🔍 Estado fidelidad recibido:', resultado);
+     console.log('  - compras_con_tarjeta:', resultado.compras_con_tarjeta);
+     console.log('  - descuento_aplicado_3:', resultado.descuento_aplicado_3);
+     console.log('  - descuento_aplicado_6:', resultado.descuento_aplicado_6);
+     console.log('  - estado_fidelidad:', resultado.estado_fidelidad);
 
-      // ✅ CORREGIDO: Detectar descuentos basados en compras_con_tarjeta
-      if (resultado.estado_fidelidad === 'descuento_15') {
-        console.log('✅ Descuento 15% disponible (6+ compras con tarjeta)');
-        setDescuentoAplicable(15);
-      } else if (resultado.estado_fidelidad === 'descuento_10') {
-        console.log('✅ Descuento 10% disponible (3+ compras con tarjeta)');
-        setDescuentoAplicable(10);
-      }
+     setEstadoFidelidad(resultado.estado_fidelidad);
+     setClienteActual(resultado);
+     setTarjetaPresentada(false);
+     setDescuentoAplicable(0);
+     setDescuentoActivo(false);
 
-      return resultado;
-    } catch (error) {
-      console.error('❌ Error al verificar fidelidad:', error);
-      return null;
-    }
-  };
+     // Alerta para primera compra
+     if (resultado.estado_fidelidad === 'entrega_tarjeta') {
+       setMostrarAlertaTarjeta(true);
+     } else {
+       setMostrarAlertaTarjeta(false);
+     }
+
+     // ✅ Detectar descuentos basados en compras_con_tarjeta
+     if (resultado.estado_fidelidad === 'descuento_15') {
+       console.log('✅ Descuento 15% disponible (6+ compras con tarjeta)');
+       setDescuentoAplicable(15);
+     } else if (resultado.estado_fidelidad === 'descuento_10') {
+       console.log('✅ Descuento 10% disponible (3+ compras con tarjeta)');
+       setDescuentoAplicable(10);
+     }
+
+     return resultado;
+   } catch (error) {
+     console.error('❌ Error al verificar fidelidad:', error);
+     return null;
+   }
+ };
+
 
   /**
    * Registra presentación de tarjeta
@@ -99,60 +109,61 @@ export const useFidelidadVenta = () => {
    * - Si aplicó descuento → Marca como usado Y registra presentación
    * - Si NO aplicó descuento pero presentó tarjeta → Solo registra presentación
    */
-  const procesarFidelidadPostVenta = async (clienteId, totalVenta) => {
-    try {
-      const esCompraGrande = totalVenta > 30000;
+  const procesarFidelidadPostVenta = async (clienteId, subtotalVenta) => {
+      try {
+        // ✅ CORREGIDO: Usar subtotal (sin costos adicionales)
+        const esCompraGrande = subtotalVenta > 30000;
 
-      console.log('📋 Procesando fidelidad post-venta:', {
-        clienteId,
-        totalVenta,
-        esCompraGrande,
-        estadoFidelidad,
-        tarjetaPresentada,
-        descuentoAplicable,
-        descuentoActivo
-      });
+        console.log('📋 Procesando fidelidad post-venta:', {
+          clienteId,
+          subtotalVenta,
+          esCompraGrande,
+          estadoFidelidad,
+          tarjetaPresentada,
+          descuentoAplicable,
+          descuentoActivo
+        });
 
-      // 1️⃣ Si es primera compra >= $30k, ya se manejó en backend
-      if (estadoFidelidad === 'entrega_tarjeta') {
-        console.log('ℹ️ Primera compra - Tarjeta ya procesada en backend');
-        return true;
-      }
-
-      // 2️⃣ ✅ SI APLICÓ DESCUENTO → Marcar como usado Y registrar presentación
-      if (descuentoActivo && descuentoAplicable > 0 && tarjetaPresentada && esCompraGrande) {
-        console.log(`🎉 Aplicando descuento del ${descuentoAplicable}%...`);
-
-        // Primero registrar presentación de tarjeta (esto suma +1)
-        await ipcRenderer.invoke('registrar-presentacion-tarjeta', clienteId);
-        console.log('✅ Presentación de tarjeta registrada (+1)');
-
-        // Luego marcar el descuento como usado
-        if (descuentoAplicable === 10) {
-          await ipcRenderer.invoke('marcar-descuento-aplicado-3', clienteId);
-          console.log('✅ Descuento del 10% marcado como aplicado');
-        } else if (descuentoAplicable === 15) {
-          await ipcRenderer.invoke('marcar-descuento-aplicado-6', clienteId);
-          console.log('✅ Descuento del 15% marcado como aplicado');
+        // 1️⃣ Si es primera compra > $30k, ya se manejó en backend
+        if (estadoFidelidad === 'entrega_tarjeta') {
+          console.log('ℹ️ Primera compra - Tarjeta ya procesada en backend');
+          return true;
         }
 
-        return true;
-      }
+        // 2️⃣ ✅ SI APLICÓ DESCUENTO → Marcar como usado Y registrar presentación
+        if (descuentoActivo && descuentoAplicable > 0 && tarjetaPresentada && esCompraGrande) {
+          console.log(`🎉 Aplicando descuento del ${descuentoAplicable}%...`);
 
-      // 3️⃣ Si NO aplicó descuento pero SÍ presentó tarjeta → Solo registrar
-      if (tarjetaPresentada && esCompraGrande && !descuentoActivo) {
-        await ipcRenderer.invoke('registrar-presentacion-tarjeta', clienteId);
-        console.log('✅ Presentación de tarjeta registrada sin descuento');
-        return true;
-      }
+          // Primero registrar presentación de tarjeta (esto suma +1)
+          await ipcRenderer.invoke('registrar-presentacion-tarjeta', clienteId);
+          console.log('✅ Presentación de tarjeta registrada (+1)');
 
-      console.log('ℹ️ No se procesó fidelidad (no cumple requisitos)');
-      return true;
-    } catch (error) {
-      console.error('❌ Error al procesar fidelidad post-venta:', error);
-      return false;
-    }
-  };
+          // Luego marcar el descuento como usado
+          if (descuentoAplicable === 10) {
+            await ipcRenderer.invoke('marcar-descuento-aplicado-3', clienteId);
+            console.log('✅ Descuento del 10% marcado como aplicado');
+          } else if (descuentoAplicable === 15) {
+            await ipcRenderer.invoke('marcar-descuento-aplicado-6', clienteId);
+            console.log('✅ Descuento del 15% marcado como aplicado');
+          }
+
+          return true;
+        }
+
+        // 3️⃣ Si NO aplicó descuento pero SÍ presentó tarjeta → Solo registrar
+        if (tarjetaPresentada && esCompraGrande && !descuentoActivo) {
+          await ipcRenderer.invoke('registrar-presentacion-tarjeta', clienteId);
+          console.log('✅ Presentación de tarjeta registrada sin descuento');
+          return true;
+        }
+
+        console.log('ℹ️ No se procesó fidelidad (no cumple requisitos)');
+        return true;
+      } catch (error) {
+        console.error('❌ Error al procesar fidelidad post-venta:', error);
+        return false;
+      }
+    };
 
   /**
    * Resetea el estado

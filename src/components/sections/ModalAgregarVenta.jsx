@@ -225,7 +225,9 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
     resetearFidelidad,
     requiereEntregarTarjeta,
     descuentoActivo,      // ← AGREGAR
-    toggleDescuento
+    toggleDescuento,
+    clienteActual  // ⬅️ AGREGAR ESTA LÍNEA
+
   } = useFidelidadVenta();
 
   const [paso, setPaso] = useState(1);
@@ -502,12 +504,14 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   };
 
   // ✅ USAR LA FUNCIÓN DEL HOOK
+// ✅ CORREGIDO: Descuento solo sobre subtotal, luego sumar costos
   const calcularTotal = () => {
     const subtotal = calcularSubtotal();
     const costos = calcularCostosTotal();
-    // ✅ Aplicar descuento de fidelidad desde el hook
-    const totalConDescuento = aplicarDescuentoFidelidad(subtotal + costos);
-    return Math.max(0, totalConDescuento);
+    // ✅ Aplicar descuento SOLO al subtotal
+    const subtotalConDescuento = aplicarDescuentoFidelidad(subtotal);
+    // ✅ Sumar costos adicionales SIN descuento
+    return Math.max(0, subtotalConDescuento + costos);
   };
 
   // ❌ ELIMINAR ESTAS FUNCIONES - YA ESTÁN EN EL HOOK
@@ -573,8 +577,8 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
       };
     }
 
-    // ✅ CRÍTICO: Calcular correctamente el descuento
-    const subtotalBase = calcularSubtotal() + calcularCostosTotal();
+// ✅ CRÍTICO: Calcular correctamente el descuento SOLO sobre subtotal
+    const subtotalBase = calcularSubtotal(); // ✅ Solo productos, SIN costos
     const montoDescuento = descuentoActivo ? calcularMontoDescuento(subtotalBase) : 0;
     const porcentajeDescuento = descuentoActivo ? descuentoAplicable : 0;
 
@@ -622,7 +626,8 @@ const metodoPagoCompleto = subMetodoPago
 
 if (resultado.success) {
       if (datosCliente.id) {
-        await procesarFidelidadPostVenta(datosCliente.id, total);
+        // ✅ CORREGIDO: Pasar el subtotal (sin costos) para fidelidad
+        await procesarFidelidadPostVenta(datosCliente.id, subtotalBase);
       }
 
       // ✅ CORREGIDO: Solo mostrar mensaje de descuento si SE APLICÓ
@@ -655,103 +660,239 @@ if (resultado.success) {
   const cambio = calcularCambio();
   const subtotal = calcularSubtotal();
 
-  // ✅ COMPONENTE AlertaFidelidad CORREGIDO
-  const AlertaFidelidad = () => {
-    if (!datosCliente.id) return null;
+// ✅ COMPONENTE AlertaFidelidad COMPLETO Y CORREGIDO
+const AlertaFidelidad = () => {
+  if (!datosCliente.id && !datosCliente.nombre.trim()) return null;
 
-    // Alerta: Entregar tarjeta de fidelidad (1ra compra)
-    if (requiereEntregarTarjeta) {
-      return (
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
-          <div className="flex items-start space-x-3">
-            <Gift className="text-purple-600 mt-1" size={24} />
-            <div className="flex-1">
-              <h4 className="font-bold text-purple-900">🎁 Entregar Tarjeta de Fidelidad</h4>
-              <p className="text-sm text-purple-700 mt-1">
-                Esta es la primera compra del cliente.
-                <strong> Entregar la tarjeta de fidelidad</strong> para que pueda
-                acumular beneficios desde ahora.
+  // ✅ Calcular si la compra actual es > $30,000
+  const subtotalActual = calcularSubtotal();
+  const esCompraGrande = subtotalActual > 30000;
+
+  // ✅ NUEVO: Si es cliente nuevo (sin ID) y compra > $30k → Mostrar alerta
+  if (!datosCliente.id && datosCliente.nombre.trim() && esCompraGrande) {
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Gift className="text-purple-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-purple-900">🎁 ¡IMPORTANTE! Entregar Tarjeta de Fidelidad</h4>
+            <p className="text-sm text-purple-700 mt-2">
+              <strong>⚠️ RECORDATORIO:</strong> Esta es la primera compra del cliente con un monto superior a $30,000.
+            </p>
+            <div className="mt-3 p-3 bg-purple-100 rounded-lg border border-purple-400">
+              <p className="text-sm font-bold text-purple-900">
+                📋 Al finalizar la venta, entregar la tarjeta de fidelidad física al cliente
+              </p>
+              <p className="text-xs text-purple-700 mt-2">
+                Con esta tarjeta podrá acumular compras y obtener descuentos especiales en sus compras 3 y 6 con tarjeta presentada.
               </p>
             </div>
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    // ✅ NUEVO: Mostrar checkbox si tiene tarjeta Y no tiene descuento aplicable
-    // Esto permite registrar las compras 2, 3, 4, 5 con tarjeta
-    if (!requiereEntregarTarjeta && descuentoAplicable === 0) {
-      return (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-4 mb-4">
-          <div className="flex items-start space-x-3">
-            <Award className="text-blue-600 mt-1" size={24} />
-            <div className="flex-1">
-              <h4 className="font-bold text-blue-900">💳 Tarjeta de Fidelidad</h4>
-              <p className="text-sm text-blue-700 mt-1">
-                Marca si el cliente presenta su tarjeta en esta compra.
+  // ✅ Si no hay ID de cliente, no mostrar nada más
+  if (!datosCliente.id) return null;
+
+  // ✅ NUEVO: Verificar si cliente existente NO tiene tarjeta Y compra > $30k
+  const clienteSinTarjeta = clienteActual?.tarjeta_fidelidad_entregada === 0;
+  if (clienteSinTarjeta && esCompraGrande) {
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Gift className="text-purple-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-purple-900">🎁 ¡IMPORTANTE! Entregar Tarjeta de Fidelidad</h4>
+            <p className="text-sm text-purple-700 mt-2">
+              <strong>⚠️ RECORDATORIO:</strong> Esta es la primera compra del cliente con un monto superior a $30,000.
+            </p>
+            <div className="mt-3 p-3 bg-purple-100 rounded-lg border border-purple-400">
+              <p className="text-sm font-bold text-purple-900">
+                📋 Al finalizar la venta, entregar la tarjeta de fidelidad física al cliente
               </p>
-              <label className="flex items-center space-x-2 text-sm text-blue-800 mt-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={tarjetaPresentada}
-                  onChange={() => registrarPresentacionTarjeta()}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="font-medium">Cliente presentó tarjeta de fidelidad</span>
-              </label>
+              <p className="text-xs text-purple-700 mt-2">
+                Con esta tarjeta podrá acumular compras y obtener descuentos especiales en sus compras 3 y 6 con tarjeta presentada.
+              </p>
             </div>
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    // Alerta: Descuento disponible (compra 3 o 6)
-    // Alerta: Descuento disponible (compra 3 o 6)
-    if (descuentoAplicable > 0) {
-      return (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4 mb-4">
-          <div className="flex items-start space-x-3">
-            <Award className="text-green-600 mt-1" size={24} />
-            <div className="flex-1">
-              <h4 className="font-bold text-green-900">
-                🎉 ¡Descuento del {descuentoAplicable}% Disponible!
-              </h4>
-              <p className="text-sm text-green-700 mt-1">
-                El cliente califica para un descuento de fidelidad.
-              </p>
+  // ✅ VERIFICAR SI YA USARON AMBOS DESCUENTOS
+  const yaUsoAmbosDescuentos = clienteActual?.descuento_aplicado_3 === 1 &&
+                                clienteActual?.descuento_aplicado_6 === 1;
 
-              {/* ✅ CHECKBOX PARA PRESENTACIÓN DE TARJETA */}
-              <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={tarjetaPresentada}
-                  onChange={() => registrarPresentacionTarjeta()}
-                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500 cursor-pointer"
-                />
-                <span className="font-medium">Cliente presentó tarjeta</span>
-              </label>
-
-              {/* ✅ NUEVO: CHECKBOX PARA APLICAR DESCUENTO */}
-              {tarjetaPresentada && (
-                <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer border-t pt-3">
-                  <input
-                    type="checkbox"
-                    checked={descuentoActivo}
-                    onChange={() => toggleDescuento()}
-                    className="w-5 h-5 text-green-600 rounded focus:ring-green-500 cursor-pointer"
-                  />
-                  <span className="font-bold text-base">✅ Aplicar descuento del {descuentoAplicable}%</span>
-                </label>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-
+  // ✅ Calcular fecha de reinicio (10 meses + 1 día desde primera compra)
+  const calcularFechaReinicio = () => {
+    if (!clienteActual?.fecha_primera_compra) return null;
+    const fechaPrimeraCompra = new Date(clienteActual.fecha_primera_compra);
+    const fechaReinicio = new Date(fechaPrimeraCompra);
+    fechaReinicio.setMonth(fechaReinicio.getMonth() + 10);
+    fechaReinicio.setDate(fechaReinicio.getDate() + 1);
+    return fechaReinicio.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
+
+  // ⭐ Si ya usó ambos descuentos, mostrar mensaje informativo
+  if (yaUsoAmbosDescuentos) {
+    const fechaReinicio = calcularFechaReinicio();
+    return (
+      <div className="bg-gradient-to-r from-gray-50 to-slate-50 border-2 border-gray-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Sparkles className="text-gray-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-gray-900">✨ Descuentos Completados</h4>
+            <p className="text-sm text-gray-700 mt-1">
+              Este cliente ya utilizó los dos descuentos disponibles del programa de fidelidad:
+            </p>
+            <div className="mt-2 space-y-1 text-sm text-gray-600">
+              <div>✅ Descuento del 10% (3ra compra con tarjeta)</div>
+              <div>✅ Descuento del 15% (6ta compra con tarjeta)</div>
+            </div>
+            {fechaReinicio && (
+              <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>💡 Podrá volver a participar:</strong> {fechaReinicio}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  El programa se reinicia automáticamente 10 meses después de su primera compra mayor a $30,000 (cuando recibió la tarjeta de fidelidad).
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Alerta: Entregar tarjeta de fidelidad (1ra compra > $30k de cliente existente)
+  if (requiereEntregarTarjeta && esCompraGrande) {
+    return (
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Gift className="text-purple-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-purple-900">🎁 ¡IMPORTANTE! Entregar Tarjeta de Fidelidad</h4>
+            <p className="text-sm text-purple-700 mt-2">
+              <strong>⚠️ RECORDATORIO:</strong> Esta es la primera compra del cliente con un monto superior a $30,000.
+            </p>
+            <div className="mt-3 p-3 bg-purple-100 rounded-lg border border-purple-400">
+              <p className="text-sm font-bold text-purple-900">
+                📋 Al finalizar la venta, entregar la tarjeta de fidelidad física al cliente
+              </p>
+              <p className="text-xs text-purple-700 mt-2">
+                Con esta tarjeta podrá acumular compras y obtener descuentos especiales en sus compras 3 y 6 con tarjeta presentada.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ℹ️ Si es primera compra pero NO cumple monto, no mostrar nada
+  if (requiereEntregarTarjeta && !esCompraGrande) {
+    return null;
+  }
+
+  // ✅ Mostrar checkbox para registrar presentación de tarjeta (solo si compra > $30k Y ya tiene tarjeta)
+  if (!requiereEntregarTarjeta && descuentoAplicable === 0 && esCompraGrande && clienteActual?.tarjeta_fidelidad_entregada === 1) {
+    return (
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Award className="text-blue-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-blue-900">💳 Tarjeta de Fidelidad</h4>
+            <p className="text-sm text-blue-700 mt-1">
+              Marca si el cliente presenta su tarjeta en esta compra (compra válida > $30,000).
+            </p>
+            <label className="flex items-center space-x-2 text-sm text-blue-800 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tarjetaPresentada}
+                onChange={() => registrarPresentacionTarjeta()}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="font-medium">Cliente presentó tarjeta de fidelidad</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Alerta: Descuento disponible (compra 3 o 6) - SOLO si compra > $30k
+  if (descuentoAplicable > 0 && esCompraGrande) {
+    return (
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Award className="text-green-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-green-900">
+              🎉 ¡Descuento del {descuentoAplicable}% Disponible!
+            </h4>
+            <p className="text-sm text-green-700 mt-1">
+              El cliente califica para un descuento de fidelidad en esta compra.
+            </p>
+
+            {/* ✅ CHECKBOX PARA PRESENTACIÓN DE TARJETA */}
+            <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tarjetaPresentada}
+                onChange={() => registrarPresentacionTarjeta()}
+                className="w-4 h-4 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+              />
+              <span className="font-medium">Cliente presentó tarjeta</span>
+            </label>
+
+            {/* ✅ CHECKBOX PARA APLICAR DESCUENTO */}
+            {tarjetaPresentada && (
+              <label className="flex items-center space-x-2 text-sm text-green-800 mt-3 cursor-pointer border-t pt-3">
+                <input
+                  type="checkbox"
+                  checked={descuentoActivo}
+                  onChange={() => toggleDescuento()}
+                  className="w-5 h-5 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+                />
+                <span className="font-bold text-base">✅ Aplicar descuento del {descuentoAplicable}%</span>
+              </label>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ⚠️ Si tiene descuento disponible pero compra < $30k, mostrar aviso
+  if (descuentoAplicable > 0 && !esCompraGrande) {
+    return (
+      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl p-4 mb-4">
+        <div className="flex items-start space-x-3">
+          <Award className="text-yellow-600 mt-1" size={24} />
+          <div className="flex-1">
+            <h4 className="font-bold text-yellow-900">⚠️ Descuento No Disponible</h4>
+            <p className="text-sm text-yellow-700 mt-1">
+              El cliente tiene un descuento del {descuentoAplicable}% disponible, pero <strong>solo aplica en compras mayores a $30,000</strong>.
+            </p>
+            <p className="text-sm text-yellow-700 mt-2">
+              Subtotal actual: <strong>${subtotalActual.toLocaleString()}</strong> (faltan ${(30000 - subtotalActual).toLocaleString()})
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
 
   const referenciasOptions = referenciasDisponibles.map(p => p.referencia || 'N/A');
 
@@ -1198,11 +1339,11 @@ if (resultado.success) {
                                   </div>
                                 )}
 
-                                {/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
+{/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
                                 {descuentoActivo && descuentoAplicable > 0 && (
                                   <div className="flex justify-between text-sm text-green-600 font-medium">
                                     <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
-                                    <span>-${calcularMontoDescuento(subtotal + calcularCostosTotal()).toFixed(2)}</span>
+                                    <span>-${calcularMontoDescuento(subtotal).toFixed(2)}</span>
                                   </div>
                                 )}
 

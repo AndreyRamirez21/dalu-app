@@ -13,14 +13,170 @@ import {
   Edit,
   Trash2,
   CreditCard,
-  CheckCircle
+  CheckCircle,
+  X,
+  Eye,
+  Calendar,
+  DollarSign
 } from 'lucide-react';
 
 const { ipcRenderer } = window.require('electron');
 
+// ✅ NUEVO: Modal de Historial de Compras
+const ModalHistorialCliente = ({ cliente, onClose }) => {
+  const [ventas, setVentas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    cargarVentasCliente();
+  }, [cliente.id]);
+
+  const cargarVentasCliente = async () => {
+    try {
+      setCargando(true);
+      const data = await ipcRenderer.invoke('obtener-ventas');
+      const ventasCliente = data.filter(v => v.cliente_id === cliente.id);
+      setVentas(ventasCliente);
+    } catch (error) {
+      console.error('Error al cargar ventas del cliente:', error);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="p-6 border-b bg-gradient-to-r from-teal-50 to-blue-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-2xl font-bold text-gray-800">Historial de Compras</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Cliente: <span className="font-medium">{cliente.nombre}</span>
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 rounded-lg transition"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          {/* Resumen del Cliente */}
+          <div className="grid grid-cols-3 gap-4 mt-4">
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 uppercase">Total Compras</div>
+              <div className="text-2xl font-bold text-gray-800">{cliente.numero_compras}</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 uppercase">Total Gastado</div>
+              <div className="text-2xl font-bold text-teal-600">${(cliente.total_compras || 0).toFixed(2)}</div>
+            </div>
+            <div className="bg-white rounded-lg p-3 border">
+              <div className="text-xs text-gray-500 uppercase">Compras con Tarjeta</div>
+              <div className="text-2xl font-bold text-purple-600">{cliente.compras_con_tarjeta || 0}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de Ventas */}
+        <div className="flex-1 overflow-auto p-6">
+          {cargando ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-gray-500">Cargando ventas...</div>
+            </div>
+          ) : ventas.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <ShoppingBag size={48} className="text-gray-300 mb-4" />
+              <p className="text-gray-500">Este cliente no tiene compras registradas</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {ventas.map((venta) => (
+                <div
+                  key={venta.id}
+                  className="bg-gray-50 rounded-lg border hover:shadow-md transition p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    {/* Info Principal */}
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="text-lg font-bold text-teal-600">{venta.numero_venta}</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          venta.estado === 'Pagado'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {venta.estado}
+                        </span>
+                        {venta.descuento_porcentaje > 0 && (
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                            -{venta.descuento_porcentaje}% Descuento
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center text-gray-600">
+                          <Calendar size={14} className="mr-2" />
+                          {new Date(venta.fecha).toLocaleString('es-ES', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                        <div className="flex items-center text-gray-600">
+                          <CreditCard size={14} className="mr-2" />
+                          {venta.metodo_pago}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Total */}
+                    <div className="text-right">
+                      <div className="text-sm text-gray-500">Total</div>
+                      <div className="text-2xl font-bold text-gray-800">${venta.total.toFixed(2)}</div>
+                      {venta.descuento_monto > 0 && (
+                        <div className="text-xs text-green-600">
+                          Ahorro: ${venta.descuento_monto.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {venta.notas && (
+                    <div className="mt-3 pt-3 border-t text-sm text-gray-600">
+                      <span className="font-medium">Notas:</span> {venta.notas}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Clientes = () => {
   const [clientes, setClientes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [stats, setStats] = useState({
     totalClientes: 0,
     clientesVIP: 0,
@@ -56,82 +212,52 @@ const Clientes = () => {
     });
   };
 
-  const getNivelFidelidad = (numCompras) => {
-    if (numCompras >= 6) return { nivel: 'Premium', color: 'bg-blue-100 text-blue-700', icon: '💎' };
-    if (numCompras >= 3) return { nivel: 'Gold', color: 'bg-yellow-100 text-yellow-700', icon: '🥇' };
-    if (numCompras >= 1) return { nivel: 'Activo', color: 'bg-green-100 text-green-700', icon: '⭐' };
+  // ✅ CORREGIDO: Nivel basado en descuentos obtenidos
+  const getNivelFidelidad = (cliente) => {
+    const { descuento_aplicado_3, descuento_aplicado_6 } = cliente;
+
+    // Premium: Ya obtuvo el 15%
+    if (descuento_aplicado_6 === 1) {
+      return { nivel: 'Premium', color: 'bg-blue-100 text-blue-700', icon: '💎' };
+    }
+
+    // Gold: Ya obtuvo el 10%
+    if (descuento_aplicado_3 === 1) {
+      return { nivel: 'Gold', color: 'bg-yellow-100 text-yellow-700', icon: '🥇' };
+    }
+
+    // Activo: Tiene al menos 1 compra
+    if (cliente.numero_compras >= 1) {
+      return { nivel: 'Activo', color: 'bg-green-100 text-green-700', icon: '⭐' };
+    }
+
+    // Nuevo: Sin compras
     return { nivel: 'Nuevo', color: 'bg-gray-100 text-gray-700', icon: '👤' };
   };
 
-const getIconoEstadoFidelidad = (cliente) => {
-  const { numero_compras, compras_con_tarjeta, tarjeta_fidelidad_entregada,
-          descuento_aplicado_3, descuento_aplicado_6, fecha_primera_compra } = cliente;
+  // ✅ SIMPLIFICADO: Solo mostrar cantidad de compras con tarjeta
+  const getEstadoFidelidad = (cliente) => {
+    const { compras_con_tarjeta, tarjeta_fidelidad_entregada } = cliente;
 
-  console.log('🔍 Cliente:', cliente.nombre, {
-    numero_compras,
-    compras_con_tarjeta,
-    tarjeta_fidelidad_entregada,
-    descuento_aplicado_3,
-    descuento_aplicado_6
-  });
+    // Si no tiene tarjeta entregada
+    if (!tarjeta_fidelidad_entregada) {
+      return {
+        icono: '—',
+        mensaje: 'Sin tarjeta',
+        color: 'text-gray-500 bg-gray-50',
+        border: 'border-gray-200'
+      };
+    }
 
-  // Verificar si pasaron 10 meses
-  const fechaPrimeraCompra = fecha_primera_compra ? new Date(fecha_primera_compra) : null;
-  const hace10Meses = fechaPrimeraCompra ?
-    (Date.now() - fechaPrimeraCompra.getTime()) / (1000 * 60 * 60 * 24 * 30) > 10 : false;
-
-  // Alerta: Entregar tarjeta en la 1ra compra
-  if (numero_compras === 1 && !tarjeta_fidelidad_entregada) {
-    return {
-      icono: '🎁',
-      mensaje: 'Entregar tarjeta de fidelidad',
-      color: 'text-purple-600 bg-purple-50',
-      border: 'border-purple-300'
-    };
-  }
-
-  // Alerta: Descuento del 10% disponible (3ra compra)
-  if (numero_compras === 3 && compras_con_tarjeta >= 2 && !descuento_aplicado_3) {
-    return {
-      icono: '🎉',
-      mensaje: '10% descuento disponible',
-      color: 'text-green-600 bg-green-50',
-      border: 'border-green-300'
-    };
-  }
-
-  // Alerta: Descuento del 15% disponible (6ta compra)
-  if (numero_compras === 6 && compras_con_tarjeta >= 5 && !descuento_aplicado_6 && !hace10Meses) {
-    return {
-      icono: '💎',
-      mensaje: '15% descuento disponible',
-      color: 'text-blue-600 bg-blue-50',
-      border: 'border-blue-300'
-    };
-  }
-
-  // Alerta: Fidelidad vencida
-  if (hace10Meses && numero_compras < 3) {
-    return {
-      icono: '⏰',
-      mensaje: 'Fidelidad vencida',
-      color: 'text-red-600 bg-red-50',
-      border: 'border-red-300'
-    };
-  }
-
-  // Cliente activo con tarjeta
-  if (tarjeta_fidelidad_entregada && numero_compras >= 1) {
+    // Si tiene tarjeta, mostrar compras acumuladas
+    const numCompras = compras_con_tarjeta || 0;
     return {
       icono: '✅',
-      mensaje: `${compras_con_tarjeta || 0} compras con tarjeta`,
-      color: 'text-gray-600 bg-gray-50',
-      border: 'border-gray-200'
+      mensaje: `${numCompras} compra${numCompras !== 1 ? 's' : ''} con tarjeta`,
+      color: 'text-teal-600 bg-teal-50',
+      border: 'border-teal-200'
     };
-  }
-
-  return null;
-};
+  };
 
   const clientesFiltrados = clientes.filter(cliente =>
     cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -180,7 +306,7 @@ const getIconoEstadoFidelidad = (cliente) => {
         </div>
       </div>
 
-      {/* Programa de Fidelidad Info - ACTUALIZADO */}
+      {/* Programa de Fidelidad Info */}
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6 mb-8">
         <div className="flex items-center space-x-3 mb-4">
           <Gift className="text-purple-600" size={28} />
@@ -193,37 +319,34 @@ const getIconoEstadoFidelidad = (cliente) => {
             <h4 className="font-bold text-gray-800">¿Cómo funciona?</h4>
           </div>
           <ol className="text-sm text-gray-700 space-y-1 ml-6 list-decimal">
-            <li>En la <strong>segunda compra</strong>, entrega la tarjeta de fidelidad al cliente</li>
+            <li>La tarjeta se entrega en la <strong>primera compra mayor a $30,000</strong></li>
             <li>El cliente debe presentar la tarjeta en cada compra para acumular beneficios</li>
             <li>Los descuentos se aplican automáticamente al cumplir los requisitos</li>
           </ol>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white rounded-lg p-4 border border-green-200">
+          <div className="bg-white rounded-lg p-4 border border-yellow-200">
             <div className="flex items-center space-x-2 mb-2">
-              <span className="text-2xl">🎉</span>
-              <div className="font-bold text-gray-800">Descuento 10%</div>
+              <span className="text-2xl">🥇</span>
+              <div className="font-bold text-gray-800">Nivel Gold - 10% OFF</div>
             </div>
             <div className="text-sm text-gray-600 space-y-1">
-              <div>✓ En la <strong>3ra compra</strong></div>
-              <div>✓ Haber presentado tarjeta en compras #2 y #3</div>
+              <div>✓ En la <strong>3ra compra con tarjeta</strong></div>
+              <div>✓ Compra mayor a <strong>$30,000</strong></div>
             </div>
-            <div className="text-lg font-bold text-green-600 mt-2">10% OFF</div>
           </div>
 
           <div className="bg-white rounded-lg p-4 border border-blue-200">
             <div className="flex items-center space-x-2 mb-2">
               <span className="text-2xl">💎</span>
-              <div className="font-bold text-gray-800">Descuento 15%</div>
+              <div className="font-bold text-gray-800">Nivel Premium - 15% OFF</div>
             </div>
             <div className="text-sm text-gray-600 space-y-1">
-              <div>✓ En la <strong>6ta compra</strong></div>
-              <div>✓ Haber presentado tarjeta desde compra #2 hasta #6</div>
+              <div>✓ En la <strong>6ta compra con tarjeta</strong></div>
               <div>✓ Compra mayor a <strong>$30,000</strong></div>
-              <div>✓ Dentro de <strong>10 meses</strong> desde 1ra compra</div>
+              <div>✓ Dentro de <strong>10 meses</strong> desde recibir tarjeta</div>
             </div>
-            <div className="text-lg font-bold text-blue-600 mt-2">15% OFF</div>
           </div>
         </div>
       </div>
@@ -267,11 +390,15 @@ const getIconoEstadoFidelidad = (cliente) => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {clientesFiltrados.map((cliente) => {
-                  const fidelidad = getNivelFidelidad(cliente.numero_compras);
-                  const estadoFidelidad = getIconoEstadoFidelidad(cliente);
+                  const fidelidad = getNivelFidelidad(cliente);
+                  const estadoFidelidad = getEstadoFidelidad(cliente);
 
                   return (
-                    <tr key={cliente.id} className="hover:bg-gray-50 transition">
+                    <tr
+                      key={cliente.id}
+                      onClick={() => setClienteSeleccionado(cliente)}
+                      className="hover:bg-teal-50 transition cursor-pointer"
+                    >
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
@@ -318,14 +445,10 @@ const getIconoEstadoFidelidad = (cliente) => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {estadoFidelidad ? (
-                          <div className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${estadoFidelidad.color} ${estadoFidelidad.border}`}>
-                            <span className="text-2xl mb-1">{estadoFidelidad.icono}</span>
-                            <span className="text-xs font-medium">{estadoFidelidad.mensaje}</span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-sm">—</span>
-                        )}
+                        <div className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${estadoFidelidad.color} ${estadoFidelidad.border}`}>
+                          <span className="text-xl mb-1">{estadoFidelidad.icono}</span>
+                          <span className="text-xs font-medium whitespace-nowrap">{estadoFidelidad.mensaje}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="text-sm text-gray-600">
@@ -343,6 +466,14 @@ const getIconoEstadoFidelidad = (cliente) => {
           )}
         </div>
       </div>
+
+      {/* ✅ MODAL DE HISTORIAL */}
+      {clienteSeleccionado && (
+        <ModalHistorialCliente
+          cliente={clienteSeleccionado}
+          onClose={() => setClienteSeleccionado(null)}
+        />
+      )}
     </div>
   );
 };

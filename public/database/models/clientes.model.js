@@ -326,7 +326,10 @@ function reiniciarFidelidad(clienteId, callback) {
  * Verifica y reinicia fidelidad si han pasado 10 meses sin cumplir requisitos
  */
 function verificarYReiniciarFidelidad(callback) {
-  // Clientes que no llegaron a la 3ra compra en 10 meses
+  // ✅ CORREGIDO: Reiniciar clientes que:
+  // 1. Tienen fecha_primera_compra
+  // 2. Han pasado más de 300 días (10 meses) desde la primera compra
+  // 3. NO completaron ambos descuentos (solo se reinician los que no terminaron)
   const sql = `UPDATE clientes
                SET tarjeta_fidelidad_entregada = 0,
                    fecha_primera_compra = NULL,
@@ -334,16 +337,78 @@ function verificarYReiniciarFidelidad(callback) {
                    descuento_aplicado_3 = 0,
                    descuento_aplicado_6 = 0
                WHERE fecha_primera_compra IS NOT NULL
-               AND numero_compras < 3
-               AND julianday('now') - julianday(fecha_primera_compra) > 300`;
+               AND julianday('now') - julianday(fecha_primera_compra) > 300
+               AND (
+                 -- Solo reiniciar si NO completaron ambos descuentos
+                 descuento_aplicado_3 = 0 OR descuento_aplicado_6 = 0
+               )`;
 
   db.run(sql, [], function (err) {
     if (err) {
       console.error('❌ Error al verificar y reiniciar fidelidad:', err);
       callback(err, null);
     } else {
-      console.log(`✅ ${this.changes} clientes tuvieron su fidelidad reiniciada`);
+      console.log(`✅ ${this.changes} cliente(s) tuvieron su fidelidad reiniciada`);
       callback(null, { clientes_reiniciados: this.changes });
+    }
+  });
+}
+
+/**
+ * ✅ NUEVA FUNCIÓN: Reiniciar manualmente la fidelidad de clientes que completaron el programa
+ * Esta función se ejecuta cuando un cliente que YA USÓ ambos descuentos hace una nueva compra
+ * después de 10 meses + 1 día
+ */
+function reiniciarFidelidadSiExpirada(clienteId, callback) {
+  // Verificar si el cliente necesita reinicio
+  const sqlVerificar = `
+    SELECT
+      fecha_primera_compra,
+      descuento_aplicado_3,
+      descuento_aplicado_6,
+      julianday('now') - julianday(fecha_primera_compra) as dias_transcurridos
+    FROM clientes
+    WHERE id = ?
+  `;
+
+  db.get(sqlVerificar, [clienteId], (err, cliente) => {
+    if (err) {
+      return callback(err, null);
+    }
+
+    if (!cliente || !cliente.fecha_primera_compra) {
+      return callback(null, { reiniciado: false, motivo: 'sin_fecha' });
+    }
+
+    // ✅ Si ya usó ambos descuentos Y pasaron más de 300 días
+    const yaUsoCambos = cliente.descuento_aplicado_3 === 1 && cliente.descuento_aplicado_6 === 1;
+    const expiro = cliente.dias_transcurridos > 300;
+
+    if (yaUsoCambos && expiro) {
+      console.log(`🔄 Reiniciando fidelidad de cliente ${clienteId} (expiró después de completar programa)`);
+
+      const sqlReiniciar = `
+        UPDATE clientes
+        SET tarjeta_fidelidad_entregada = 0,
+            fecha_primera_compra = NULL,
+            compras_con_tarjeta = 0,
+            descuento_aplicado_3 = 0,
+            descuento_aplicado_6 = 0
+        WHERE id = ?
+      `;
+
+      db.run(sqlReiniciar, [clienteId], function (err) {
+        if (err) {
+          return callback(err, null);
+        }
+        callback(null, { reiniciado: true, motivo: 'expiracion_completado' });
+      });
+    } else {
+      callback(null, {
+        reiniciado: false,
+        motivo: yaUsoCambos ? 'no_expirado' : 'no_completo',
+        dias_restantes: expiro ? 0 : Math.ceil(300 - cliente.dias_transcurridos)
+      });
     }
   });
 }
@@ -366,5 +431,7 @@ module.exports = {
   marcarDescuentoAplicado3,
   marcarDescuentoAplicado6,
   reiniciarFidelidad,
-  verificarYReiniciarFidelidad
+  verificarYReiniciarFidelidad,
+  reiniciarFidelidadSiExpirada // ⬅️ NUEVA
+
 };

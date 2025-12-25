@@ -130,20 +130,17 @@ const obtenerProductosMarcaAliada = (marcaId) => {
 const agregarProductoMarcaAliada = (producto, rutaImagen = null) => {
   const db = getDB();
   try {
-    // Insertar producto
+    // Insertar producto (SIN categoria y costo_base)
     const stmt = db.prepare(`
       INSERT INTO productos_marca_aliada (
-        marca_aliada_id, referencia, nombre, categoria,
-        costo_base, precio_venta_base, imagen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        marca_aliada_id, referencia, nombre, precio_venta_base, imagen
+      ) VALUES (?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       producto.marca_aliada_id,
       producto.referencia,
       producto.nombre,
-      producto.categoria,
-      producto.costo_base,
       producto.precio_venta_base,
       rutaImagen
     );
@@ -177,14 +174,12 @@ const agregarProductoMarcaAliada = (producto, rutaImagen = null) => {
 const actualizarProductoMarcaAliada = (id, producto, rutaImagen = null) => {
   const db = getDB();
   try {
-    // Actualizar producto
+    // Actualizar producto (SIN categoria y costo_base)
     if (rutaImagen) {
       db.prepare(`
         UPDATE productos_marca_aliada SET
           referencia = ?,
           nombre = ?,
-          categoria = ?,
-          costo_base = ?,
           precio_venta_base = ?,
           imagen = ?,
           fecha_actualizacion = datetime('now', 'localtime')
@@ -192,8 +187,6 @@ const actualizarProductoMarcaAliada = (id, producto, rutaImagen = null) => {
       `).run(
         producto.referencia,
         producto.nombre,
-        producto.categoria,
-        producto.costo_base,
         producto.precio_venta_base,
         rutaImagen,
         id
@@ -203,16 +196,12 @@ const actualizarProductoMarcaAliada = (id, producto, rutaImagen = null) => {
         UPDATE productos_marca_aliada SET
           referencia = ?,
           nombre = ?,
-          categoria = ?,
-          costo_base = ?,
           precio_venta_base = ?,
           fecha_actualizacion = datetime('now', 'localtime')
         WHERE id = ?
       `).run(
         producto.referencia,
         producto.nombre,
-        producto.categoria,
-        producto.costo_base,
         producto.precio_venta_base,
         id
       );

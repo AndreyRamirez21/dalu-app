@@ -24,19 +24,19 @@ function initDatabase() {
     db.run(`CREATE INDEX IF NOT EXISTS idx_clientes_nombre ON clientes(nombre)`);
 
     // ==================== TABLA DE PRODUCTOS ====================
-db.run(`CREATE TABLE IF NOT EXISTS productos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  referencia TEXT UNIQUE NOT NULL,
-  nombre TEXT NOT NULL,
-  categoria TEXT NOT NULL,
-  costo_base REAL NOT NULL,
-  precio_calculado REAL,
-  precio_venta_base REAL NOT NULL,
-  tiene_variantes INTEGER DEFAULT 0,
-  imagen TEXT,
-  fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
-  fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
-)`);
+    db.run(`CREATE TABLE IF NOT EXISTS productos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referencia TEXT UNIQUE NOT NULL,
+      nombre TEXT NOT NULL,
+      categoria TEXT NOT NULL,
+      costo_base REAL NOT NULL,
+      precio_calculado REAL,
+      precio_venta_base REAL NOT NULL,
+      tiene_variantes INTEGER DEFAULT 0,
+      imagen TEXT,
+      fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
+      fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
+    )`);
 
     // Agregar columna imagen si no existe
     db.run(`ALTER TABLE productos ADD COLUMN imagen TEXT`, () => {});
@@ -201,7 +201,7 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
   //----------------------------------------------------------
 
   // Tabla de Marcas Aliadas
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS marcas_aliadas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT NOT NULL UNIQUE,
@@ -216,15 +216,13 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
     );
   `);
 
-  // Tabla de Productos de Marcas Aliadas
-  db.exec(`
+  // Tabla de Productos de Marcas Aliadas (SIN categoria y costo_base)
+  db.run(`
     CREATE TABLE IF NOT EXISTS productos_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       marca_aliada_id INTEGER NOT NULL,
       referencia TEXT NOT NULL UNIQUE,
       nombre TEXT NOT NULL,
-      categoria TEXT NOT NULL,
-      costo_base REAL NOT NULL,
       precio_venta_base REAL NOT NULL,
       imagen TEXT,
       fecha_creacion TEXT DEFAULT (datetime('now', 'localtime')),
@@ -234,7 +232,7 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
   `);
 
   // Tabla de Variantes de Productos de Marca Aliada
-  db.exec(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS variantes_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       producto_marca_id INTEGER NOT NULL,
@@ -245,8 +243,8 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
     );
   `);
 
-  // Tabla de Ventas de Marca Aliada (para tracking separado)
-  db.exec(`
+  // Tabla de Ventas de Marca Aliada
+  db.run(`
     CREATE TABLE IF NOT EXISTS ventas_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       venta_id INTEGER NOT NULL,
@@ -266,28 +264,27 @@ db.run(`CREATE TABLE IF NOT EXISTS productos (
   `);
 
   // Índices para mejorar rendimiento
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_productos_marca_marca_id
     ON productos_marca_aliada(marca_aliada_id);
   `);
 
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_variantes_marca_producto_id
     ON variantes_marca_aliada(producto_marca_id);
   `);
 
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_ventas_marca_marca_id
     ON ventas_marca_aliada(marca_aliada_id);
   `);
 
-  db.exec(`
+  db.run(`
     CREATE INDEX IF NOT EXISTS idx_ventas_marca_venta_id
     ON ventas_marca_aliada(venta_id);
   `);
 
   console.log('✅ Tablas de Marcas Aliadas creadas exitosamente');
-};
-
+}
 
 module.exports = initDatabase;

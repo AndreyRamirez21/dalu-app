@@ -1056,6 +1056,35 @@ ipcMain.handle('marcar-descuento-aplicado-6', async (event, clienteId) => {
   });
 });
 
+/**
+ * ✅ NUEVO: Reiniciar fidelidad si expiró (cliente completó programa y pasaron 10 meses)
+ */
+ipcMain.handle('reiniciar-fidelidad-si-expirada', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    clientesModel.reiniciarFidelidadSiExpirada(clienteId, (err, resultado) => {
+      if (err) {
+        console.error('❌ Error al verificar expiración:', err);
+        reject(err);
+      } else {
+        resolve(resultado);
+      }
+    });
+  });
+});
+
+/**
+ * ✅ NUEVO: Verificar y reiniciar fidelidad de todos los clientes (ejecutar periódicamente)
+ * Este ya existía como 'verificar-fidelidades-vencidas', pero lo renombramos para consistencia
+ */
+ipcMain.handle('verificar-reinicio-fidelidad-todos', async () => {
+  return new Promise((resolve, reject) => {
+    clientesModel.verificarYReiniciarFidelidad((err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
 
 // ==================== SISTEMA DE RECORDATORIOS ====================
 
@@ -1127,17 +1156,17 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
         monto: datosVentaDB.descuento_monto
       });
 
-      // ✅ 2.5️⃣ VERIFICAR SI ES PRIMERA COMPRA **ANTES** DE CREAR LA VENTA
-      let esPrimeraCompra = false;
+      // ✅ 2.5️⃣ VERIFICAR SI YA TIENE TARJETA **ANTES** DE CREAR LA VENTA
+      let noTieneTarjeta = false;
       if (clienteId) {
         await new Promise((resolve) => {
           db.db.get(
-            'SELECT numero_compras FROM clientes WHERE id = ?',
+            'SELECT tarjeta_fidelidad_entregada FROM clientes WHERE id = ?',
             [clienteId],
             (err, cliente) => {
               if (!err && cliente) {
-                esPrimeraCompra = cliente.numero_compras === 0;
-                console.log(`📊 Cliente ${clienteId}: numero_compras = ${cliente.numero_compras}, esPrimeraCompra = ${esPrimeraCompra}`);
+                noTieneTarjeta = cliente.tarjeta_fidelidad_entregada === 0;
+                console.log(`📊 Cliente ${clienteId}: tarjeta_entregada = ${cliente.tarjeta_fidelidad_entregada}, noTieneTarjeta = ${noTieneTarjeta}`);
               }
               resolve();
             }
@@ -1170,35 +1199,11 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
           });
         }
 
-        // 5️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE
+        // 5️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE (SIEMPRE, SIN IMPORTAR EL MONTO)
         if (clienteId) {
-          const esCompraGrande = datosVenta.total > 30000;
+          const esCompraGrande = datosVenta.subtotal > 30000;
 
-          // ✅ USAR LA VARIABLE esPrimeraCompra QUE YA VERIFICAMOS ANTES
-          if (esPrimeraCompra && esCompraGrande) {
-            console.log('🎁 Primera compra >= $30k detectada. Auto-entregando tarjeta...');
-
-            await new Promise((resolve) => {
-              db.db.run(
-                `UPDATE clientes
-                 SET tarjeta_fidelidad_entregada = 1,
-                     compras_con_tarjeta = 1,
-                     fecha_primera_compra = datetime('now', 'localtime')
-                 WHERE id = ?`,
-                [clienteId],
-                (err) => {
-                  if (err) {
-                    console.error('❌ Error al entregar tarjeta automática:', err);
-                  } else {
-                    console.log('✅ Tarjeta entregada automáticamente y compras_con_tarjeta = 1');
-                  }
-                  resolve();
-                }
-              );
-            });
-          }
-
-          // Actualizar estadísticas generales (siempre)
+          // ✅ PRIMERO: Actualizar estadísticas generales (SIEMPRE)
           await new Promise((resolve) => {
             db.db.run(
               `UPDATE clientes
@@ -1218,6 +1223,34 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
               }
             );
           });
+
+          // ✅ SEGUNDO: Procesar tarjeta de fidelidad (SOLO si NO tiene tarjeta Y compra > $30k)
+          if (noTieneTarjeta && esCompraGrande) {
+            console.log('🎁 Primera compra > $30k detectada. Auto-entregando tarjeta...');
+
+            await new Promise((resolve) => {
+              db.db.run(
+                `UPDATE clientes
+                 SET tarjeta_fidelidad_entregada = 1,
+                     compras_con_tarjeta = 1,
+                     fecha_primera_compra = COALESCE(fecha_primera_compra, datetime('now', 'localtime'))
+                 WHERE id = ?`,
+                [clienteId],
+                (err) => {
+                  if (err) {
+                    console.error('❌ Error al entregar tarjeta automática:', err);
+                  } else {
+                    console.log('✅ Tarjeta entregada automáticamente y compras_con_tarjeta = 1');
+                  }
+                  resolve();
+                }
+              );
+            });
+          } else if (noTieneTarjeta && !esCompraGrande) {
+            console.log(`ℹ️ Cliente sin tarjeta pero compra menor a $30k (subtotal: ${datosVenta.subtotal}). No se entrega tarjeta.`);
+          } else if (!noTieneTarjeta) {
+            console.log(`ℹ️ Cliente ya tiene tarjeta de fidelidad entregada.`);
+          }
         }
 
         // 6️⃣ RESPUESTA FINAL
@@ -1265,15 +1298,20 @@ function resolverCliente(datosVenta, callback) {
 function guardarClienteNuevo(datosCliente, callback) {
   const { nombre, cedula, correo, celular } = datosCliente;
 
+  console.log('🔵 Intentando guardar cliente:', { nombre, cedula, correo, celular });
+
   if (cedula) {
     db.db.get(
       'SELECT id FROM clientes WHERE cedula = ?',
       [cedula],
       (err, row) => {
-        if (err) return callback(err);
+        if (err) {
+          console.error('❌ Error al buscar cliente por cédula:', err);
+          return callback(err);
+        }
 
         if (row) {
-          console.log('✅ Cliente existente:', row.id);
+          console.log('✅ Cliente existente encontrado:', row.id);
           callback(null, { id: row.id, existente: true });
         } else {
           insertarCliente();
@@ -1285,19 +1323,22 @@ function guardarClienteNuevo(datosCliente, callback) {
   }
 
   function insertarCliente() {
+    console.log('📝 Insertando nuevo cliente en BD...');
     db.db.run(
       `INSERT INTO clientes (nombre, cedula, correo, celular)
        VALUES (?, ?, ?, ?)`,
       [nombre, cedula || null, correo || null, celular || null],
       function (err) {
-        if (err) return callback(err);
-        console.log('✅ Cliente creado:', this.lastID);
+        if (err) {
+          console.error('❌ Error al insertar cliente:', err);
+          return callback(err);
+        }
+        console.log('✅ Cliente creado con ID:', this.lastID);
         callback(null, { id: this.lastID, nuevo: true });
       }
     );
   }
 }
-
 
 async function guardarCostoAdicional(ventaId, costo) {
   return new Promise((resolve, reject) => {
@@ -2200,7 +2241,7 @@ ipcMain.handle('restaurar-backup', async (event, fileName) => {
 });
 
 
-// ==================== MARCAS ALIADAS (CORREGIDO PARA SQLITE3) ====================
+// ==================== MARCAS ALIADAS (ACTUALIZADO SIN categoria y costo_base) ====================
 
 // Obtener todas las marcas
 ipcMain.handle('obtener-marcas-aliadas', async () => {
@@ -2365,7 +2406,7 @@ ipcMain.handle('obtener-productos-marca-aliada', async (event, marcaId) => {
   });
 });
 
-// Agregar producto de marca aliada
+// Agregar producto de marca aliada (SIN categoria y costo_base)
 ipcMain.handle('agregar-producto-marca-aliada', async (event, producto) => {
   return new Promise((resolve, reject) => {
     // Guardar imagen si existe
@@ -2380,12 +2421,11 @@ ipcMain.handle('agregar-producto-marca-aliada', async (event, producto) => {
       fs.writeFileSync(rutaImagen, base64Data, 'base64');
     }
 
-    // Insertar producto
+    // Insertar producto (SIN categoria y costo_base)
     const queryProducto = `
       INSERT INTO productos_marca_aliada (
-        marca_aliada_id, referencia, nombre, categoria,
-        costo_base, precio_venta_base, imagen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        marca_aliada_id, referencia, nombre, precio_venta_base, imagen
+      ) VALUES (?, ?, ?, ?, ?)
     `;
 
     db.db.run(
@@ -2394,8 +2434,6 @@ ipcMain.handle('agregar-producto-marca-aliada', async (event, producto) => {
         producto.marca_aliada_id,
         producto.referencia,
         producto.nombre,
-        producto.categoria,
-        producto.costo_base,
         producto.precio_venta_base,
         rutaImagen
       ],
@@ -2453,7 +2491,7 @@ ipcMain.handle('agregar-producto-marca-aliada', async (event, producto) => {
   });
 });
 
-// Actualizar producto de marca aliada
+// Actualizar producto de marca aliada (SIN categoria y costo_base)
 ipcMain.handle('actualizar-producto-marca-aliada', async (event, id, producto) => {
   return new Promise((resolve, reject) => {
     // Actualizar imagen si hay una nueva
@@ -2475,24 +2513,20 @@ ipcMain.handle('actualizar-producto-marca-aliada', async (event, id, producto) =
       });
     }
 
-    // Actualizar producto
+    // Actualizar producto (SIN categoria y costo_base)
     const updateQuery = rutaImagen
       ? `UPDATE productos_marca_aliada SET
-          referencia = ?, nombre = ?, categoria = ?,
-          costo_base = ?, precio_venta_base = ?, imagen = ?,
+          referencia = ?, nombre = ?, precio_venta_base = ?, imagen = ?,
           fecha_actualizacion = datetime('now', 'localtime')
          WHERE id = ?`
       : `UPDATE productos_marca_aliada SET
-          referencia = ?, nombre = ?, categoria = ?,
-          costo_base = ?, precio_venta_base = ?,
+          referencia = ?, nombre = ?, precio_venta_base = ?,
           fecha_actualizacion = datetime('now', 'localtime')
          WHERE id = ?`;
 
     const params = rutaImagen
-      ? [producto.referencia, producto.nombre, producto.categoria,
-         producto.costo_base, producto.precio_venta_base, rutaImagen, id]
-      : [producto.referencia, producto.nombre, producto.categoria,
-         producto.costo_base, producto.precio_venta_base, id];
+      ? [producto.referencia, producto.nombre, producto.precio_venta_base, rutaImagen, id]
+      : [producto.referencia, producto.nombre, producto.precio_venta_base, id];
 
     db.db.run(updateQuery, params, function (err) {
       if (err) {
@@ -2577,6 +2611,8 @@ ipcMain.handle('eliminar-producto-marca-aliada', async (event, id) => {
     });
   });
 });
+
+
 // ==================== APP LIFECYCLE ====================
 
 app.on('ready', () => {
@@ -2590,6 +2626,32 @@ app.on('ready', () => {
     }
   }, 10000); // Esperar 10 segundos después de que inicie la app
 });
+
+function verificarReinicioFidelidadAutomatico() {
+  console.log('🔄 Verificando reinicio automático de fidelidad...');
+
+  clientesModel.verificarYReiniciarFidelidad((err, resultado) => {
+    if (err) {
+      console.error('❌ Error al verificar reinicio de fidelidad:', err);
+    } else {
+      if (resultado.clientes_reiniciados > 0) {
+        console.log(`✅ ${resultado.clientes_reiniciados} cliente(s) tuvieron su fidelidad reiniciada automáticamente`);
+      } else {
+        console.log('✅ Verificación completada. No hay clientes para reiniciar.');
+      }
+    }
+  });
+}
+
+// Verificar fidelidad al iniciar
+  setTimeout(() => {
+    verificarReinicioFidelidadAutomatico();
+  }, 5000);
+
+    // Verificar cada 24 horas (86400000 ms)
+    setInterval(verificarReinicioFidelidadAutomatico, 24 * 60 * 60 * 1000);
+
+    console.log('✅ Sistema de reinicio automático de fidelidad activado');
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

@@ -24,18 +24,10 @@ export const useProductosMarca = (marcaId, onActualizar) => {
 
   const tallasDisponibles = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'];
 
-  const categorias = [
-    'Deluxe', 'Essence', 'Pantuflas', 'Antifaces', 'Humidificadores',
-    'Fundas', 'Scrunchies', 'Rizadores', 'Gorros en Satín', 'Lámparas',
-    'Cuelleros', 'Varios'
-  ];
-
   const formularioInicial = {
     marca_aliada_id: marcaId,
     referencia: '',
     nombre: '',
-    categoria: 'Deluxe',
-    costo_base: '',
     precio_venta_base: '',
     variantes: [],
     imagen: null,
@@ -122,7 +114,8 @@ export const useProductosMarca = (marcaId, onActualizar) => {
       return;
     }
 
-    if (!formulario.referencia || !formulario.nombre || !formulario.costo_base || !formulario.precio_venta_base) {
+    // Validaciones actualizadas (sin costo_base ni categoria)
+    if (!formulario.referencia || !formulario.nombre || !formulario.precio_venta_base) {
       setNotificacion({ mensaje: 'Por favor completa todos los campos obligatorios', tipo: 'advertencia' });
       return;
     }
@@ -143,8 +136,6 @@ export const useProductosMarca = (marcaId, onActualizar) => {
       marca_aliada_id: marcaId,
       referencia: formulario.referencia.trim(),
       nombre: formulario.nombre.trim(),
-      categoria: formulario.categoria,
-      costo_base: parseFloat(formulario.costo_base),
       precio_venta_base: parseFloat(formulario.precio_venta_base),
       variantes: formulario.variantes.map(v => ({
         talla: v.talla,
@@ -188,8 +179,6 @@ export const useProductosMarca = (marcaId, onActualizar) => {
       marca_aliada_id: marcaId,
       referencia: producto.referencia,
       nombre: producto.nombre,
-      categoria: producto.categoria,
-      costo_base: producto.costo_base.toString(),
       precio_venta_base: producto.precio_venta_base.toString(),
       variantes: producto.variantes.map(v => ({
         talla: v.talla,
@@ -211,7 +200,8 @@ export const useProductosMarca = (marcaId, onActualizar) => {
       return;
     }
 
-    if (!formulario.referencia || !formulario.nombre || !formulario.costo_base || !formulario.precio_venta_base) {
+    // Validaciones actualizadas (sin costo_base ni categoria)
+    if (!formulario.referencia || !formulario.nombre || !formulario.precio_venta_base) {
       setNotificacion({ mensaje: 'Por favor completa todos los campos obligatorios', tipo: 'advertencia' });
       return;
     }
@@ -225,8 +215,6 @@ export const useProductosMarca = (marcaId, onActualizar) => {
       marca_aliada_id: marcaId,
       referencia: formulario.referencia.trim(),
       nombre: formulario.nombre.trim(),
-      categoria: formulario.categoria,
-      costo_base: parseFloat(formulario.costo_base),
       precio_venta_base: parseFloat(formulario.precio_venta_base),
       variantes: formulario.variantes.map(v => ({
         talla: v.talla,
@@ -285,7 +273,6 @@ export const useProductosMarca = (marcaId, onActualizar) => {
     setNotificacion,
     formulario,
     tallasDisponibles,
-    categorias,
     handleInputChange,
     handleImagenChange,
     eliminarImagen,
