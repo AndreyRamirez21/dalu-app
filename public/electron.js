@@ -1123,6 +1123,8 @@ ipcMain.handle('generar-numero-venta', async () => {
   });
 });
 
+// ACTUALIZAR la función crear-venta en electron.js
+
 ipcMain.handle('crear-venta', async (event, datosVenta) => {
   return new Promise((resolve, reject) => {
     console.log('📝 Creando venta con datos:', datosVenta);
@@ -1140,8 +1142,10 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
         cliente_id: clienteId,
         cliente_nombre: clienteNombre,
         productos: datosVenta.productos,
+        productos_marca_aliada: datosVenta.productos_marca_aliada || [], // ⬅️ NUEVO
         costos_adicionales: datosVenta.costos_adicionales,
         subtotal: datosVenta.subtotal,
+        total_marcas: datosVenta.total_marcas || 0, // ⬅️ NUEVO
         total: datosVenta.total,
         monto_pagado: datosVenta.monto_pagado,
         cambio: datosVenta.cambio,
@@ -1151,12 +1155,9 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
         descuento_monto: datosVenta.descuento_monto || 0
       };
 
-      console.log('💰 Descuento aplicado:', {
-        porcentaje: datosVentaDB.descuento_porcentaje,
-        monto: datosVentaDB.descuento_monto
-      });
+      console.log('💰 Productos marca aliada:', datosVentaDB.productos_marca_aliada);
 
-      // ✅ 2.5️⃣ VERIFICAR SI YA TIENE TARJETA **ANTES** DE CREAR LA VENTA
+      // ✅ VERIFICAR SI YA TIENE TARJETA **ANTES** DE CREAR LA VENTA
       let noTieneTarjeta = false;
       if (clienteId) {
         await new Promise((resolve) => {
@@ -1166,7 +1167,6 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
             (err, cliente) => {
               if (!err && cliente) {
                 noTieneTarjeta = cliente.tarjeta_fidelidad_entregada === 0;
-                console.log(`📊 Cliente ${clienteId}: tarjeta_entregada = ${cliente.tarjeta_fidelidad_entregada}, noTieneTarjeta = ${noTieneTarjeta}`);
               }
               resolve();
             }
@@ -1184,7 +1184,68 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
 
         console.log('✅ Venta creada con ID:', resultado.id);
 
-        // 4️⃣ CREAR DEUDA SI APLICA
+       // 4️⃣ GUARDAR PRODUCTOS DE MARCAS ALIADAS (CORREGIDO)
+       if (datosVentaDB.productos_marca_aliada && datosVentaDB.productos_marca_aliada.length > 0) {
+         console.log(`💜 Guardando ${datosVentaDB.productos_marca_aliada.length} productos de marcas aliadas...`);
+
+         for (const producto of datosVentaDB.productos_marca_aliada) {
+           try {
+             // Insertar en ventas_marca_aliada
+             await new Promise((resolve, reject) => {
+               db.db.run(
+                 `INSERT INTO ventas_marca_aliada (
+                   venta_id, marca_aliada_id, producto_marca_id, variante_id,
+                   cantidad, precio_unitario, subtotal, comision_marca, ganancia_tienda
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 [
+                   resultado.id,
+                   producto.marca_aliada_id,
+                   producto.producto_marca_id,
+                   producto.variante_id || null,
+                   producto.cantidad,
+                   producto.precio_unitario,
+                   producto.subtotal,
+                   (producto.subtotal * producto.porcentaje_comision / 100),
+                   (producto.subtotal * (100 - producto.porcentaje_comision) / 100)
+                 ],
+                 (err) => {
+                   if (err) {
+                     console.error('❌ Error al guardar producto marca aliada:', err);
+                     reject(err);
+                   } else {
+                     console.log(`✅ Producto marca aliada guardado: ${producto.nombre}`);
+                     resolve();
+                   }
+                 }
+               );
+             });
+
+             // ✅ ACTUALIZAR STOCK COMO OPERACIÓN SEPARADA
+             if (producto.variante_id) {
+               await new Promise((resolve, reject) => {
+                 db.db.run(
+                   'UPDATE variantes_marca_aliada SET cantidad = cantidad - ? WHERE id = ?',
+                   [producto.cantidad, producto.variante_id],
+                   (err) => {
+                     if (err) {
+                       console.error('❌ Error al actualizar stock marca aliada:', err);
+                       reject(err);
+                     } else {
+                       console.log(`✅ Stock actualizado: variante ${producto.variante_id} -${producto.cantidad}`);
+                       resolve();
+                     }
+                   }
+                 );
+               });
+             }
+           } catch (error) {
+             console.error('❌ Error procesando producto marca aliada:', error);
+             // Puedes decidir si continuar con los demás productos o hacer rollback
+           }
+         }
+       }
+
+        // 5️⃣ CREAR DEUDA SI APLICA
         const tieneDeuda = datosVenta.monto_pagado < datosVenta.total;
 
         if (tieneDeuda && clienteId) {
@@ -1199,11 +1260,10 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
           });
         }
 
-        // 5️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE (SIEMPRE, SIN IMPORTAR EL MONTO)
+        // 6️⃣ ACTUALIZAR ESTADÍSTICAS DEL CLIENTE
         if (clienteId) {
           const esCompraGrande = datosVenta.subtotal > 30000;
 
-          // ✅ PRIMERO: Actualizar estadísticas generales (SIEMPRE)
           await new Promise((resolve) => {
             db.db.run(
               `UPDATE clientes
@@ -1216,18 +1276,13 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
               (err) => {
                 if (err) {
                   console.error('❌ Error al actualizar cliente:', err);
-                } else {
-                  console.log('✅ Cliente actualizado:', clienteId);
                 }
                 resolve();
               }
             );
           });
 
-          // ✅ SEGUNDO: Procesar tarjeta de fidelidad (SOLO si NO tiene tarjeta Y compra > $30k)
           if (noTieneTarjeta && esCompraGrande) {
-            console.log('🎁 Primera compra > $30k detectada. Auto-entregando tarjeta...');
-
             await new Promise((resolve) => {
               db.db.run(
                 `UPDATE clientes
@@ -1240,20 +1295,16 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
                   if (err) {
                     console.error('❌ Error al entregar tarjeta automática:', err);
                   } else {
-                    console.log('✅ Tarjeta entregada automáticamente y compras_con_tarjeta = 1');
+                    console.log('✅ Tarjeta entregada automáticamente');
                   }
                   resolve();
                 }
               );
             });
-          } else if (noTieneTarjeta && !esCompraGrande) {
-            console.log(`ℹ️ Cliente sin tarjeta pero compra menor a $30k (subtotal: ${datosVenta.subtotal}). No se entrega tarjeta.`);
-          } else if (!noTieneTarjeta) {
-            console.log(`ℹ️ Cliente ya tiene tarjeta de fidelidad entregada.`);
           }
         }
 
-        // 6️⃣ RESPUESTA FINAL
+        // 7️⃣ RESPUESTA FINAL
         resolve({
           success: true,
           venta_id: resultado.id,
@@ -1462,12 +1513,121 @@ ipcMain.handle('obtener-ventas', async () => {
 });
 
 
-// Obtener venta por ID
 ipcMain.handle('obtener-venta-por-id', async (event, id) => {
   return new Promise((resolve, reject) => {
-    db.ventas.obtenerPorId(id, (err, venta) => {
-      if (err) reject(err);
-      else resolve(venta);
+    db.db.get(`SELECT * FROM ventas WHERE id = ?`, [id], (err, venta) => {
+      if (err) {
+        console.error('❌ Error al obtener venta:', err);
+        reject(err);
+        return;
+      }
+      if (!venta) {
+        reject(new Error('Venta no encontrada'));
+        return;
+      }
+
+      console.log('📦 Venta encontrada:', venta);
+
+      // Obtener productos propios
+      db.db.all(
+        `SELECT
+          vp.id,
+          vp.venta_id,
+          vp.producto_id,
+          vp.variante_id,
+          vp.cantidad,
+          vp.precio_unitario,
+          p.nombre as producto_nombre,
+          p.referencia as producto_referencia,
+          v.talla as talla,
+          (vp.cantidad * vp.precio_unitario) as subtotal,
+          'propio' as tipo_producto
+        FROM venta_productos vp
+        LEFT JOIN productos p ON vp.producto_id = p.id
+        LEFT JOIN variantes_producto v ON vp.variante_id = v.id
+        WHERE vp.venta_id = ?`,
+        [id],
+        (err, productos) => {
+          if (err) {
+            console.error('❌ Error al obtener productos:', err);
+            reject(err);
+            return;
+          }
+
+          console.log('📦 Productos propios encontrados:', productos);
+
+          // Obtener productos de marcas aliadas
+          db.db.all(
+            `SELECT
+              vma.id,
+              vma.venta_id,
+              vma.producto_marca_id,
+              vma.variante_id,
+              vma.cantidad,
+              vma.precio_unitario,
+              vma.subtotal,
+              vma.comision_marca,
+              vma.ganancia_tienda,
+              pma.nombre as producto_nombre,
+              pma.referencia as producto_referencia,
+              vma_var.talla as talla,
+              ma.nombre as marca_nombre,
+              'marca_aliada' as tipo_producto
+            FROM ventas_marca_aliada vma
+            LEFT JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
+            LEFT JOIN variantes_marca_aliada vma_var ON vma.variante_id = vma_var.id
+            LEFT JOIN marcas_aliadas ma ON vma.marca_aliada_id = ma.id
+            WHERE vma.venta_id = ?`,
+            [id],
+            (err, productosMarca) => {
+              if (err) {
+                console.error('❌ Error al obtener productos marca aliada:', err);
+                reject(err);
+                return;
+              }
+
+              console.log('💜 Productos marca aliada encontrados:', productosMarca);
+
+              // Obtener costos adicionales
+              db.db.all(
+                `SELECT * FROM costos_adicionales WHERE venta_id = ?`,
+                [id],
+                (err, costosAdicionales) => {
+                  if (err) {
+                    console.error('❌ Error al obtener costos adicionales:', err);
+                    reject(err);
+                    return;
+                  }
+
+                  console.log('💰 Costos adicionales:', costosAdicionales);
+
+                  const totalCostosAdicionales = costosAdicionales
+                    ? costosAdicionales.reduce((sum, costo) => sum + Number(costo.monto || 0), 0)
+                    : 0;
+
+                  // Combinar todos los productos
+                  const todosLosProductos = [
+                    ...(productos || []),
+                    ...(productosMarca || [])
+                  ];
+
+                  const resultado = {
+                    ...venta,
+                    productos: todosLosProductos,
+                    productos_propios: productos || [],
+                    productos_marca_aliada: productosMarca || [],
+                    costos_adicionales: costosAdicionales || [],
+                    total_costos_adicionales: totalCostosAdicionales
+                  };
+
+                  console.log('✅ Resultado final:', resultado);
+                  resolve(resultado);
+                }
+              );
+            }
+          );
+        }
+      );
     });
   });
 });

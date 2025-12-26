@@ -141,132 +141,178 @@ const formatDate = (dateString) => {
             </div>
           </div>
 
-          {/* Productos */}
-          <div>
-            <div className="flex items-center space-x-2 text-gray-700 font-bold mb-3">
-              <Package size={20} />
-              <h4>Productos</h4>
-            </div>
+{/* Productos */}
+<div>
+  <div className="flex items-center space-x-2 text-gray-700 font-bold mb-3">
+    <Package size={20} />
+    <h4>Productos</h4>
+  </div>
 
-            {productos.length > 0 ? (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Talla</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Cant.</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Precio Unit.</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {productos.map((producto, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-800">
-                          {producto.producto_nombre || 'Producto sin nombre'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {producto.talla || '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-800 text-center">
-                          {producto.cantidad}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-800 text-right">
-                          ${Number(producto.precio_unitario).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">
-                          ${Number(producto.subtotal).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="border rounded-lg p-8 text-center text-gray-500">
-                <Package size={48} className="mx-auto mb-2 opacity-50" />
-                <p>No hay productos registrados en esta venta</p>
-              </div>
-            )}
-          </div>
-
-          {/* Costos Adicionales */}
-          {costosAdicionales.length > 0 && (
-            <div>
-              <h4 className="font-bold text-gray-700 mb-3">Costos Adicionales</h4>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
-                {costosAdicionales.map((costo, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span className="text-gray-700">{costo.concepto}</span>
-                    <span className="font-medium text-gray-800">${Number(costo.monto).toFixed(2)}</span>
-                  </div>
+  {productos.length > 0 ? (
+    <div className="space-y-4">
+      {/* Productos Propios */}
+      {detalleCompleto.productos_propios && detalleCompleto.productos_propios.length > 0 && (
+        <div>
+          <h5 className="text-sm font-semibold text-gray-700 mb-2">Productos Propios</h5>
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Talla</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Cant.</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Precio Unit.</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {detalleCompleto.productos_propios.map((producto, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-800">
+                      {producto.producto_nombre || 'Producto sin nombre'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {producto.talla || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 text-center">
+                      {producto.cantidad}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 text-right">
+                      ${Number(producto.precio_unitario).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">
+                      ${Number(producto.subtotal).toFixed(2)}
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </div>
-          )}
-
-{/* Resumen Financiero */}
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border">
-          <h4 className="font-bold text-gray-800 mb-4">Resumen Financiero</h4>
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal productos:</span>
-              <span className="font-medium text-gray-800">${Number(detalleCompleto.subtotal || 0).toFixed(2)}</span>
-            </div>
-
-            {totalCostosAdicionales > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Costos adicionales:</span>
-                <span className="font-medium text-gray-800">${Number(totalCostosAdicionales).toFixed(2)}</span>
-              </div>
-            )}
-
-            {/* ✅ MOSTRAR DESCUENTO DE FIDELIDAD CON DISEÑO DESTACADO */}
-            {detalleCompleto.descuento_porcentaje > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 -mx-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-700 font-medium">
-                    🎉 Descuento de fidelidad ({detalleCompleto.descuento_porcentaje}%):
-                  </span>
-                  <span className="font-bold text-green-600">
-                    -${Number(detalleCompleto.descuento_monto || 0).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="border-t pt-3 flex justify-between">
-              <span className="font-bold text-gray-800">Total:</span>
-              <span className="font-bold text-xl text-teal-600">${Number(detalleCompleto.total).toFixed(2)}</span>
-            </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Monto pagado:</span>
-                <span className={`font-medium ${detalleCompleto.monto_pagado >= detalleCompleto.total ? 'text-green-600' : 'text-orange-600'}`}>
-                  ${Number(detalleCompleto.monto_pagado).toFixed(2)}
-                </span>
-              </div>
-
-              {detalleCompleto.cambio > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Cambio devuelto:</span>
-                  <span className="font-medium text-blue-600">${Number(detalleCompleto.cambio).toFixed(2)}</span>
-                </div>
-              )}
-
-              {detalleCompleto.estado === 'Pendiente' && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-yellow-800">Monto pendiente:</span>
-                    <span className="font-bold text-lg text-red-600">
-                      ${(Number(detalleCompleto.total) - Number(detalleCompleto.monto_pagado)).toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
+              </tbody>
+            </table>
           </div>
+        </div>
+      )}
+
+      {/* Productos de Marcas Aliadas */}
+      {detalleCompleto.productos_marca_aliada && detalleCompleto.productos_marca_aliada.length > 0 && (
+        <div>
+          <h5 className="text-sm font-semibold text-purple-700 mb-2">Productos de Marcas Aliadas</h5>
+          <div className="border border-purple-200 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-purple-50 border-b border-purple-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-purple-700 uppercase">Producto</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-purple-700 uppercase">Marca</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-purple-700 uppercase">Talla</th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-purple-700 uppercase">Cant.</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-purple-700 uppercase">Precio Unit.</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-purple-700 uppercase">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-purple-100">
+                {detalleCompleto.productos_marca_aliada.map((producto, index) => (
+                  <tr key={index} className="hover:bg-purple-50">
+                    <td className="px-4 py-3 text-sm text-gray-800">
+                      {producto.producto_nombre || 'Producto sin nombre'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-purple-600 font-medium">
+                      {producto.marca_nombre}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {producto.talla || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 text-center">
+                      {producto.cantidad}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-800 text-right">
+                      ${Number(producto.precio_unitario).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">
+                      ${Number(producto.subtotal).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="border rounded-lg p-8 text-center text-gray-500">
+      <Package size={48} className="mx-auto mb-2 opacity-50" />
+      <p>No hay productos registrados en esta venta</p>
+    </div>
+  )}
+</div>
+
+{/* Resumen Financiero - ACTUALIZADO */}
+<div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border">
+  <h4 className="font-bold text-gray-800 mb-4">Resumen Financiero</h4>
+  <div className="space-y-3">
+    <div className="flex justify-between text-sm">
+      <span className="text-gray-600">Subtotal productos propios:</span>
+      <span className="font-medium text-gray-800">${Number(detalleCompleto.subtotal || 0).toFixed(2)}</span>
+    </div>
+
+    {/* ⭐ NUEVO: Total de productos de marcas aliadas */}
+    {detalleCompleto.productos_marca_aliada && detalleCompleto.productos_marca_aliada.length > 0 && (
+      <div className="flex justify-between text-sm bg-purple-50 -mx-3 px-3 py-2 rounded">
+        <span className="text-purple-700 font-medium">Productos marcas aliadas:</span>
+        <span className="font-bold text-purple-700">
+          ${detalleCompleto.productos_marca_aliada.reduce((sum, p) => sum + Number(p.subtotal), 0).toFixed(2)}
+        </span>
+      </div>
+    )}
+
+    {totalCostosAdicionales > 0 && (
+      <div className="flex justify-between text-sm">
+        <span className="text-gray-600">Costos adicionales:</span>
+        <span className="font-medium text-gray-800">${Number(totalCostosAdicionales).toFixed(2)}</span>
+      </div>
+    )}
+
+    {detalleCompleto.descuento_porcentaje > 0 && (
+      <div className="bg-green-50 border border-green-200 rounded-lg p-3 -mx-3">
+        <div className="flex justify-between text-sm">
+          <span className="text-green-700 font-medium">
+            🎉 Descuento de fidelidad ({detalleCompleto.descuento_porcentaje}%):
+          </span>
+          <span className="font-bold text-green-600">
+            -${Number(detalleCompleto.descuento_monto || 0).toFixed(2)}
+          </span>
+        </div>
+      </div>
+    )}
+
+    <div className="border-t pt-3 flex justify-between">
+      <span className="font-bold text-gray-800">Total:</span>
+      <span className="font-bold text-xl text-teal-600">${Number(detalleCompleto.total).toFixed(2)}</span>
+    </div>
+
+    <div className="flex justify-between text-sm">
+      <span className="text-gray-600">Monto pagado:</span>
+      <span className={`font-medium ${detalleCompleto.monto_pagado >= detalleCompleto.total ? 'text-green-600' : 'text-orange-600'}`}>
+        ${Number(detalleCompleto.monto_pagado).toFixed(2)}</span>
+    </div>
+
+    {detalleCompleto.cambio > 0 && (
+      <div className="flex justify-between text-sm">
+        <span className="text-gray-600">Cambio devuelto:</span>
+        <span className="font-medium text-blue-600">${Number(detalleCompleto.cambio).toFixed(2)}</span>
+      </div>
+    )}
+
+    {detalleCompleto.estado === 'Pendiente' && (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-3">
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium text-yellow-800">Monto pendiente:</span>
+          <span className="font-bold text-lg text-red-600">
+            ${(Number(detalleCompleto.total) - Number(detalleCompleto.monto_pagado)).toFixed(2)}
+          </span>
+        </div>
+      </div>
+    )}
+  </div>
+</div>
 
           {/* Notas */}
           {detalleCompleto.notas && (
@@ -296,4 +342,4 @@ const formatDate = (dateString) => {
   );
 };
 
-export default ModalDetalleVenta;;
+export default ModalDetalleVenta;

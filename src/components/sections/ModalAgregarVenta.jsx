@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { X, Plus, Trash2, ShoppingCart, DollarSign, Package, CreditCard, Minus,Gift, Award, Sparkles, User, Phone, Mail, CreditCard as IdCard, Search, ChevronDown } from 'lucide-react';
+import { X, Plus, Trash2, ShoppingCart, DollarSign, Package, CreditCard, Minus,Gift, Award, Sparkles, User, Store, Phone, Mail, CreditCard as IdCard, Search, ChevronDown } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import { ModalMensaje } from '../common/ModalMensaje';
 import {useFidelidadVenta} from '../../api/useFidelidadVenta';
@@ -271,6 +271,120 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
 
   const metodosPago = ['Efectivo', 'Tarjeta', 'Transferencia', 'Mixto'];
 
+  // Marcas aliadas
+
+  const [mostrarMarcasAliadas, setMostrarMarcasAliadas] = useState(false);
+  const [marcasAliadas, setMarcasAliadas] = useState([]);
+  const [marcaSeleccionada, setMarcaSeleccionada] = useState(null);
+  const [productosMarcaDisponibles, setProductosMarcaDisponibles] = useState([]);
+  const [productosMarcaSeleccionados, setProductosMarcaSeleccionados] = useState([]);
+
+// Agregar este useEffect para cargar marcas aliadas
+useEffect(() => {
+  cargarMarcasAliadas();
+}, []);
+
+const cargarMarcasAliadas = async () => {
+  try {
+    const marcas = await ipcRenderer.invoke('obtener-marcas-aliadas');
+    setMarcasAliadas(marcas.filter(m => m.activo === 1)); // Solo marcas activas
+  } catch (error) {
+    console.error('Error al cargar marcas aliadas:', error);
+  }
+};
+
+
+const handleSeleccionarMarca = async (marca) => {
+  setMarcaSeleccionada(marca);
+  try {
+    const productos = await ipcRenderer.invoke('obtener-productos-marca-aliada', marca.id);
+    setProductosMarcaDisponibles(productos);
+  } catch (error) {
+    console.error('Error al cargar productos de marca:', error);
+    setMensajeModal('Error al cargar productos de la marca');
+    setTipoMensaje('error');
+    setMostrarMensaje(true);
+  }
+};
+
+const agregarProductoMarca = (producto, variante) => {
+  if (variante && variante.cantidad <= 0) {
+    setMensajeModal(`Sin stock disponible para ${producto.nombre} - Talla ${variante.talla}`);
+    setTipoMensaje('error');
+    setMostrarMensaje(true);
+    return;
+  }
+
+  const productoExistente = productosMarcaSeleccionados.find(
+    p => p.producto_marca_id === producto.id && p.variante_id === variante?.id
+  );
+
+  if (productoExistente) {
+    const nuevaCantidad = productoExistente.cantidad + 1;
+    if (nuevaCantidad > productoExistente.stock_disponible) {
+      setMensajeModal(`Stock insuficiente. Disponible: ${productoExistente.stock_disponible}`);
+      setTipoMensaje('error');
+      setMostrarMensaje(true);
+      return;
+    }
+
+    setProductosMarcaSeleccionados(productosMarcaSeleccionados.map(p =>
+      p.producto_marca_id === producto.id && p.variante_id === variante?.id
+        ? { ...p, cantidad: nuevaCantidad, subtotal: nuevaCantidad * p.precio_unitario }
+        : p
+    ));
+  } else {
+    const precioUnitario = variante
+      ? parseFloat(producto.precio_venta_base) + parseFloat(variante.ajuste_precio || 0)
+      : parseFloat(producto.precio_venta_base);
+
+    const nuevoProducto = {
+      producto_marca_id: producto.id,
+      variante_id: variante?.id || null,
+      marca_aliada_id: marcaSeleccionada.id,
+      marca_nombre: marcaSeleccionada.nombre,
+      nombre: producto.nombre,
+      referencia: producto.referencia || 'N/A',
+      talla: variante?.talla || null,
+      cantidad: 1,
+      precio_unitario: precioUnitario,
+      subtotal: precioUnitario,
+      stock_disponible: variante?.cantidad || 0,
+      porcentaje_comision: marcaSeleccionada.porcentaje_comision
+    };
+
+    setProductosMarcaSeleccionados([...productosMarcaSeleccionados, nuevoProducto]);
+  }
+};
+
+const actualizarCantidadMarca = (index, nuevaCantidad) => {
+  if (nuevaCantidad < 1) return;
+
+  const producto = productosMarcaSeleccionados[index];
+
+  if (nuevaCantidad > producto.stock_disponible) {
+    setMensajeModal(`Stock insuficiente. Disponible: ${producto.stock_disponible}`);
+    setTipoMensaje('error');
+    setMostrarMensaje(true);
+    return;
+  }
+
+  setProductosMarcaSeleccionados(productosMarcaSeleccionados.map((p, i) =>
+    i === index
+      ? { ...p, cantidad: nuevaCantidad, subtotal: nuevaCantidad * p.precio_unitario }
+      : p
+  ));
+};
+
+const eliminarProductoMarca = (index) => {
+  setProductosMarcaSeleccionados(productosMarcaSeleccionados.filter((_, i) => i !== index));
+};
+
+const calcularTotalMarcas = () => {
+  return productosMarcaSeleccionados.reduce((sum, p) => sum + p.subtotal, 0);
+};
+
+
   useEffect(() => {
     cargarNumeroVenta();
     cargarCategorias();
@@ -503,20 +617,13 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
     return costosAdicionales.reduce((sum, c) => sum + c.monto, 0);
   };
 
-  // ✅ USAR LA FUNCIÓN DEL HOOK
-// ✅ CORREGIDO: Descuento solo sobre subtotal, luego sumar costos
-  const calcularTotal = () => {
-    const subtotal = calcularSubtotal();
-    const costos = calcularCostosTotal();
-    // ✅ Aplicar descuento SOLO al subtotal
-    const subtotalConDescuento = aplicarDescuentoFidelidad(subtotal);
-    // ✅ Sumar costos adicionales SIN descuento
-    return Math.max(0, subtotalConDescuento + costos);
-  };
-
-  // ❌ ELIMINAR ESTAS FUNCIONES - YA ESTÁN EN EL HOOK
-  // const aplicarDescuentoFidelidad = (porcentaje) => { ... }
-  // const removerDescuentoFidelidad = () => { ... }
+const calcularTotal = () => {
+  const subtotal = calcularSubtotal();
+  const costos = calcularCostosTotal();
+  const totalMarcas = calcularTotalMarcas();
+  const subtotalConDescuento = aplicarDescuentoFidelidad(subtotal);
+  return Math.max(0, subtotalConDescuento + costos + totalMarcas);
+};
 
   const calcularCambio = () => {
     const total = calcularTotal();
@@ -531,7 +638,7 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   };
 
   const handleSubmit = async () => {
-    if (productosSeleccionados.length === 0) {
+  if (productosSeleccionados.length === 0 && productosMarcaSeleccionados.length === 0) {
       setMensajeModal("Agrega al menos un producto");
       setTipoMensaje('error');
       setMostrarMensaje(true);
@@ -597,8 +704,10 @@ const metodoPagoCompleto = subMetodoPago
     const datosVenta = {
       cliente: clienteData,
       productos: productosSeleccionados,
+      productos_marca_aliada: productosMarcaSeleccionados,
       costos_adicionales: costosAdicionales,
       subtotal: calcularSubtotal(),
+      total_marcas: calcularTotalMarcas(),
       total: total,
       monto_pagado: pagado,
       cambio: metodoPago === 'Efectivo' ? calcularCambio() : 0,
@@ -926,16 +1035,16 @@ const AlertaFidelidad = () => {
                 <span>1. Productos</span>
               </div>
             </button>
-            <button
-                    onClick={() => {
-                      if (productosSeleccionados.length > 0) {
-                        setPaso(2);
-                      } else {
-                        setMensajeModal("Agrega productos primero");
-                        setTipoMensaje("error");
-                        setMostrarMensaje(true);
-                      }
-                    }}
+                    <button
+                      onClick={() => {
+                        if (productosSeleccionados.length > 0 || productosMarcaSeleccionados.length > 0) {
+                          setPaso(2);
+                        } else {
+                          setMensajeModal("Agrega al menos un producto (propio o de marca aliada)");
+                          setTipoMensaje("error");
+                          setMostrarMensaje(true);
+                        }
+                      }}
 
               className={`flex-1 px-6 py-4 font-medium transition ${paso === 2
                 ? 'text-teal-600 border-b-2 border-teal-600 bg-white'
@@ -947,17 +1056,16 @@ const AlertaFidelidad = () => {
                 <span>2. Cliente</span>
               </div>
             </button>
-            <button
-                onClick={() => {
-                  if (productosSeleccionados.length > 0) {
-                    setPaso(3);
-                  } else {
-                    setMensajeModal("Agrega productos primero");
-                    setTipoMensaje("error");
-                    setMostrarMensaje(true);
-                  }
-                }}
-
+                <button
+                  onClick={() => {
+                    if (productosSeleccionados.length > 0 || productosMarcaSeleccionados.length > 0) {
+                      setPaso(3);
+                    } else {
+                      setMensajeModal("Agrega al menos un producto (propio o de marca aliada)");
+                      setTipoMensaje("error");
+                      setMostrarMensaje(true);
+                    }
+                  }}
               className={`flex-1 px-6 py-4 font-medium transition ${paso === 3
                 ? 'text-teal-600 border-b-2 border-teal-600 bg-white'
                 : 'text-gray-500 hover:text-gray-700'
@@ -1024,6 +1132,7 @@ const AlertaFidelidad = () => {
                     </div>
                   </div>
                 )}
+
 
                 {/* Filtros de Selección */}
                 <div className="bg-white border rounded-lg p-4">
@@ -1128,6 +1237,190 @@ const AlertaFidelidad = () => {
                     </div>
                   )}
                 </div>
+
+                            {/* ===== SECCIÓN DE MARCAS ALIADAS ===== */}
+                            <div className="border-t pt-6 mt-6">
+                              <button
+                                onClick={() => setMostrarMarcasAliadas(!mostrarMarcasAliadas)}
+                                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border-2 border-purple-300 hover:border-purple-400 transition"
+                              >
+                                <div className="flex items-center space-x-3">
+                                  <Store size={24} className="text-purple-600" />
+                                  <div className="text-left">
+                                    <h4 className="font-bold text-purple-900">Productos de Marcas Aliadas</h4>
+                                    <p className="text-sm text-purple-600">
+                                      {productosMarcaSeleccionados.length > 0
+                                        ? `${productosMarcaSeleccionados.length} producto(s) agregado(s)`
+                                        : 'Haz clic para agregar productos de marcas aliadas'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <ChevronDown
+                                  size={20}
+                                  className={`text-purple-600 transition-transform ${mostrarMarcasAliadas ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+
+                              {mostrarMarcasAliadas && (
+                                <div className="mt-4 space-y-4">
+                                  {/* Lista de productos de marca seleccionados */}
+                                  {productosMarcaSeleccionados.length > 0 && (
+                                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                      <h5 className="font-bold text-purple-900 mb-3">Productos de Marcas Aliadas ({productosMarcaSeleccionados.length})</h5>
+                                      <div className="space-y-2">
+                                        {productosMarcaSeleccionados.map((producto, index) => (
+                                          <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-purple-200">
+                                            <div className="flex-1">
+                                              <div className="font-medium text-gray-800">{producto.nombre}</div>
+                                              <div className="text-xs text-gray-500">
+                                                <span className="font-medium text-purple-600">{producto.marca_nombre}</span>
+                                                {' | '}Ref: {producto.referencia}
+                                                {producto.talla && ` | Talla: ${producto.talla}`}
+                                              </div>
+                                              <div className="text-sm text-gray-600">${producto.precio_unitario.toFixed(2)} c/u</div>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                              <button
+                                                onClick={() => actualizarCantidadMarca(index, producto.cantidad - 1)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                              >
+                                                <Minus size={16} />
+                                              </button>
+                                              <span className="font-medium w-8 text-center">{producto.cantidad}</span>
+                                              <button
+                                                onClick={() => actualizarCantidadMarca(index, producto.cantidad + 1)}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                              >
+                                                <Plus size={16} />
+                                              </button>
+                                              <div className="text-right min-w-[80px]">
+                                                <div className="font-bold text-gray-800">${producto.subtotal.toFixed(2)}</div>
+                                              </div>
+                                              <button
+                                                onClick={() => eliminarProductoMarca(index)}
+                                                className="p-2 hover:bg-red-50 rounded-lg transition"
+                                              >
+                                                <Trash2 size={18} className="text-red-600" />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                        <div className="bg-purple-100 p-3 rounded-lg border border-purple-300">
+                                          <div className="flex justify-between items-center">
+                                            <span className="font-medium text-purple-700">Total Marcas Aliadas:</span>
+                                            <span className="text-xl font-bold text-purple-600">${calcularTotalMarcas().toFixed(2)}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Selección de marca */}
+                                  {!marcaSeleccionada ? (
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                      {marcasAliadas.map((marca) => (
+                                        <button
+                                          key={marca.id}
+                                          onClick={() => handleSeleccionarMarca(marca)}
+                                          className="p-4 border-2 border-purple-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition text-left"
+                                        >
+                                          <div className="font-bold text-gray-800">{marca.nombre}</div>
+                                          <div className="text-sm text-gray-600 mt-1">
+                                            {marca.total_productos || 0} productos
+                                          </div>
+                                          <div className="text-xs text-purple-600 mt-1">
+                                            Comisión: {marca.porcentaje_comision}%
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      {/* Header de marca seleccionada */}
+                                      <div className="flex items-center justify-between bg-purple-50 p-3 rounded-lg border border-purple-200 mb-4">
+                                        <div className="flex items-center space-x-3">
+                                          <Store size={20} className="text-purple-600" />
+                                          <div>
+                                            <div className="font-bold text-purple-900">{marcaSeleccionada.nombre}</div>
+                                            <div className="text-sm text-purple-600">{productosMarcaDisponibles.length} productos disponibles</div>
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            setMarcaSeleccionada(null);
+                                            setProductosMarcaDisponibles([]);
+                                          }}
+                                          className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                                        >
+                                          Cambiar marca
+                                        </button>
+                                      </div>
+
+                                      {/* Lista de productos de la marca */}
+                                      <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                                        {productosMarcaDisponibles.map((producto) => (
+                                          <div key={producto.id} className="border rounded-lg p-4 bg-white hover:bg-gray-50">
+                                            <div className="flex items-start space-x-4">
+                                              {/* Imagen del producto */}
+                                              <ImagenProducto
+                                                rutaImagen={producto.imagen}
+                                                nombreProducto={producto.nombre}
+                                                onClickImagen={(img) => {
+                                                  setImagenAmpliada(img);
+                                                  setNombreProductoAmpliado(producto.nombre);
+                                                }}
+                                              />
+
+                                              {/* Información del producto */}
+                                              <div className="flex-1">
+                                                <div className="font-bold text-lg text-gray-800">{producto.nombre}</div>
+                                                <div className="text-sm text-purple-600">Ref: {producto.referencia || 'N/A'}</div>
+                                                <div className="text-sm text-gray-600 mt-1">Precio: ${producto.precio_venta_base}</div>
+
+                                                {/* Variantes/Tallas */}
+                                                {producto.variantes && producto.variantes.length > 0 ? (
+                                                  <div className="mt-3">
+                                                    <p className="text-sm font-medium text-gray-700 mb-2">Selecciona una talla:</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                      {producto.variantes.map((variante) => (
+                                                        <button
+                                                          key={variante.id}
+                                                          onClick={() => agregarProductoMarca(producto, variante)}
+                                                          disabled={variante.cantidad <= 0}
+                                                          className={`px-3 py-2 rounded-lg border font-medium transition ${
+                                                            variante.cantidad <= 0
+                                                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                              : variante.cantidad < 5
+                                                                ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200'
+                                                                : 'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200'
+                                                          }`}
+                                                        >
+                                                          <div>
+                                                            <div className="font-bold">{variante.talla}</div>
+                                                            <div className="text-xs">Stock: {variante.cantidad}</div>
+                                                          </div>
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  <button
+                                                    onClick={() => agregarProductoMarca(producto, null)}
+                                                    className="mt-3 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium"
+                                                  >
+                                                    Agregar Producto
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
 
                                 {/* Costos Adicionales */}
                                 <div>
@@ -1321,45 +1614,82 @@ const AlertaFidelidad = () => {
               </div>
             )}
 
-            {paso === 3 && (
-                          <div className="space-y-6">
-                            {/* Resumen de la Venta */}
-                            <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-lg border border-teal-200">
-                              <h4 className="font-bold text-gray-800 mb-4">Resumen de la Venta</h4>
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-gray-600">Subtotal ({productosSeleccionados.length} productos):</span>
-                                  <span className="font-medium">${subtotal.toFixed(2)}</span>
-                                </div>
+{paso === 3 && (
+  <div className="space-y-6">
+    {/* Resumen de la Venta */}
+    <div className="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-lg border border-teal-200">
+      <h4 className="font-bold text-gray-800 mb-4">Resumen de la Venta</h4>
+      <div className="space-y-3">
+        {/* Productos Propios */}
+        {productosSeleccionados.length > 0 && (
+          <div className="border-b pb-3">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-semibold text-gray-700">Productos Propios:</span>
+              <span className="font-medium text-gray-800">${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="space-y-1 ml-4">
+              {productosSeleccionados.map((prod, idx) => (
+                <div key={idx} className="flex justify-between text-xs text-gray-600">
+                  <span>• {prod.nombre} {prod.talla ? `(${prod.talla})` : ''} x{prod.cantidad}</span>
+                  <span>${prod.subtotal.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-                                {costosAdicionales.length > 0 && (
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-gray-600">Costos adicionales:</span>
-                                    <span className="font-medium">${calcularCostosTotal().toFixed(2)}</span>
-                                  </div>
-                                )}
+        {/* Productos de Marcas Aliadas */}
+        {productosMarcaSeleccionados.length > 0 && (
+          <div className="border-b pb-3 bg-purple-50 -mx-2 px-2 py-2 rounded">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-semibold text-purple-700">Productos Marcas Aliadas:</span>
+              <span className="font-bold text-purple-700">${calcularTotalMarcas().toFixed(2)}</span>
+            </div>
+            <div className="space-y-1 ml-4">
+              {productosMarcaSeleccionados.map((prod, idx) => (
+                <div key={idx} className="flex justify-between text-xs text-purple-600">
+                  <span>
+                    • {prod.nombre} {prod.talla ? `(${prod.talla})` : ''} x{prod.cantidad}
+                    <span className="text-purple-500 ml-1">- {prod.marca_nombre}</span>
+                  </span>
+                  <span>${prod.subtotal.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-{/* ✅ MOSTRAR DESCUENTO SOLO SI ESTÁ ACTIVO */}
-                                {descuentoActivo && descuentoAplicable > 0 && (
-                                  <div className="flex justify-between text-sm text-green-600 font-medium">
-                                    <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
-                                    <span>-${calcularMontoDescuento(subtotal).toFixed(2)}</span>
-                                  </div>
-                                )}
+        {/* Costos Adicionales */}
+        {costosAdicionales.length > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Costos adicionales:</span>
+            <span className="font-medium">${calcularCostosTotal().toFixed(2)}</span>
+          </div>
+        )}
 
-                                {datosCliente.nombre && (
-                                  <div className="flex justify-between text-sm pt-2 border-t">
-                                    <span className="text-gray-600">Cliente:</span>
-                                    <span className="font-medium">{datosCliente.nombre}</span>
-                                  </div>
-                                )}
+        {/* Descuento de Fidelidad */}
+        {descuentoActivo && descuentoAplicable > 0 && (
+          <div className="flex justify-between text-sm text-green-600 font-medium">
+            <span>Descuento de fidelidad ({descuentoAplicable}%):</span>
+            <span>-${calcularMontoDescuento(subtotal).toFixed(2)}</span>
+          </div>
+        )}
 
-                                <div className="border-t pt-2 flex justify-between">
-                                  <span className="font-bold text-lg text-gray-800">Total:</span>
-                                  <span className="font-bold text-2xl text-teal-600">${total.toFixed(2)}</span>
-                                </div>
-                              </div>
-                            </div>
+        {/* Cliente */}
+        {datosCliente.nombre && (
+          <div className="flex justify-between text-sm pt-2 border-t">
+            <span className="text-gray-600">Cliente:</span>
+            <span className="font-medium">{datosCliente.nombre}</span>
+          </div>
+        )}
+
+        {/* Total */}
+        <div className="border-t pt-2 flex justify-between">
+          <span className="font-bold text-lg text-gray-800">Total:</span>
+          <span className="font-bold text-2xl text-teal-600">${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
 
                             {/* 🔥 MÉTODOS DE PAGO PRINCIPALES */}
                             <div>
@@ -1467,8 +1797,18 @@ const AlertaFidelidad = () => {
                       {/* Footer */}
                       <div className="p-6 border-t bg-gray-50 flex items-center justify-between">
                         <div className="text-sm text-gray-600">
-                          {paso === 1 && <span>{productosSeleccionados.length} producto(s) agregado(s)</span>}
-                          {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
+                                        {paso === 1 && (
+                                          <span>
+                                            {productosSeleccionados.length + productosMarcaSeleccionados.length} producto(s) agregado(s)
+                                            {productosMarcaSeleccionados.length > 0 && (
+                                              <span className="text-purple-600 ml-1">
+                                                ({productosMarcaSeleccionados.length} de marcas aliadas)
+                                              </span>
+                                            )}
+                                          </span>
+                                        )}
+
+                                    {paso === 2 && <span>{datosCliente.nombre ? `Cliente: ${datosCliente.nombre}` : 'Sin datos de cliente'}</span>}
                           {paso === 3 && (
                             <div className="flex flex-col">
                               <span>Total: ${total.toFixed(2)}</span>
@@ -1498,15 +1838,15 @@ const AlertaFidelidad = () => {
                           {paso < 3 ? (
                             <button
                               onClick={() => {
-                                if (paso === 1 && productosSeleccionados.length === 0) {
-                                  setMensajeModal("Agrega al menos un producto");
+                                if (paso === 1 && productosSeleccionados.length === 0 && productosMarcaSeleccionados.length === 0) {
+                                  setMensajeModal("Agrega al menos un producto (propio o de marca aliada)");
                                   setTipoMensaje('error');
                                   setMostrarMensaje(true);
                                   return;
                                 }
                                 setPaso(paso + 1);
                               }}
-                              className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+                                                  className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
                             >
                               Continuar
                             </button>
