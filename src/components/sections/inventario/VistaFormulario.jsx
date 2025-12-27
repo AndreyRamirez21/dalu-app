@@ -138,38 +138,93 @@ export const VistaFormulario = ({ inventario }) => {
                   className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
-                    {/* Reemplaza el div del "Precio sugerido" con esto: */}
-                    {inventario.formulario.costo_base && parseFloat(inventario.formulario.costo_base) > 0 && (
-                      <div className="mt-2 text-sm bg-purple-50 border border-purple-200 rounded px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-700">Precio sugerido:</span>
-                            <span className="font-bold text-purple-700">
-                              ${inventario.calcularPrecioSugerido().toFixed(2)}
-                            </span>
-
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Este es el precio recomendado. Puedes ajustarlo según el mercado.
-                        </p>
+              {/* PRECIO SUGERIDO */}
+              {inventario.formulario.costo_base && parseFloat(inventario.formulario.costo_base) > 0 && (
+                <div className="mt-2 text-sm bg-purple-50 border border-purple-200 rounded px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700">Precio sugerido:</span>
+                    <span className="font-bold text-purple-700">
+                      ${inventario.calcularPrecioSugerido().toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-xs text-purple-600 space-y-1">
+                    <div className="flex justify-between">
+                      <span>Costo base con margen (35%):</span>
+                      <span>${(parseFloat(inventario.formulario.costo_base) / 0.65).toFixed(2)}</span>
+                    </div>
+                    {inventario.formulario.costos_adicionales.length > 0 && (
+                      <div className="flex justify-between">
+                        <span>+ Costos adicionales:</span>
+                        <span>${inventario.calcularTotalCostosAdicionales().toFixed(2)}</span>
                       </div>
                     )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 border-t border-purple-200 pt-2">
+                    💡 Fórmula: (Costo Base / 0.65) + Costos Adicionales
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* MARGEN BASE */}
+            {/* MARGEN REAL */}
             {inventario.formulario.costo_base && inventario.formulario.precio_venta_base && (
-              <div className="md:col-span-2 bg-teal-50 border border-teal-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-teal-800">Margen Base:</span>
-                  <span className="text-2xl font-bold text-teal-600">
-                    {calcularMargen(parseFloat(inventario.formulario.costo_base), parseFloat(inventario.formulario.precio_venta_base))}%
-                  </span>
+              <div className="md:col-span-2">
+                <div className="bg-teal-50 border-2 border-teal-300 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-teal-800">
+                        {inventario.formulario.costos_adicionales.length > 0 ? 'Margen Real:' : 'Margen Base:'}
+                      </span>
+                      {inventario.formulario.costos_adicionales.length > 0 && (
+                        <p className="text-xs text-teal-600 mt-1">
+                          Incluye ${inventario.calcularTotalCostosAdicionales().toFixed(2)} en costos adicionales
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-2xl font-bold text-teal-600">
+                      {(() => {
+                        const costoBase = parseFloat(inventario.formulario.costo_base) || 0;
+                        const costosAdicionales = inventario.calcularTotalCostosAdicionales();
+                        const precioVenta = parseFloat(inventario.formulario.precio_venta_base) || 0;
+                        const costoTotal = costoBase + costosAdicionales;
+
+                        if (!costoTotal || !precioVenta) return '0.0';
+
+                        return (((precioVenta - costoTotal) / precioVenta) * 100).toFixed(1);
+                      })()}%
+                    </span>
+                  </div>
+
+                  {/* Desglose de costos */}
+                  {inventario.formulario.costos_adicionales.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-teal-200 text-xs text-teal-700 space-y-1">
+                      <div className="flex justify-between">
+                        <span>Precio de venta:</span>
+                        <span className="font-medium">${parseFloat(inventario.formulario.precio_venta_base).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>- Costo Base:</span>
+                        <span className="font-medium">${parseFloat(inventario.formulario.costo_base).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>- Costos Adicionales:</span>
+                        <span className="font-medium">${inventario.calcularTotalCostosAdicionales().toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-semibold pt-1 border-t border-teal-200 mt-1">
+                        <span>= Ganancia neta:</span>
+                        <span>
+                          ${(parseFloat(inventario.formulario.precio_venta_base) - parseFloat(inventario.formulario.costo_base) - inventario.calcularTotalCostosAdicionales()).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* ✅ NUEVO: COSTOS ADICIONALES CON SELECT MEJORADO */}
+        {/* COSTOS ADICIONALES */}
         <div className="border-t pt-8 mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -282,7 +337,7 @@ export const VistaFormulario = ({ inventario }) => {
           )}
         </div>
 
-        {/* ✅ ACTUALIZADO: TALLAS / VARIANTES CON SELECT MEJORADO */}
+        {/* TALLAS / VARIANTES */}
         <div className="border-t pt-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-gray-800">Tallas / Variantes *</h3>

@@ -5,6 +5,7 @@ import { VistaMarcas } from './VistaMarcas';
 import { FormularioMarca } from './FormularioMarca';
 import { VistaProductosMarca } from './VistaProductosMarca';
 import { AlertCircle, CheckCircle, AlertTriangle, X } from 'lucide-react';
+import { VistaVentasMarca } from './VistaVentasMarca';
 
 // Componente de notificación
 const Notificacion = ({ mensaje, tipo, onCerrar }) => {
@@ -94,6 +95,11 @@ export const MarcasAliadas = () => {
 
       {marcasAliadas.vista === 'productos' && (
         <VistaProductosMarca marcasAliadas={marcasAliadas} />
+      )}
+
+      {/* ⬅️ NUEVA VISTA DE VENTAS */}
+      {marcasAliadas.vista === 'ventas' && (
+        <VistaVentasMarca marcasAliadas={marcasAliadas} />
       )}
     </div>
   );

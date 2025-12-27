@@ -389,13 +389,30 @@ export const VistaLista = ({ inventario }) => {
                                         <div className="text-sm font-medium text-gray-900">${producto.precio_venta_base.toFixed(2)}</div>
                                       </div>
 
-                                      {/* Margen */}
-                                      <div>
-                                        <div className="text-xs text-gray-500 font-medium mb-1">MARGEN</div>
-                                        <div className="text-sm text-green-600 font-bold">
-                                          {((producto.precio_venta_base - producto.costo_base) / producto.costo_base * 100).toFixed(1)}%
+                                        {/* Margen */}
+                                        <div>
+                                          <div className="text-xs text-gray-500 font-medium mb-1">MARGEN</div>
+                                          <div className="text-sm text-green-600 font-bold">
+                                            {(() => {
+                                              const costoBase = parseFloat(producto.costo_base) || 0;
+                                              const precioVenta = parseFloat(producto.precio_venta_base) || 0;
+
+                                              // Calcular costos adicionales totales
+                                              const costosAdicionales = producto.costos_adicionales
+                                                ? producto.costos_adicionales.reduce((sum, c) => sum + parseFloat(c.monto || 0), 0)
+                                                : 0;
+
+                                              const costoTotal = costoBase + costosAdicionales;
+
+                                              if (!costoTotal || !precioVenta) return '0.0%';
+
+                                              // Margen real = ((Precio - Costo Total) / Precio) * 100
+                                              const margenReal = ((precioVenta - costoTotal) / precioVenta) * 100;
+
+                                              return `${margenReal.toFixed(1)}%`;
+                                            })()}
+                                          </div>
                                         </div>
-                                      </div>
 
                                       {/* Stock */}
                                       <div>

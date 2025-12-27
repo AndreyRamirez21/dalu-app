@@ -19,10 +19,14 @@ const getIPC = () => {
 };
 
 export const useMarcasAliadas = () => {
-  const [vista, setVista] = useState('lista'); // lista, agregar, editar, productos
+  const [vista, setVista] = useState('lista'); // lista, agregar, editar, productos, ventas
   const [marcas, setMarcas] = useState([]);
   const [marcaSeleccionada, setMarcaSeleccionada] = useState(null);
   const [productosMarca, setProductosMarca] = useState([]);
+  const [ventasMarca, setVentasMarca] = useState([]);
+  const [estadisticasMarca, setEstadisticasMarca] = useState(null);
+  const [estadisticasGenerales, setEstadisticasGenerales] = useState(null);
+  const [productosMasVendidos, setProductosMasVendidos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [notificacion, setNotificacion] = useState(null);
@@ -40,27 +44,15 @@ export const useMarcasAliadas = () => {
 
   const [formularioMarca, setFormularioMarca] = useState(formularioMarcaInicial);
 
-  // Categorías disponibles (las mismas que tu inventario)
   const categorias = [
-    'Deluxe',
-    'Essence',
-    'Pantuflas',
-    'Antifaces',
-    'Humidificadores',
-    'Fundas',
-    'Scrunchies',
-    'Rizadores',
-    'Gorros en Satín',
-    'Lámparas',
-    'Cuelleros',
-    'Varios'
+    'Deluxe', 'Essence', 'Pantuflas', 'Antifaces', 'Humidificadores',
+    'Fundas', 'Scrunchies', 'Rizadores', 'Gorros en Satín', 'Lámparas',
+    'Cuelleros', 'Varios'
   ];
 
-  const tallasDisponibles = [
-    'XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'
-  ];
+  const tallasDisponibles = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'];
 
-  // ==================== CARGAR MARCAS ====================
+  // ==================== CARGAR DATOS ====================
   const cargarMarcas = async () => {
     const ipc = getIPC();
     if (!ipc) {
@@ -82,8 +74,21 @@ export const useMarcasAliadas = () => {
     }
   };
 
+  const cargarEstadisticasGenerales = async () => {
+    const ipc = getIPC();
+    if (!ipc) return;
+
+    try {
+      const stats = await ipc.invoke('obtener-estadisticas-marcas-aliadas');
+      setEstadisticasGenerales(stats);
+    } catch (err) {
+      console.error('Error al cargar estadísticas generales:', err);
+    }
+  };
+
   useEffect(() => {
     cargarMarcas();
+    cargarEstadisticasGenerales();
   }, []);
 
   // ==================== GESTIÓN DE MARCAS ====================
@@ -128,6 +133,7 @@ export const useMarcasAliadas = () => {
     try {
       await ipc.invoke('agregar-marca-aliada', nuevaMarca);
       await cargarMarcas();
+      await cargarEstadisticasGenerales();
       setFormularioMarca(formularioMarcaInicial);
       setVista('lista');
       setTimeout(() => {
@@ -187,6 +193,7 @@ export const useMarcasAliadas = () => {
     try {
       await ipc.invoke('actualizar-marca-aliada', marcaSeleccionada.id, datosActualizados);
       await cargarMarcas();
+      await cargarEstadisticasGenerales();
       setFormularioMarca(formularioMarcaInicial);
       setMarcaSeleccionada(null);
       setNotificacion({ mensaje: 'Marca actualizada exitosamente', tipo: 'exito' });
@@ -211,6 +218,7 @@ export const useMarcasAliadas = () => {
         try {
           await ipc.invoke('eliminar-marca-aliada', id);
           await cargarMarcas();
+          await cargarEstadisticasGenerales();
           setNotificacion({ mensaje: 'Marca eliminada exitosamente', tipo: 'exito' });
         } catch (err) {
           console.error('Error al eliminar marca:', err);
@@ -239,10 +247,44 @@ export const useMarcasAliadas = () => {
     }
   };
 
+  // ==================== NUEVA: GESTIÓN DE VENTAS ====================
+  const handleVerVentas = async (marca) => {
+    const ipc = getIPC();
+    if (!ipc) {
+      setNotificacion({ mensaje: 'Error: Electron IPC no disponible', tipo: 'error' });
+      return;
+    }
+
+    try {
+      setCargando(true);
+      setMarcaSeleccionada(marca);
+
+      // Cargar ventas, estadísticas y productos más vendidos en paralelo
+      const [ventas, stats, topProductos] = await Promise.all([
+        ipc.invoke('obtener-ventas-marca', marca.id),
+        ipc.invoke('obtener-estadisticas-marca', marca.id),
+        ipc.invoke('obtener-productos-mas-vendidos-marca', marca.id)
+      ]);
+
+      setVentasMarca(ventas);
+      setEstadisticasMarca(stats);
+      setProductosMasVendidos(topProductos);
+      setVista('ventas');
+    } catch (err) {
+      console.error('Error al cargar ventas de marca:', err);
+      setNotificacion({ mensaje: 'Error al cargar ventas de la marca', tipo: 'error' });
+    } finally {
+      setCargando(false);
+    }
+  };
+
   const handleCancelar = () => {
     setVista('lista');
     setFormularioMarca(formularioMarcaInicial);
     setMarcaSeleccionada(null);
+    setVentasMarca([]);
+    setEstadisticasMarca(null);
+    setProductosMasVendidos([]);
   };
 
   // ==================== ESTADÍSTICAS ====================
@@ -257,6 +299,10 @@ export const useMarcasAliadas = () => {
     marcas,
     marcaSeleccionada,
     productosMarca,
+    ventasMarca,
+    estadisticasMarca,
+    estadisticasGenerales,
+    productosMasVendidos,
     cargando,
     error,
     notificacion,
@@ -275,12 +321,14 @@ export const useMarcasAliadas = () => {
 
     // Funciones
     cargarMarcas,
+    cargarEstadisticasGenerales,
     handleInputMarcaChange,
     handleGuardarMarca,
     handleEditarMarca,
     handleActualizarMarca,
     handleEliminarMarca,
     handleVerProductos,
+    handleVerVentas,
     handleCancelar
   };
 };

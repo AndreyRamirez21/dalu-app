@@ -1,6 +1,6 @@
 // src/components/sections/marcas/VistaMarcas.jsx
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Package, Phone, Mail, Percent, Search, Eye, Store } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Phone, Mail, Percent, Search, Eye, Store, DollarSign, TrendingUp, BarChart3 } from 'lucide-react';
 
 export const VistaMarcas = ({ marcasAliadas }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -9,6 +9,8 @@ export const VistaMarcas = ({ marcasAliadas }) => {
     marca.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (marca.contacto_nombre && marca.contacto_nombre.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const { estadisticasGenerales } = marcasAliadas;
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
@@ -27,7 +29,7 @@ export const VistaMarcas = ({ marcasAliadas }) => {
       </div>
 
       {/* Tarjetas de estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -63,7 +65,32 @@ export const VistaMarcas = ({ marcasAliadas }) => {
             </div>
           </div>
         </div>
+
+        {/* NUEVAS ESTADÍSTICAS DE VENTAS */}
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-2">
+            <TrendingUp size={24} className="opacity-80" />
+            <span className="text-xs opacity-80 uppercase font-semibold">Comisiones Marcas</span>
+          </div>
+          <div className="text-2xl font-bold">
+            ${(estadisticasGenerales?.total_comision_marcas || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-xs opacity-80 mt-1">Total pagado a marcas</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl shadow-lg p-6 text-white">
+          <div className="flex items-center justify-between mb-2">
+            <DollarSign size={24} className="opacity-80" />
+            <span className="text-xs opacity-80 uppercase font-semibold">Ganancia Tienda</span>
+          </div>
+          <div className="text-2xl font-bold">
+            ${(estadisticasGenerales?.total_ganancia_tienda || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="text-xs opacity-80 mt-1">De ventas de marcas</div>
+        </div>
       </div>
+
+      {/* ... resto del código igual hasta los botones de acciones ... */}
 
       {/* Buscador */}
       <div className="bg-white rounded-xl shadow-sm border mb-6 p-6">
@@ -160,6 +187,14 @@ export const VistaMarcas = ({ marcasAliadas }) => {
                   </div>
 
                   <div className="flex items-center space-x-2 ml-4">
+                    {/* NUEVO BOTÓN: Ver ventas */}
+                    <button
+                      onClick={() => marcasAliadas.handleVerVentas(marca)}
+                      className="p-2 hover:bg-teal-50 rounded-lg transition"
+                      title="Ver ventas y estadísticas"
+                    >
+                      <BarChart3 size={20} className="text-teal-600" />
+                    </button>
                     <button
                       onClick={() => marcasAliadas.handleVerProductos(marca)}
                       className="p-2 hover:bg-blue-50 rounded-lg transition"

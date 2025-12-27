@@ -2772,6 +2772,132 @@ ipcMain.handle('eliminar-producto-marca-aliada', async (event, id) => {
   });
 });
 
+// ==================== ESTADÍSTICAS Y VENTAS DE MARCAS ALIADAS ====================
+
+// Obtener estadísticas generales de todas las marcas aliadas
+ipcMain.handle('obtener-estadisticas-marcas-aliadas', async () => {
+  return new Promise((resolve, reject) => {
+    db.db.get(`
+      SELECT
+        COUNT(DISTINCT vma.venta_id) as total_ventas,
+        SUM(vma.subtotal) as total_vendido,
+        SUM(vma.comision_marca) as total_comision_marcas,
+        SUM(vma.ganancia_tienda) as total_ganancia_tienda
+      FROM ventas_marca_aliada vma
+      INNER JOIN ventas v ON vma.venta_id = v.id
+      WHERE v.estado != 'Cancelado'
+    `, [], (err, stats) => {
+      if (err) {
+        console.error('Error al obtener estadísticas de marcas:', err);
+        reject(err);
+      } else {
+        resolve({
+          total_ventas: stats.total_ventas || 0,
+          total_vendido: stats.total_vendido || 0,
+          total_comision_marcas: stats.total_comision_marcas || 0,
+          total_ganancia_tienda: stats.total_ganancia_tienda || 0
+        });
+      }
+    });
+  });
+});
+
+// Obtener estadísticas de una marca específica
+ipcMain.handle('obtener-estadisticas-marca', async (event, marcaId) => {
+  return new Promise((resolve, reject) => {
+    db.db.get(`
+      SELECT
+        COUNT(DISTINCT vma.venta_id) as total_ventas,
+        SUM(vma.subtotal) as total_vendido,
+        SUM(vma.comision_marca) as total_comision_marca,
+        SUM(vma.ganancia_tienda) as total_ganancia_tienda,
+        SUM(vma.cantidad) as total_unidades_vendidas
+      FROM ventas_marca_aliada vma
+      INNER JOIN ventas v ON vma.venta_id = v.id
+      WHERE vma.marca_aliada_id = ? AND v.estado != 'Cancelado'
+    `, [marcaId], (err, stats) => {
+      if (err) {
+        console.error('Error al obtener estadísticas de marca:', err);
+        reject(err);
+      } else {
+        resolve({
+          total_ventas: stats.total_ventas || 0,
+          total_vendido: stats.total_vendido || 0,
+          total_comision_marca: stats.total_comision_marca || 0,
+          total_ganancia_tienda: stats.total_ganancia_tienda || 0,
+          total_unidades_vendidas: stats.total_unidades_vendidas || 0
+        });
+      }
+    });
+  });
+});
+
+// Obtener todas las ventas de una marca específica
+ipcMain.handle('obtener-ventas-marca', async (event, marcaId) => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT
+        v.id as venta_id,
+        v.numero_venta,
+        v.fecha,
+        v.cliente_nombre,
+        v.estado,
+        GROUP_CONCAT(
+          pma.nombre || ' (' || COALESCE(vma_var.talla, 'Única') || ') x' || vma.cantidad, ', '
+        ) as productos,
+        SUM(vma.subtotal) as total_venta,
+        SUM(vma.comision_marca) as comision_marca,
+        SUM(vma.ganancia_tienda) as ganancia_tienda
+      FROM ventas_marca_aliada vma
+      INNER JOIN ventas v ON vma.venta_id = v.id
+      INNER JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
+      LEFT JOIN variantes_marca_aliada vma_var ON vma.variante_id = vma_var.id
+      WHERE vma.marca_aliada_id = ? AND v.estado != 'Cancelado'
+      GROUP BY v.id
+      ORDER BY v.fecha DESC
+    `;
+
+    db.db.all(query, [marcaId], (err, ventas) => {
+      if (err) {
+        console.error('Error al obtener ventas de marca:', err);
+        reject(err);
+      } else {
+        resolve(ventas || []);
+      }
+    });
+  });
+});
+
+// Obtener productos más vendidos de una marca
+ipcMain.handle('obtener-productos-mas-vendidos-marca', async (event, marcaId) => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT
+        pma.id,
+        pma.nombre,
+        pma.referencia,
+        SUM(vma.cantidad) as total_vendido,
+        SUM(vma.subtotal) as total_ingresos,
+        COUNT(DISTINCT vma.venta_id) as num_ventas
+      FROM ventas_marca_aliada vma
+      INNER JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
+      INNER JOIN ventas v ON vma.venta_id = v.id
+      WHERE vma.marca_aliada_id = ? AND v.estado != 'Cancelado'
+      GROUP BY pma.id
+      ORDER BY total_vendido DESC
+      LIMIT 5
+    `;
+
+    db.db.all(query, [marcaId], (err, productos) => {
+      if (err) {
+        console.error('Error al obtener productos más vendidos:', err);
+        reject(err);
+      } else {
+        resolve(productos || []);
+      }
+    });
+  });
+});
 
 // ==================== APP LIFECYCLE ====================
 
