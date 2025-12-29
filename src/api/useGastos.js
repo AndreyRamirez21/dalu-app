@@ -323,7 +323,8 @@ export const useGastos = () => {
 
   // Exportar gastos a Excel
   const exportarGastosExcel = () => {
-    const XLSX = require('xlsx');
+    // CAMBIADO: Usar sheetjs-style en lugar de xlsx
+    const XLSX = require('sheetjs-style');
 
     // Preparar los datos para Excel
     const datosExcel = gastosFiltrados.map(gasto => ({
