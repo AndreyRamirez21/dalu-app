@@ -1604,12 +1604,44 @@ const AlertaFidelidad = () => {
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg border mt-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">{productosSeleccionados.length} producto(s) agregado(s)</span>
-                      <span className="font-bold text-lg text-gray-800">Subtotal: ${subtotal.toFixed(2)}</span>
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-lg border mt-4">
+                      <div className="space-y-2">
+                        {/* Resumen de productos */}
+                        <div className="flex justify-between items-center text-sm text-gray-600">
+                          <span>
+                            {productosSeleccionados.length > 0 && `${productosSeleccionados.length} producto(s) propio(s)`}
+                            {productosSeleccionados.length > 0 && productosMarcaSeleccionados.length > 0 && ' + '}
+                            {productosMarcaSeleccionados.length > 0 && `${productosMarcaSeleccionados.length} de marca aliada`}
+                          </span>
+                        </div>
+
+                        {/* Subtotal productos propios */}
+                        {productosSeleccionados.length > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-700">Subtotal productos propios:</span>
+                            <span className="font-bold text-gray-800">${subtotal.toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {/* Subtotal marcas aliadas */}
+                        {productosMarcaSeleccionados.length > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-purple-700">Subtotal marcas aliadas:</span>
+                            <span className="font-bold text-purple-700">${calcularTotalMarcas().toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {/* Total general */}
+                        {(productosSeleccionados.length > 0 || productosMarcaSeleccionados.length > 0) && (
+                          <div className="flex justify-between items-center pt-2 border-t">
+                            <span className="font-bold text-gray-800">Total:</span>
+                            <span className="text-xl font-bold text-teal-600">
+                              ${(subtotal + calcularTotalMarcas()).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
                 </div>
               </div>
             )}

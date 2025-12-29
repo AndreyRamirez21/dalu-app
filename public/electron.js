@@ -1692,19 +1692,21 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
 
           console.log(`📦 Productos a restaurar: ${productos.length}`);
 
-          // 3. Restaurar stock de cada producto
-          let erroresStock = [];
-          let procesados = 0;
+// 3. Restaurar stock de productos PROPIOS
+        let erroresStock = [];
+        let procesadosPropios = 0;
 
-          if (productos.length === 0) {
-            // Si no hay productos, continuar directamente
-            continuarCancelacion();
-          } else {
+        const restaurarStockPropios = () => {
+          return new Promise((resolve) => {
+            if (productos.length === 0) {
+              resolve();
+              return;
+            }
+
             productos.forEach((item) => {
               if (item.variante_id) {
-                // Restaurar stock de variante
                 db.db.run(
-                  'UPDATE variantes SET cantidad = cantidad + ? WHERE id = ?',
+                  'UPDATE variantes_producto SET cantidad = cantidad + ? WHERE id = ?',
                   [item.cantidad, item.variante_id],
                   (err) => {
                     if (err) {
@@ -1713,17 +1715,83 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
                     } else {
                       console.log(`✅ Stock restaurado: Variante ${item.variante_id} +${item.cantidad}`);
                     }
-                    procesados++;
-                    if (procesados === productos.length) continuarCancelacion();
+                    procesadosPropios++;
+                    if (procesadosPropios === productos.length) resolve();
                   }
                 );
               } else {
-                // Si no tiene variante, solo contar como procesado
-                procesados++;
-                if (procesados === productos.length) continuarCancelacion();
+                procesadosPropios++;
+                if (procesadosPropios === productos.length) resolve();
               }
             });
-          }
+          });
+        };
+
+        // 4. Restaurar stock de productos de MARCAS ALIADAS
+        const restaurarStockMarcasAliadas = () => {
+          return new Promise((resolve) => {
+            db.db.all(
+              'SELECT variante_id, cantidad FROM ventas_marca_aliada WHERE venta_id = ?',
+              [ventaId],
+              (err, productosMarca) => {
+                if (err) {
+                  console.error('❌ Error al obtener productos marca aliada:', err);
+                  erroresStock.push(err);
+                  resolve();
+                  return;
+                }
+
+                if (!productosMarca || productosMarca.length === 0) {
+                  console.log('ℹ️ No hay productos de marcas aliadas para restaurar');
+                  resolve();
+                  return;
+                }
+
+                console.log(`🔄 Restaurando stock de ${productosMarca.length} productos de marcas aliadas...`);
+
+                let procesadosMarca = 0;
+                productosMarca.forEach((item) => {
+                  if (item.variante_id) {
+                    db.db.run(
+                      'UPDATE variantes_marca_aliada SET cantidad = cantidad + ? WHERE id = ?',
+                      [item.cantidad, item.variante_id],
+                      (err) => {
+                        if (err) {
+                          console.error(`❌ Error al restaurar stock marca aliada ${item.variante_id}:`, err);
+                          erroresStock.push(err);
+                        } else {
+                          console.log(`✅ Stock marca aliada restaurado: Variante ${item.variante_id} +${item.cantidad}`);
+                        }
+                        procesadosMarca++;
+                        if (procesadosMarca === productosMarca.length) resolve();
+                      }
+                    );
+                  } else {
+                    procesadosMarca++;
+                    if (procesadosMarca === productosMarca.length) resolve();
+                  }
+                });
+              }
+            );
+          });
+        };
+
+        // Ejecutar restauración de ambos tipos de stock
+        Promise.all([restaurarStockPropios(), restaurarStockMarcasAliadas()])
+          .then(() => {
+            if (erroresStock.length > 0) {
+              db.db.run('ROLLBACK');
+              reject(erroresStock[0]);
+              return;
+            }
+            continuarCancelacion();
+          })
+          .catch((error) => {
+            console.error('❌ Error en restauración de stock:', error);
+            db.db.run('ROLLBACK');
+            reject(error);
+          });
+
 
           function continuarCancelacion() {
             if (erroresStock.length > 0) {
@@ -2457,6 +2525,10 @@ ipcMain.handle('obtener-top-productos', async () => {
 
 
 // ============================================
+// ESTADÍSTICAS CON CÁLCULO PROPORCIONAL AL PAGO
+// ============================================
+
+// ============================================
 // UTILIDADES PARA CÁLCULO DE FECHAS
 // ============================================
 
@@ -2465,7 +2537,6 @@ function generarMesesEntreFechas(fechaInicio, fechaFin) {
   const inicio = new Date(fechaInicio);
   const fin = new Date(fechaFin);
 
-  // Ajustar al primer día del mes de inicio
   const mesActual = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
   const mesFinal = new Date(fin.getFullYear(), fin.getMonth(), 1);
 
@@ -2478,12 +2549,10 @@ function generarMesesEntreFechas(fechaInicio, fechaFin) {
       ventasMarcasAliadas: 0,
       costoProductos: 0,
       costosAdicionales: 0,
-      ingresoMarcasAliadas: 0, // Solo tu 10%
+      ingresoMarcasAliadas: 0,
       gastos: 0,
       ganancia: 0
     });
-
-    // Avanzar al siguiente mes
     mesActual.setMonth(mesActual.getMonth() + 1);
   }
 
@@ -2493,14 +2562,9 @@ function generarMesesEntreFechas(fechaInicio, fechaFin) {
 function calcularPeriodoAnterior(fechaInicio, fechaFin) {
   const inicio = new Date(fechaInicio);
   const fin = new Date(fechaFin);
-
-  // Calcular la diferencia en días
   const diferenciaDias = Math.floor((fin - inicio) / (1000 * 60 * 60 * 24));
-
-  // Calcular el período anterior con la misma duración
   const anteriorFin = new Date(inicio);
   anteriorFin.setDate(anteriorFin.getDate() - 1);
-
   const anteriorInicio = new Date(anteriorFin);
   anteriorInicio.setDate(anteriorInicio.getDate() - diferenciaDias);
 
@@ -2511,7 +2575,7 @@ function calcularPeriodoAnterior(fechaInicio, fechaFin) {
 }
 
 // ============================================
-// HANDLER: Obtener estadísticas por período personalizado
+// HANDLER: Obtener estadísticas por período (PROPORCIONAL)
 // ============================================
 
 ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
@@ -2521,40 +2585,24 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
 
     db.db.serialize(() => {
       let estadisticas = {
-        // Ventas totales (facturación bruta incluyendo marcas aliadas)
         ventasTotales: 0,
         ventasMesAnterior: 0,
-
-        // Ventas propias (sin marcas aliadas)
         ventasPropias: 0,
-
-        // Ventas de marcas aliadas (monto total, solo informativo)
         ventasMarcasAliadas: 0,
-
-        // Ingresos reales (ventas propias + tu comisión 10% de marcas)
         ingresosReales: 0,
-
-        // Costos
         costoProductosVendidos: 0,
         costosAdicionales: 0,
-
-        // Ingresos de marcas aliadas (tu parte del 10%)
         ingresoMarcasAliadas: 0,
-
-        // Gastos
         gastosTotales: 0,
         gastosMesAnterior: 0,
         gastosInventario: 0,
-
-        // Ganancias
         gananciaBruta: 0,
         gananciaNeta: 0,
         margenBruto: 0,
         margenNeto: 0
       };
 
-      // 1. Ventas TOTALES del período actual (incluyendo marcas aliadas - facturación)
-      // SOLO ventas con monto_pagado > 0 (pagos reales)
+      // 1. Ventas TOTALES (solo monto pagado)
       db.db.get(`
         SELECT SUM(monto_pagado) as total
         FROM ventas
@@ -2566,7 +2614,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
           estadisticas.ventasTotales = row.total || 0;
         }
 
-        // 2. Ventas del período anterior (solo con pagos)
+        // 2. Ventas del período anterior
         db.db.get(`
           SELECT SUM(monto_pagado) as total
           FROM ventas
@@ -2578,22 +2626,26 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
             estadisticas.ventasMesAnterior = row.total || 0;
           }
 
-          // 3. Ventas de PRODUCTOS PROPIOS (sin marcas aliadas, solo con pagos)
+          // 3. Ventas PROPIAS (PROPORCIONAL al pago)
           db.db.get(`
-            SELECT COALESCE(SUM(vp.precio_unitario * vp.cantidad), 0) as total
+            SELECT COALESCE(
+              SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)),
+              0
+            ) as total
             FROM venta_productos vp
             INNER JOIN ventas v ON vp.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
+            AND v.total > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
           `, [fechaInicio, fechaFin], (err, row) => {
             if (!err && row) {
               estadisticas.ventasPropias = row.total || 0;
             }
 
-            // 4. Ventas de MARCAS ALIADAS (monto total de ventas, solo con pagos)
+            // 4. Ventas MARCAS ALIADAS (monto total pagado de ventas con marcas)
             db.db.get(`
-              SELECT COALESCE(SUM(v.monto_pagado), 0) as total
+              SELECT COALESCE(SUM(DISTINCT v.monto_pagado), 0) as total
               FROM ventas v
               INNER JOIN ventas_marca_aliada vma ON vma.venta_id = v.id
               WHERE v.estado != 'Cancelado'
@@ -2604,13 +2656,17 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                 estadisticas.ventasMarcasAliadas = row.total || 0;
               }
 
-              // 5. Tu INGRESO de marcas aliadas (solo tu 10%, solo ventas pagadas)
+              // 5. Tu INGRESO de marcas aliadas (PROPORCIONAL al pago)
               db.db.get(`
-                SELECT COALESCE(SUM(vma.ganancia_tienda), 0) as total
+                SELECT COALESCE(
+                  SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)),
+                  0
+                ) as total
                 FROM ventas_marca_aliada vma
                 INNER JOIN ventas v ON vma.venta_id = v.id
                 WHERE v.estado != 'Cancelado'
                 AND v.monto_pagado > 0
+                AND v.total > 0
                 AND date(v.fecha) BETWEEN date(?) AND date(?)
               `, [fechaInicio, fechaFin], (err, row) => {
                 if (!err && row) {
@@ -2628,7 +2684,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                     estadisticas.gastosTotales = row.total || 0;
                   }
 
-                  // 7. Gastos operativos del período anterior
+                  // 7. Gastos del período anterior
                   db.db.get(`
                     SELECT SUM(monto) as total
                     FROM gastos
@@ -2639,7 +2695,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                       estadisticas.gastosMesAnterior = row.total || 0;
                     }
 
-                    // 8. Gastos de inventario del período actual
+                    // 8. Gastos de inventario
                     db.db.get(`
                       SELECT SUM(monto) as total
                       FROM gastos
@@ -2650,7 +2706,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                         estadisticas.gastosInventario = row.total || 0;
                       }
 
-                      // 9. Costo de productos PROPIOS vendidos (con costos extras, solo ventas pagadas)
+                      // 9. Costo productos PROPIOS (PROPORCIONAL al pago)
                       db.db.get(`
                         SELECT COALESCE(
                           SUM(
@@ -2662,7 +2718,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                                  WHERE cap.producto_id = p.id),
                                 0
                               )
-                            )
+                            ) * (v.monto_pagado / v.total)
                           ),
                           0
                         ) as total
@@ -2671,55 +2727,46 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                         INNER JOIN ventas v ON vp.venta_id = v.id
                         WHERE v.estado != 'Cancelado'
                         AND v.monto_pagado > 0
+                        AND v.total > 0
                         AND date(v.fecha) BETWEEN date(?) AND date(?)
                       `, [fechaInicio, fechaFin], (err, row) => {
                         if (!err && row) {
                           estadisticas.costoProductosVendidos = row.total || 0;
                         }
 
-                        // 10. Costos adicionales de ventas (solo ventas pagadas)
+                        // 10. Costos adicionales (PROPORCIONAL al pago)
                         db.db.get(`
-                          SELECT COALESCE(SUM(ca.monto), 0) as total
+                          SELECT COALESCE(
+                            SUM(ca.monto * (v.monto_pagado / v.total)),
+                            0
+                          ) as total
                           FROM costos_adicionales ca
                           INNER JOIN ventas v ON ca.venta_id = v.id
                           WHERE v.estado != 'Cancelado'
                           AND v.monto_pagado > 0
+                          AND v.total > 0
                           AND date(v.fecha) BETWEEN date(?) AND date(?)
                         `, [fechaInicio, fechaFin], (err, row) => {
                           if (!err && row) {
                             estadisticas.costosAdicionales = row.total || 0;
                           }
 
-                          // ============================================
-                          // CÁLCULOS FINALES CON NUEVA LÓGICA
-                          // ============================================
-
-                          // Ingresos reales = Ventas propias + Tu comisión de marcas (10%)
+                          // CÁLCULOS FINALES
                           estadisticas.ingresosReales = estadisticas.ventasPropias + estadisticas.ingresoMarcasAliadas;
+                          estadisticas.gananciaBruta = estadisticas.ingresosReales - estadisticas.costoProductosVendidos - estadisticas.costosAdicionales;
+                          estadisticas.gananciaNeta = estadisticas.gananciaBruta - estadisticas.gastosTotales;
 
-                          // Ganancia bruta = Ingresos reales - Costos de productos propios - Costos adicionales
-                          estadisticas.gananciaBruta = estadisticas.ingresosReales -
-                                                       estadisticas.costoProductosVendidos -
-                                                       estadisticas.costosAdicionales;
-
-                          // Ganancia neta = Ganancia bruta - Gastos operativos
-                          estadisticas.gananciaNeta = estadisticas.gananciaBruta -
-                                                     estadisticas.gastosTotales;
-
-                          // Márgenes calculados sobre INGRESOS REALES (no ventas totales)
                           if (estadisticas.ingresosReales > 0) {
                             estadisticas.margenBruto = (estadisticas.gananciaBruta / estadisticas.ingresosReales) * 100;
                             estadisticas.margenNeto = (estadisticas.gananciaNeta / estadisticas.ingresosReales) * 100;
                           }
 
-                          console.log('📊 Estadísticas del período calculadas (Solo ventas pagadas):');
-                          console.log(`  Período: ${fechaInicio} a ${fechaFin}`);
-                          console.log(`  Ventas totales (facturación): $${estadisticas.ventasTotales.toFixed(2)}`);
-                          console.log(`  - Ventas propias: $${estadisticas.ventasPropias.toFixed(2)}`);
-                          console.log(`  - Ventas marcas aliadas: $${estadisticas.ventasMarcasAliadas.toFixed(2)}`);
+                          console.log('📊 Estadísticas proporcionales calculadas:');
+                          console.log(`  Facturación total: $${estadisticas.ventasTotales.toFixed(2)}`);
+                          console.log(`  Ventas propias: $${estadisticas.ventasPropias.toFixed(2)}`);
+                          console.log(`  Ingreso marcas (10%): $${estadisticas.ingresoMarcasAliadas.toFixed(2)}`);
                           console.log(`  Ingresos reales: $${estadisticas.ingresosReales.toFixed(2)}`);
                           console.log(`  Ganancia neta: $${estadisticas.gananciaNeta.toFixed(2)}`);
-                          console.log(`  Margen neto: ${estadisticas.margenNeto.toFixed(2)}%`);
 
                           resolve(estadisticas);
                         });
@@ -2737,7 +2784,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
 });
 
 // ============================================
-// HANDLER: Obtener datos de gráfica por período personalizado
+// HANDLER: Obtener gráfica (PROPORCIONAL)
 // ============================================
 
 ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
@@ -2746,100 +2793,74 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
     const meses = generarMesesEntreFechas(fechaInicio, fechaFin);
     let promesas = [];
 
-    // 1. Ventas PROPIAS por mes (sin marcas aliadas, solo ventas pagadas)
     meses.forEach((mes, index) => {
       const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
       const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
       const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
       const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
 
+      // Ventas PROPIAS (PROPORCIONAL)
       promesas.push(
-        new Promise((resolveVenta) => {
+        new Promise((resolve) => {
           db.db.get(`
-            SELECT COALESCE(SUM(vp.precio_unitario * vp.cantidad), 0) as total
+            SELECT COALESCE(
+              SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)),
+              0
+            ) as total
             FROM venta_productos vp
             INNER JOIN ventas v ON vp.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
+            AND v.total > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].ventasPropias = row.total || 0;
-            }
-            resolveVenta();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].ventasPropias = row.total || 0;
+            resolve();
           });
         })
       );
-    });
 
-    // 2. Ventas de MARCAS ALIADAS por mes (monto total de la venta, solo pagadas)
-    meses.forEach((mes, index) => {
-      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
-      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
-      const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
-      const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
-
+      // Ventas MARCAS ALIADAS (monto pagado)
       promesas.push(
-        new Promise((resolveVentaMarca) => {
+        new Promise((resolve) => {
           db.db.get(`
-            SELECT COALESCE(SUM(v.monto_pagado), 0) as total
+            SELECT COALESCE(SUM(DISTINCT v.monto_pagado), 0) as total
             FROM ventas v
             INNER JOIN ventas_marca_aliada vma ON vma.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].ventasMarcasAliadas = row.total || 0;
-            }
-            resolveVentaMarca();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].ventasMarcasAliadas = row.total || 0;
+            resolve();
           });
         })
       );
-    });
 
-    // 3. Tu INGRESO de marcas aliadas (10%) por mes (solo pagadas)
-    meses.forEach((mes, index) => {
-      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
-      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
-      const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
-      const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
-
+      // INGRESO marcas (PROPORCIONAL)
       promesas.push(
-        new Promise((resolveIngreso) => {
+        new Promise((resolve) => {
           db.db.get(`
-            SELECT COALESCE(SUM(vma.ganancia_tienda), 0) as total
+            SELECT COALESCE(
+              SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)),
+              0
+            ) as total
             FROM ventas_marca_aliada vma
             INNER JOIN ventas v ON vma.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
+            AND v.total > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].ingresoMarcasAliadas = row.total || 0;
-            }
-            resolveIngreso();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].ingresoMarcasAliadas = row.total || 0;
+            resolve();
           });
         })
       );
-    });
 
-    // 4. Costo productos PROPIOS (solo ventas pagadas)
-    meses.forEach((mes, index) => {
-      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
-      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
-      const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
-      const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
-
+      // Costo productos (PROPORCIONAL)
       promesas.push(
-        new Promise((resolveCosto) => {
+        new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(
               SUM(
@@ -2851,7 +2872,7 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
                      WHERE cap.producto_id = p.id),
                     0
                   )
-                )
+                ) * (v.monto_pagado / v.total)
               ),
               0
             ) as total
@@ -2860,100 +2881,68 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
             INNER JOIN ventas v ON vp.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
+            AND v.total > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].costoProductos = row.total || 0;
-            }
-            resolveCosto();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].costoProductos = row.total || 0;
+            resolve();
           });
         })
       );
-    });
 
-    // 5. Costos adicionales de ventas (solo ventas pagadas)
-    meses.forEach((mes, index) => {
-      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
-      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
-      const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
-      const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
-
+      // Costos adicionales (PROPORCIONAL)
       promesas.push(
-        new Promise((resolveCostoAd) => {
+        new Promise((resolve) => {
           db.db.get(`
-            SELECT COALESCE(SUM(ca.monto), 0) as total
+            SELECT COALESCE(
+              SUM(ca.monto * (v.monto_pagado / v.total)),
+              0
+            ) as total
             FROM costos_adicionales ca
             INNER JOIN ventas v ON ca.venta_id = v.id
             WHERE v.estado != 'Cancelado'
             AND v.monto_pagado > 0
+            AND v.total > 0
             AND date(v.fecha) BETWEEN date(?) AND date(?)
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].costosAdicionales = row.total || 0;
-            }
-            resolveCostoAd();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].costosAdicionales = row.total || 0;
+            resolve();
           });
         })
       );
-    });
 
-    // 6. Gastos operativos
-    meses.forEach((mes, index) => {
-      const inicioMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth(), 1);
-      const finMes = new Date(mes.fecha.getFullYear(), mes.fecha.getMonth() + 1, 0);
-
-      const fechaInicioReal = inicioMes < new Date(fechaInicio) ? fechaInicio : inicioMes.toISOString().split('T')[0];
-      const fechaFinReal = finMes > new Date(fechaFin) ? fechaFin : finMes.toISOString().split('T')[0];
-
+      // Gastos
       promesas.push(
-        new Promise((resolveGasto) => {
+        new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(SUM(monto), 0) as total
             FROM gastos
             WHERE date(fecha) BETWEEN date(?) AND date(?)
             AND categoria NOT IN ('Inventario', 'Proveedores')
-          `, [fechaInicioReal, fechaFinReal],
-          (err, row) => {
-            if (!err && row) {
-              meses[index].gastos = row.total || 0;
-            }
-            resolveGasto();
+          `, [fechaInicioReal, fechaFinReal], (err, row) => {
+            if (!err && row) meses[index].gastos = row.total || 0;
+            resolve();
           });
         })
       );
     });
 
-    // Esperar todas las promesas y calcular ganancia con nueva lógica
     Promise.all(promesas)
       .then(() => {
         meses.forEach(mes => {
-          // Ventas totales = Propias + Marcas aliadas (solo para mostrar facturación)
           mes.ventas = mes.ventasPropias + mes.ventasMarcasAliadas;
-
-          // Ganancia = (Ventas propias - Costos propios - Costos adicionales) + Ingreso marcas (10%) - Gastos
-          mes.ganancia = (mes.ventasPropias - mes.costoProductos - mes.costosAdicionales) +
-                        mes.ingresoMarcasAliadas -
-                        mes.gastos;
+          mes.ganancia = (mes.ventasPropias - mes.costoProductos - mes.costosAdicionales) + mes.ingresoMarcasAliadas - mes.gastos;
         });
 
-        console.log('📈 Datos de gráfica generados (Solo ventas pagadas):');
-        console.log(`  Total meses: ${meses.length}`);
-        console.log(`  Período: ${fechaInicio} a ${fechaFin}`);
-
+        console.log('📈 Gráfica proporcional generada');
         resolve(meses);
       })
-      .catch(err => {
-        console.error('❌ Error en gráfica:', err);
-        reject(err);
-      });
+      .catch(reject);
   });
 });
 
 // ============================================
-// HANDLER: Top productos por período personalizado
+// HANDLER: Top productos (PROPORCIONAL)
 // ============================================
 
 ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
@@ -2965,13 +2954,14 @@ ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
         p.id,
         p.nombre,
         p.referencia as codigo,
-        SUM(vp.cantidad) as cantidad,
-        SUM(vp.precio_unitario * vp.cantidad) as total_ventas
+        SUM(vp.cantidad * (v.monto_pagado / v.total)) as cantidad,
+        SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)) as total_ventas
       FROM venta_productos vp
       INNER JOIN productos p ON vp.producto_id = p.id
       INNER JOIN ventas v ON vp.venta_id = v.id
       WHERE v.estado != 'Cancelado'
       AND v.monto_pagado > 0
+      AND v.total > 0
       AND date(v.fecha) BETWEEN date(?) AND date(?)
       GROUP BY p.id, p.nombre, p.referencia
       ORDER BY cantidad DESC
@@ -2981,7 +2971,6 @@ ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
         console.error('Error al obtener top productos:', err);
         reject(err);
       } else {
-        console.log(`📦 Top productos del período: ${rows?.length || 0} productos`);
         resolve(rows || []);
       }
     });
@@ -3441,18 +3430,20 @@ ipcMain.handle('eliminar-producto-marca-aliada', async (event, id) => {
 
 // ==================== ESTADÍSTICAS Y VENTAS DE MARCAS ALIADAS ====================
 
-// Obtener estadísticas generales de todas las marcas aliadas
+// Obtener estadísticas generales de todas las marcas aliadas (PROPORCIONAL al pago)
 ipcMain.handle('obtener-estadisticas-marcas-aliadas', async () => {
   return new Promise((resolve, reject) => {
     db.db.get(`
       SELECT
         COUNT(DISTINCT vma.venta_id) as total_ventas,
-        SUM(vma.subtotal) as total_vendido,
-        SUM(vma.comision_marca) as total_comision_marcas,
-        SUM(vma.ganancia_tienda) as total_ganancia_tienda
+        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_vendido,
+        SUM(vma.comision_marca * (v.monto_pagado / v.total)) as total_comision_marcas,
+        SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)) as total_ganancia_tienda
       FROM ventas_marca_aliada vma
       INNER JOIN ventas v ON vma.venta_id = v.id
       WHERE v.estado != 'Cancelado'
+        AND v.monto_pagado > 0
+        AND v.total > 0
     `, [], (err, stats) => {
       if (err) {
         console.error('Error al obtener estadísticas de marcas:', err);
@@ -3469,19 +3460,22 @@ ipcMain.handle('obtener-estadisticas-marcas-aliadas', async () => {
   });
 });
 
-// Obtener estadísticas de una marca específica
+// Obtener estadísticas de una marca específica (PROPORCIONAL al pago)
 ipcMain.handle('obtener-estadisticas-marca', async (event, marcaId) => {
   return new Promise((resolve, reject) => {
     db.db.get(`
       SELECT
         COUNT(DISTINCT vma.venta_id) as total_ventas,
-        SUM(vma.subtotal) as total_vendido,
-        SUM(vma.comision_marca) as total_comision_marca,
-        SUM(vma.ganancia_tienda) as total_ganancia_tienda,
-        SUM(vma.cantidad) as total_unidades_vendidas
+        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_vendido,
+        SUM(vma.comision_marca * (v.monto_pagado / v.total)) as total_comision_marca,
+        SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)) as total_ganancia_tienda,
+        SUM(vma.cantidad * (v.monto_pagado / v.total)) as total_unidades_vendidas
       FROM ventas_marca_aliada vma
       INNER JOIN ventas v ON vma.venta_id = v.id
-      WHERE vma.marca_aliada_id = ? AND v.estado != 'Cancelado'
+      WHERE vma.marca_aliada_id = ?
+        AND v.estado != 'Cancelado'
+        AND v.monto_pagado > 0
+        AND v.total > 0
     `, [marcaId], (err, stats) => {
       if (err) {
         console.error('Error al obtener estadísticas de marca:', err);
@@ -3509,12 +3503,31 @@ ipcMain.handle('obtener-ventas-marca', async (event, marcaId) => {
         v.fecha,
         v.cliente_nombre,
         v.estado,
+        v.total,
+        v.monto_pagado,
+        (v.total - v.monto_pagado) as saldo_pendiente,
+        CASE
+          WHEN v.total > 0 THEN ROUND((v.monto_pagado * 100.0 / v.total), 2)
+          ELSE 0
+        END as porcentaje_pagado,
         GROUP_CONCAT(
           pma.nombre || ' (' || COALESCE(vma_var.talla, 'Única') || ') x' || vma.cantidad, ', '
         ) as productos,
-        SUM(vma.subtotal) as total_venta,
-        SUM(vma.comision_marca) as comision_marca,
-        SUM(vma.ganancia_tienda) as ganancia_tienda
+        COALESCE(SUM(vma.subtotal), 0) as total_venta,
+        CASE
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.subtotal * (v.monto_pagado / v.total)), 0)
+          ELSE 0
+        END as total_venta_pagado,
+        COALESCE(SUM(vma.comision_marca), 0) as comision_marca_total,
+        CASE
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.comision_marca * (v.monto_pagado / v.total)), 0)
+          ELSE 0
+        END as comision_marca_pagado,
+        COALESCE(SUM(vma.ganancia_tienda), 0) as ganancia_tienda_total,
+        CASE
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)), 0)
+          ELSE 0
+        END as ganancia_tienda_pagado
       FROM ventas_marca_aliada vma
       INNER JOIN ventas v ON vma.venta_id = v.id
       INNER JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
@@ -3535,7 +3548,7 @@ ipcMain.handle('obtener-ventas-marca', async (event, marcaId) => {
   });
 });
 
-// Obtener productos más vendidos de una marca
+// Obtener productos más vendidos de una marca (PROPORCIONAL al pago)
 ipcMain.handle('obtener-productos-mas-vendidos-marca', async (event, marcaId) => {
   return new Promise((resolve, reject) => {
     const query = `
@@ -3543,13 +3556,16 @@ ipcMain.handle('obtener-productos-mas-vendidos-marca', async (event, marcaId) =>
         pma.id,
         pma.nombre,
         pma.referencia,
-        SUM(vma.cantidad) as total_vendido,
-        SUM(vma.subtotal) as total_ingresos,
+        SUM(vma.cantidad * (v.monto_pagado / v.total)) as total_vendido,
+        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_ingresos,
         COUNT(DISTINCT vma.venta_id) as num_ventas
       FROM ventas_marca_aliada vma
       INNER JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
       INNER JOIN ventas v ON vma.venta_id = v.id
-      WHERE vma.marca_aliada_id = ? AND v.estado != 'Cancelado'
+      WHERE vma.marca_aliada_id = ?
+        AND v.estado != 'Cancelado'
+        AND v.monto_pagado > 0
+        AND v.total > 0
       GROUP BY pma.id
       ORDER BY total_vendido DESC
       LIMIT 5

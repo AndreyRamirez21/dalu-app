@@ -1,12 +1,68 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, Download, Upload, AlertCircle, CheckCircle, Clock, HardDrive } from 'lucide-react';
+import { Cloud, Download, Upload, AlertCircle, CheckCircle, Clock, HardDrive, X } from 'lucide-react';
 
 const { ipcRenderer } = window.require('electron');
+
+const Modal = ({ isOpen, onClose, onConfirm, titulo, mensaje, loading }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full animate-fadeIn">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <h3 className="text-xl font-bold text-gray-800">{titulo}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition"
+            disabled={loading}
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6">
+          <div className="flex items-start space-x-4">
+            <div className="p-3 bg-yellow-100 rounded-lg flex-shrink-0">
+              <AlertCircle className="text-yellow-600" size={24} />
+            </div>
+            <div>
+              <p className="text-gray-700 leading-relaxed">{mensaje}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end space-x-3 p-6 bg-gray-50 rounded-b-xl">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition font-medium disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-6 py-2.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Restaurando...' : 'Confirmar Restauración'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const GestionBackups = () => {
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState(null);
+  const [modalRestaurar, setModalRestaurar] = useState({
+    isOpen: false,
+    backupSeleccionado: null
+  });
 
   useEffect(() => {
     cargarBackups();
@@ -48,19 +104,35 @@ const GestionBackups = () => {
     }
   };
 
-  const restaurarBackup = async (fileName) => {
-    if (!window.confirm('¿Estás seguro de restaurar este backup? La base de datos actual será reemplazada.')) {
-      return;
+  const abrirModalRestaurar = (backup) => {
+    setModalRestaurar({
+      isOpen: true,
+      backupSeleccionado: backup
+    });
+  };
+
+  const cerrarModalRestaurar = () => {
+    if (!loading) {
+      setModalRestaurar({
+        isOpen: false,
+        backupSeleccionado: null
+      });
     }
+  };
+
+  const confirmarRestauracion = async () => {
+    const { backupSeleccionado } = modalRestaurar;
+    if (!backupSeleccionado) return;
 
     try {
       setLoading(true);
       setMensaje({ tipo: 'info', texto: 'Restaurando backup...' });
 
-      const resultado = await ipcRenderer.invoke('restaurar-backup', fileName);
+      const resultado = await ipcRenderer.invoke('restaurar-backup', backupSeleccionado.fileName);
 
       if (resultado.success) {
         setMensaje({ tipo: 'success', texto: 'Backup restaurado. La aplicación se reiniciará.' });
+        cerrarModalRestaurar();
       } else {
         setMensaje({ tipo: 'error', texto: resultado.error });
       }
@@ -200,7 +272,7 @@ const GestionBackups = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center space-x-2">
                         <button
-                          onClick={() => restaurarBackup(backup.fileName)}
+                          onClick={() => abrirModalRestaurar(backup)}
                           disabled={loading}
                           className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition text-sm disabled:opacity-50"
                         >
@@ -216,6 +288,36 @@ const GestionBackups = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de Confirmación */}
+      <Modal
+        isOpen={modalRestaurar.isOpen}
+        onClose={cerrarModalRestaurar}
+        onConfirm={confirmarRestauracion}
+        titulo="Confirmar Restauración"
+        mensaje={`¿Estás seguro de restaurar este backup? La base de datos actual será reemplazada completamente y no podrás deshacer esta acción.${
+          modalRestaurar.backupSeleccionado
+            ? `\n\nBackup: ${modalRestaurar.backupSeleccionado.fileName}`
+            : ''
+        }`}
+        loading={loading}
+      />
+
+      <style jsx>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.2s ease-out;
+        }
+      `}</style>
     </div>
   );
 };

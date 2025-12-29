@@ -39,17 +39,13 @@ function crearVenta(datosVenta, callback) {
     metodo_pago,
     notas,
     costos_adicionales,
-    descuento_porcentaje,  // ✅ Recibir desde frontend
-    descuento_monto        // ✅ Recibir desde frontend
+    descuento_porcentaje,
+    descuento_monto
   } = datosVenta;
 
   console.log('🔵 Iniciando creación de venta');
   console.log('🔵 Productos recibidos:', productos);
   console.log('🔵 Costos adicionales recibidos:', costos_adicionales);
-  console.log('💰 Descuento recibido:', {
-    porcentaje: descuento_porcentaje,
-    monto: descuento_monto
-  });
 
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
@@ -62,8 +58,6 @@ function crearVenta(datosVenta, callback) {
       }
 
       const estado = monto_pagado >= total ? 'Pagado' : 'Pendiente';
-
-      // ✅ CRÍTICO: Asegurarse de que los valores no sean undefined
       const porcentajeDescuento = descuento_porcentaje !== undefined ? descuento_porcentaje : 0;
       const montoDescuento = descuento_monto !== undefined ? descuento_monto : 0;
 
@@ -90,8 +84,8 @@ function crearVenta(datosVenta, callback) {
           estado,
           metodo_pago,
           notas || null,
-          porcentajeDescuento,  // ✅ Usar la variable validada
-          montoDescuento        // ✅ Usar la variable validada
+          porcentajeDescuento,
+          montoDescuento
         ],
         function (err) {
           if (err) {
@@ -103,26 +97,72 @@ function crearVenta(datosVenta, callback) {
 
           const ventaId = this.lastID;
           console.log('✅ Venta insertada con ID:', ventaId);
-          console.log('✅ Descuento guardado:', {
-            porcentaje: porcentajeDescuento,
-            monto: montoDescuento
-          });
 
+          // ✅ FUNCIÓN AUXILIAR PARA GUARDAR COSTOS ADICIONALES
+          const guardarCostosAdicionales = (callback) => {
+            if (!costos_adicionales || costos_adicionales.length === 0) {
+              console.log('ℹ️ No hay costos adicionales');
+              callback(null);
+              return;
+            }
+
+            console.log(`💰 Guardando ${costos_adicionales.length} costos adicionales...`);
+            let costosGuardados = 0;
+            let errorCostos = false;
+
+            costos_adicionales.forEach((costo, idx) => {
+              db.run(
+                `INSERT INTO costos_adicionales (venta_id, concepto, monto) VALUES (?, ?, ?)`,
+                [ventaId, costo.concepto, costo.monto],
+                (err) => {
+                  if (err) {
+                    console.error(`❌ Error al guardar costo ${idx + 1}:`, err);
+                    errorCostos = true;
+                  } else {
+                    console.log(`✅ Costo ${idx + 1} guardado: ${costo.concepto} - $${costo.monto}`);
+                  }
+
+                  costosGuardados++;
+                  if (costosGuardados === costos_adicionales.length) {
+                    callback(errorCostos ? new Error('Error al guardar costos') : null);
+                  }
+                }
+              );
+            });
+          };
+
+          // ✅ CASO 1: NO HAY PRODUCTOS PROPIOS
           if (!productos || productos.length === 0) {
-            console.log('⚠️ No hay productos para guardar');
-            db.run('COMMIT');
-            callback(null, { success: true, id: ventaId, numero_venta: numeroVenta });
+            console.log('ℹ️ No hay productos propios, guardando solo costos adicionales');
+
+            guardarCostosAdicionales((err) => {
+              if (err) {
+                console.error('❌ Error al guardar costos, haciendo ROLLBACK');
+                db.run('ROLLBACK');
+                callback(err, null);
+              } else {
+                console.log('✅ Todos los costos guardados, haciendo COMMIT');
+                db.run('COMMIT', (err) => {
+                  if (err) {
+                    console.error('❌ Error en COMMIT:', err);
+                    callback(err, null);
+                  } else {
+                    console.log('✅ Transacción completada exitosamente');
+                    callback(null, { success: true, id: ventaId, numero_venta: numeroVenta });
+                  }
+                });
+              }
+            });
             return;
           }
 
-          console.log(`🔵 Guardando ${productos.length} productos...`);
-
+          // ✅ CASO 2: HAY PRODUCTOS PROPIOS
+          console.log(`🔵 Guardando ${productos.length} productos propios...`);
           let insertados = 0;
           let hayErrores = false;
 
           productos.forEach((p, index) => {
             console.log(`🔵 Guardando producto ${index + 1}:`, p);
-
             const subtotalProducto = p.cantidad * p.precio_unitario;
 
             db.run(
@@ -159,59 +199,25 @@ function crearVenta(datosVenta, callback) {
                     db.run('ROLLBACK');
                     callback(new Error('Error al guardar productos'), null);
                   } else {
-                    // Guardar costos adicionales si existen
-                    if (costos_adicionales && costos_adicionales.length > 0) {
-                      console.log(`🔵 Guardando ${costos_adicionales.length} costos adicionales...`);
-                      let costosGuardados = 0;
-                      let errorCostos = false;
-
-                      costos_adicionales.forEach((costo, idx) => {
-                        db.run(
-                          `INSERT INTO costos_adicionales (venta_id, concepto, monto) VALUES (?, ?, ?)`,
-                          [ventaId, costo.concepto, costo.monto],
-                          (err) => {
-                            if (err) {
-                              console.error(`❌ Error al guardar costo adicional ${idx + 1}:`, err);
-                              errorCostos = true;
-                            } else {
-                              console.log(`✅ Costo adicional ${idx + 1} guardado: ${costo.concepto} - $${costo.monto}`);
-                            }
-
-                            costosGuardados++;
-
-                            if (costosGuardados === costos_adicionales.length) {
-                              if (errorCostos) {
-                                console.error('❌ Error al guardar costos, haciendo ROLLBACK');
-                                db.run('ROLLBACK');
-                                callback(new Error('Error al guardar costos adicionales'), null);
-                              } else {
-                                console.log('✅ Todos los costos guardados, haciendo COMMIT');
-                                db.run('COMMIT', (err) => {
-                                  if (err) {
-                                    console.error('❌ Error en COMMIT:', err);
-                                    callback(err, null);
-                                  } else {
-                                    console.log('✅ Transacción completada exitosamente');
-                                    callback(null, { success: true, id: ventaId, numero_venta: numeroVenta });
-                                  }
-                                });
-                              }
-                            }
+                    // ✅ GUARDAR COSTOS DESPUÉS DE PRODUCTOS
+                    guardarCostosAdicionales((err) => {
+                      if (err) {
+                        console.error('❌ Error al guardar costos, haciendo ROLLBACK');
+                        db.run('ROLLBACK');
+                        callback(err, null);
+                      } else {
+                        console.log('✅ Todos los costos guardados, haciendo COMMIT');
+                        db.run('COMMIT', (err) => {
+                          if (err) {
+                            console.error('❌ Error en COMMIT:', err);
+                            callback(err, null);
+                          } else {
+                            console.log('✅ Transacción completada exitosamente');
+                            callback(null, { success: true, id: ventaId, numero_venta: numeroVenta });
                           }
-                        );
-                      });
-                    } else {
-                      console.log('✅ No hay costos adicionales, haciendo COMMIT');
-                      db.run('COMMIT', (err) => {
-                        if (err) {
-                          console.error('❌ Error en COMMIT:', err);
-                          callback(err, null);
-                        } else {
-                          console.log('✅ Transacción completada exitosamente');
-                          callback(null, { success: true, id: ventaId, numero_venta: numeroVenta });
-                        }
-                      });
-                    }
+                        });
+                      }
+                    });
                   }
                 }
               }
