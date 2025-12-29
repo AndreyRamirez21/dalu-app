@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, User, DollarSign, Receipt, X, CreditCard, FileText, Calendar } from 'lucide-react';
+import { Search, User, DollarSign, Receipt, X, CreditCard, FileText, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
 import { useDeudasClientes } from '../../api/useDeudasClientes';
 
 const DeudasClientes = () => {
@@ -18,6 +18,7 @@ const DeudasClientes = () => {
   const [showModalHistorial, setShowModalHistorial] = useState(false);
   const [deudaSeleccionada, setDeudaSeleccionada] = useState(null);
   const [historialAbonos, setHistorialAbonos] = useState([]);
+  const [notification, setNotification] = useState(null);
 
   const [formAbono, setFormAbono] = useState({
     monto_abono: '',
@@ -26,6 +27,13 @@ const DeudasClientes = () => {
   });
 
   const metodosPago = ['Efectivo', 'Tarjeta', 'Transferencia'];
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification(null);
+    }, 2000);
+  };
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
@@ -57,7 +65,7 @@ const DeudasClientes = () => {
 
   const handleSubmitAbono = async () => {
     if (!formAbono.monto_abono || parseFloat(formAbono.monto_abono) <= 0) {
-      alert('Ingresa un monto válido');
+      showNotification('Ingresa un monto válido', 'error');
       return;
     }
 
@@ -65,31 +73,30 @@ const DeudasClientes = () => {
     const montoAbono = parseFloat(formAbono.monto_abono);
 
     if (montoAbono > montoPendiente + 0.01) {
-      alert(`El monto excede la deuda pendiente de $${montoPendiente.toFixed(2)}`);
+      showNotification(`El monto excede la deuda pendiente de $${montoPendiente.toFixed(2)}`, 'error');
       return;
     }
 
     try {
       await registrarAbono(
         deudaSeleccionada.id,
-        montoAbono, // Usar la variable ya parseada
+        montoAbono,
         formAbono.metodo_pago,
         formAbono.notas
       );
 
       setShowModalAbono(false);
       setDeudaSeleccionada(null);
-      alert('✅ Abono registrado exitosamente');
+      showNotification('Abono registrado exitosamente', 'success');
     } catch (error) {
       console.error('Error al registrar abono:', error);
-      alert('Error al registrar el abono');
+      showNotification('Error al registrar el abono', 'error');
     }
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    // SQLite guarda en UTC, así que parseamos como UTC y convertimos a hora local
-    const date = new Date(dateString); // La 'Z' indica que es UTC
+    const date = new Date(dateString);
 
     return date.toLocaleString('es-CO', {
       day: '2-digit',
@@ -104,6 +111,33 @@ const DeudasClientes = () => {
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
+      {/* Notificación */}
+      {notification && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="p-6 text-center">
+              <div className="flex justify-center mb-4">
+                {notification.type === 'success' ? (
+                  <CheckCircle size={48} className="text-green-500" />
+                ) : (
+                  <AlertCircle size={48} className="text-red-500" />
+                )}
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {notification.type === 'success' ? 'Éxito' : 'Error'}
+              </h3>
+              <p className="text-gray-600 mb-6">{notification.message}</p>
+              <button
+                onClick={() => setNotification(null)}
+                className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">Deudas de Clientes</h2>
