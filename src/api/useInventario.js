@@ -1,6 +1,6 @@
 // src/api/useInventario.js
 import { useState, useEffect } from 'react';
-
+import { validarImagen, procesarImagen } from '../utils/imagenUtils';
 // Helper para IPC de Electron
 const getIPC = () => {
   try {
@@ -31,6 +31,7 @@ export const useInventario = () => {
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [productosExpandidos, setProductosExpandidos] = useState({});
   const [referenciasExpandidas, setReferenciasExpandidas] = useState({}); // ← NUEVO
+  const [errorImagen, setErrorImagen] = useState(null);
 
 
   // ✅ ACTUALIZADO: Nuevas categorías agregadas
@@ -81,7 +82,11 @@ const formularioInicial = {
   variantes: [],
   costos_adicionales: [],
   imagen: null,
-  imagenPreview: null
+    imagenThumbnail: null,     // ⭐ NUEVO
+  rutaImagen: null,
+  imagenPreview: null,
+    cargandoImagen: false,     // ⭐ NUEVO
+
 };
 
   const [formulario, setFormulario] = useState(formularioInicial);
@@ -177,7 +182,6 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     }));
   };
 
-
   // Estadísticas
   const totalProductos = productos.length;
   const stockBajo = productos.filter(p => {
@@ -207,45 +211,52 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     setFormulario(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleImagenChange = (e) => {
+  const handleImagenChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setNotificacion({ mensaje: 'Por favor selecciona una imagen válida (JPG, PNG, etc.)', tipo: 'advertencia' });
-      e.target.value = '';
+    // Validar imagen PRIMERO
+    const validacion = validarImagen(file, 5); // Máximo 5MB
+
+    if (!validacion.valido) {
+      // ✅ Mostrar modal de error en lugar de alert
+      setErrorImagen(validacion.error);
+      e.target.value = ''; // Limpiar input
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      setNotificacion({ mensaje: 'La imagen no debe pesar más de 5MB', tipo: 'advertencia' });
-      e.target.value = '';
-      return;
-    }
+    // Marcar como cargando
+    setFormulario(prev => ({ ...prev, cargandoImagen: true }));
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    try {
+      // Procesar imagen
+      const imagenProcesada = await procesarImagen(file);
+
       setFormulario(prev => ({
         ...prev,
-        imagen: file,
-        imagenPreview: event.target.result
+        imagen: imagenProcesada.imagenCompleta,
+        imagenThumbnail: imagenProcesada.thumbnail,
+        imagenPreview: imagenProcesada.thumbnail,
+        cargandoImagen: false
       }));
-    };
-    reader.readAsDataURL(file);
-  };
 
-  const eliminarImagen = () => {
-    setFormulario(prev => ({
-      ...prev,
-      imagen: null,
-      imagenPreview: null
-    }));
-
-    const inputFile = document.querySelector('input[type="file"][accept="image/*"]');
-    if (inputFile) {
-      inputFile.value = '';
+    } catch (error) {
+      console.error('Error al procesar imagen:', error);
+      setErrorImagen(error.message || 'Error al procesar la imagen');
+      e.target.value = ''; // Limpiar input
+      setFormulario(prev => ({ ...prev, cargandoImagen: false }));
     }
   };
+
+const eliminarImagen = () => {
+  setFormulario(prev => ({
+    ...prev,
+    imagen: null,
+    imagenThumbnail: null,   // ⭐ NUEVO
+    imagenPreview: null,
+    rutaImagen: null
+  }));
+};
 
   // ✅ ACTUALIZADO: Agregar variante con control de modo manual
   const agregarVariante = () => {
@@ -402,7 +413,7 @@ const nuevoProducto = {
   nombre: formulario.nombre.trim(),
   categoria: formulario.categoria,
   costo_base: parseFloat(formulario.costo_base),
-  precio_calculado: calcularPrecioSugerido(),  // ← AGREGAR ESTO
+  precio_calculado: calcularPrecioSugerido(),
   precio_venta_base: parseFloat(formulario.precio_venta_base),
   variantes: formulario.variantes.map(v => ({
     talla: v.talla,
@@ -415,9 +426,10 @@ const nuevoProducto = {
       concepto: c.concepto.trim(),
       monto: parseFloat(c.monto)
     })),
+  // ✅ CORREGIDO: Pasar ambas imágenes
   imagen: formulario.imagen ? {
-    name: formulario.imagen.name,
-    data: formulario.imagenPreview
+    name: `${formulario.referencia}_${Date.now()}.jpg`,
+    data: formulario.imagen,              // Imagen completa
   } : null
 };
 
@@ -512,7 +524,7 @@ const datosActualizados = {
   nombre: formulario.nombre.trim(),
   categoria: formulario.categoria,
   costo_base: parseFloat(formulario.costo_base),
-  precio_calculado: calcularPrecioSugerido(),  // ← AGREGAR ESTO
+  precio_calculado: calcularPrecioSugerido(),
   precio_venta_base: parseFloat(formulario.precio_venta_base),
   variantes: formulario.variantes.map(v => ({
     talla: v.talla,
@@ -525,9 +537,11 @@ const datosActualizados = {
       concepto: c.concepto.trim(),
       monto: parseFloat(c.monto)
     })),
+  // ✅ CORREGIDO: Pasar ambas imágenes
   imagen: formulario.imagen ? {
-    name: formulario.imagen.name,
-    data: formulario.imagenPreview
+    name: `${formulario.referencia}_${Date.now()}.jpg`,
+    data: formulario.imagen,
+    thumbnail: formulario.imagenThumbnail
   } : null
 };
 
@@ -590,6 +604,8 @@ const datosActualizados = {
     productosExpandidos,
     referenciasExpandidas, // ← AGREGAR ESTO
     formulario,
+    errorImagen,
+    setErrorImagen,
 
     // Constantes
     categorias,

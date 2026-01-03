@@ -229,13 +229,94 @@ function crearVenta(datosVenta, callback) {
   });
 }
 
+// ✅ FUNCIÓN ACTUALIZADA PARA INCLUIR PRODUCTOS EN EL LISTADO
 function obtenerVentas(callback) {
-  db.all(`SELECT * FROM ventas ORDER BY fecha DESC`, [], (err, rows) => {
+  db.all(`SELECT * FROM ventas ORDER BY fecha DESC`, [], (err, ventas) => {
     if (err) {
       callback(err, null);
-    } else {
-      callback(null, rows);
+      return;
     }
+
+    if (ventas.length === 0) {
+      callback(null, []);
+      return;
+    }
+
+    let ventasProcesadas = 0;
+    const ventasConDetalles = [];
+
+    ventas.forEach((venta) => {
+      // Obtener productos propios
+      db.all(
+        `SELECT
+          vp.cantidad,
+          vp.precio_unitario,
+          p.nombre as producto_nombre,
+          v.talla as talla
+        FROM venta_productos vp
+        LEFT JOIN productos p ON vp.producto_id = p.id
+        LEFT JOIN variantes_producto v ON vp.variante_id = v.id
+        WHERE vp.venta_id = ?`,
+        [venta.id],
+        (err, productos) => {
+          if (err) {
+            console.error('Error al obtener productos:', err);
+            productos = [];
+          }
+
+          // Obtener productos de marcas aliadas
+          db.all(
+            `SELECT
+              vma.cantidad,
+              vma.precio_unitario,
+              pma.nombre as producto_nombre,
+              vma2.talla as talla,
+              ma.nombre as marca
+            FROM ventas_marca_aliada vma
+            LEFT JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id
+            LEFT JOIN variantes_marca_aliada vma2 ON vma.variante_id = vma2.id
+            LEFT JOIN marcas_aliadas ma ON vma.marca_aliada_id = ma.id
+            WHERE vma.venta_id = ?`,
+            [venta.id],
+            (err, productosMarcas) => {
+              if (err) {
+                console.error('Error al obtener productos de marcas:', err);
+                productosMarcas = [];
+              }
+
+              // Combinar todos los productos
+              const todosProductos = [
+                ...productos.map(p => ({
+                  nombre: p.producto_nombre,
+                  talla: p.talla,
+                  cantidad: p.cantidad,
+                  precio: p.precio_unitario,
+                  tipo: 'Propio'
+                })),
+                ...productosMarcas.map(p => ({
+                  nombre: p.producto_nombre,
+                  talla: p.talla,
+                  cantidad: p.cantidad,
+                  precio: p.precio_unitario,
+                  tipo: `Marca: ${p.marca}`
+                }))
+              ];
+
+              ventasConDetalles.push({
+                ...venta,
+                items: todosProductos,
+                total_productos: todosProductos.reduce((sum, p) => sum + p.cantidad, 0)
+              });
+
+              ventasProcesadas++;
+              if (ventasProcesadas === ventas.length) {
+                callback(null, ventasConDetalles);
+              }
+            }
+          );
+        }
+      );
+    });
   });
 }
 

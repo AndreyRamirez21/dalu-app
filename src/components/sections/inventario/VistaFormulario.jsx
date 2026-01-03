@@ -2,6 +2,9 @@
 import React from 'react';
 import { X, Save, Plus, Trash2, Package, DollarSign, Edit3 } from 'lucide-react';
 import { calcularMargen } from "../../../utils/exportExcel";
+import { calcularTamanoImagen } from '../../../utils/imagenUtils'; // ⭐ AGREGAR ESTA LÍNEA
+import { ModalErrorImagen } from '../../common/ModalErrorImagen';
+
 
 export const VistaFormulario = ({ inventario }) => {
   const esEdicion = inventario.vista === 'editar';
@@ -73,34 +76,57 @@ export const VistaFormulario = ({ inventario }) => {
               </select>
             </div>
 
-            {/* IMAGEN DEL PRODUCTO */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Imagen del Producto (opcional)
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={inventario.handleImagenChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              {inventario.formulario.imagenPreview && (
-                <div className="mt-3 flex items-center space-x-4">
-                  <img
-                    src={inventario.formulario.imagenPreview}
-                    alt="Preview"
-                    className="w-32 h-32 object-cover rounded-lg border-2 border-teal-200 shadow-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={inventario.eliminarImagen}
-                    className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
-                  >
-                    Eliminar imagen
-                  </button>
-                </div>
-              )}
-            </div>
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-2">
+    Imagen del Producto (opcional)
+  </label>
+  <input
+    type="file"
+    accept="image/*"
+    onChange={inventario.handleImagenChange}
+    disabled={inventario.formulario.cargandoImagen}
+    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+  />
+
+  {/* Indicador de carga */}
+  {inventario.formulario.cargandoImagen && (
+    <div className="mt-3 flex items-center space-x-2 text-teal-600">
+      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-teal-600"></div>
+      <span className="text-sm">Procesando imagen...</span>
+    </div>
+  )}
+
+  {/* Preview */}
+  {inventario.formulario.imagenPreview && !inventario.formulario.cargandoImagen && (
+    <div className="mt-3 flex items-center space-x-4">
+      <img
+        src={inventario.formulario.imagenPreview}
+        alt="Preview"
+        className="w-32 h-32 object-cover rounded-lg border-2 border-teal-200 shadow-sm"
+      />
+      <div className="flex flex-col space-y-2">
+        <button
+          type="button"
+          onClick={inventario.eliminarImagen}
+          className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
+        >
+          Eliminar imagen
+        </button>
+
+        {/* Mostrar tamaños */}
+        <div className="text-xs text-gray-500">
+          <div>Thumbnail: {calcularTamanoImagen(inventario.formulario.imagenThumbnail)} KB</div>
+          <div>Completa: {calcularTamanoImagen(inventario.formulario.imagen)} KB</div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  <p className="mt-2 text-xs text-gray-500">
+    📸 Formatos: JPG, PNG, WEBP. Máximo 5MB.
+    Se crearán versiones optimizadas automáticamente.
+  </p>
+</div>
 
             {/* COSTOS BASE */}
             <div>
@@ -465,6 +491,14 @@ export const VistaFormulario = ({ inventario }) => {
             Cancelar
           </button>
         </div>
+
+              {inventario.errorImagen && (
+                <ModalErrorImagen
+                  mensaje={inventario.errorImagen}
+                  onCerrar={() => inventario.setErrorImagen(null)}
+                />
+              )}
+
       </div>
     </div>
   );

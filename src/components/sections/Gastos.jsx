@@ -3,6 +3,8 @@ import React from 'react';
 import { Search, Plus, Edit, Trash2, X, Calendar, DollarSign, Tag, FileText, CreditCard, Building, Download, CalendarRange, TrendingUp, TrendingDown, Activity, Target } from 'lucide-react';
 import { useGastos } from '../../api/useGastos';
 import { Notificacion } from '../common/Notificacion';
+import { ModalConfirmacionEliminar } from '../common/ModalConfirmacionEliminar';
+
 
 const Gastos = () => {
   const gastos = useGastos();
@@ -188,12 +190,12 @@ const Gastos = () => {
                           >
                             <Edit size={18} className="text-gray-600" />
                           </button>
-                          <button
-                            onClick={() => gastos.handleDelete(gasto.id)}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          >
-                            <Trash2 size={18} className="text-gray-600" />
-                          </button>
+                            <button
+                              onClick={() => gastos.handleDelete(gasto)}  // ✅ Pasar el gasto completo, no solo el id
+                              className="p-2 hover:bg-gray-100 rounded-lg transition"
+                            >
+                              <Trash2 size={18} className="text-gray-600" />
+                            </button>
                         </div>
                       </td>
                     </tr>
@@ -523,6 +525,14 @@ const Gastos = () => {
                 onClose={() => gastos.setNotificacion(null)}
               />
             )}
+
+              {gastos.modalConfirmacion && (
+                <ModalConfirmacionEliminar
+                  mensaje={gastos.modalConfirmacion.mensaje}
+                  onConfirmar={gastos.modalConfirmacion.onConfirmar}
+                  onCancelar={gastos.modalConfirmacion.onCancelar}
+                />
+              )}
     </div>
 
   );

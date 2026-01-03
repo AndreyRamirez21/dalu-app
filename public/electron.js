@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const isDev = !app.isPackaged;
 const url = require('url');
+const sharp = require('sharp');
 
 // Registrar protocolo personalizado para cargar imágenes locales
 app.setAppUserModelId('com.dalu.app'); // Identificador para agrupar ventanas y mostrar icono correcto
@@ -151,27 +152,66 @@ function getCarpetaImagenes() {
   return carpeta;
 }
 
-// Función para guardar imagen desde base64
-function guardarImagen(referencia, imagenData) {
+async function guardarImagen(referencia, imagenData) {
   try {
     const carpeta = getCarpetaImagenes();
+    const timestamp = Date.now();
 
-    // Extraer extensión del nombre o usar .jpg por defecto
-    const matches = imagenData.name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-    const extension = matches ? matches[0] : '.jpg';
+    // ✅ CORREGIDO: imagenData puede ser un string directo o un objeto
+    const base64String = typeof imagenData === 'string' ? imagenData : imagenData.data;
 
-    // Nombre único: referencia + timestamp
-    const nombreArchivo = `${referencia}-${Date.now()}${extension}`;
-    const rutaCompleta = path.join(carpeta, nombreArchivo);
+    if (!base64String) {
+      console.error('❌ No hay datos de imagen');
+      return null;
+    }
 
-    // Convertir base64 a buffer y guardar
-    const base64Data = imagenData.data.replace(/^data:image\/\w+;base64,/, '');
+    // Detectar extensión del base64
+    let extension = '.jpg';
+    if (base64String.includes('image/png')) extension = '.png';
+    else if (base64String.includes('image/webp')) extension = '.webp';
+    else if (base64String.includes('image/gif')) extension = '.gif';
+
+    // Convertir base64 a buffer
+    const base64Data = base64String.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
-    fs.writeFileSync(rutaCompleta, buffer);
 
-    return rutaCompleta;
+    // Rutas de archivos
+    const nombreCompleta = `${referencia}-${timestamp}${extension}`;
+    const nombreThumbnail = `${referencia}-${timestamp}_thumb.jpg`;
+    const rutaCompleta = path.join(carpeta, nombreCompleta);
+    const rutaThumbnail = path.join(carpeta, nombreThumbnail);
+
+    // ✅ Procesar ambas imágenes en paralelo
+    await Promise.all([
+      // Guardar imagen completa optimizada (max 800x800)
+      sharp(buffer)
+        .resize(800, 800, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ quality: 85 })
+        .toFile(rutaCompleta),
+
+      // Crear thumbnail (50x50)
+      sharp(buffer)
+        .resize(50, 50, {
+          fit: 'cover',
+          position: 'center'
+        })
+        .jpeg({ quality: 70 })
+        .toFile(rutaThumbnail)
+    ]);
+
+    console.log('✅ Imágenes procesadas y guardadas');
+    console.log(`   📸 Completa: ${rutaCompleta}`);
+    console.log(`   🖼️  Thumbnail: ${rutaThumbnail}`);
+
+    return {
+      completa: rutaCompleta,
+      thumbnail: rutaThumbnail
+    };
   } catch (error) {
-    console.error('Error al guardar imagen:', error);
+    console.error('❌ Error al procesar imágenes:', error);
     return null;
   }
 }
@@ -191,20 +231,70 @@ function eliminarImagen(rutaImagen) {
 // ==================== IPC HANDLERS ====================
 
 // Obtener todos los productos
+// ✅ CORREGIR EN electron.js
+
+// Obtener todos los productos
 ipcMain.handle('obtener-productos', async () => {
   return new Promise((resolve, reject) => {
-    db.productos.obtener((err, productos) => {
+    // ✅ AGREGAR imagenThumbnail a la consulta
+    const query = `
+      SELECT
+        p.*,
+        p.imagen,
+        p.imagenThumbnail
+      FROM productos p
+      ORDER BY p.fecha_creado DESC
+    `;
+
+    db.db.all(query, [], (err, productos) => {
       if (err) {
         console.error('❌ Error al obtener productos:', err);
         reject(err);
-      } else {
-        console.log('✅ Productos obtenidos:', productos.length);
-        resolve(productos);
+        return;
       }
+
+      // Obtener variantes para cada producto
+      if (productos.length === 0) {
+        resolve([]);
+        return;
+      }
+
+      let procesados = 0;
+      productos.forEach((producto) => {
+        db.db.all(
+          'SELECT * FROM variantes_producto WHERE producto_id = ?',
+          [producto.id],
+          (err, variantes) => {
+            if (!err) {
+              producto.variantes = variantes;
+            } else {
+              producto.variantes = [];
+            }
+
+            // Obtener costos adicionales
+            db.db.all(
+              'SELECT * FROM costos_adicionales_producto WHERE producto_id = ?',
+              [producto.id],
+              (err, costos) => {
+                if (!err) {
+                  producto.costos_adicionales = costos;
+                } else {
+                  producto.costos_adicionales = [];
+                }
+
+                procesados++;
+                if (procesados === productos.length) {
+                  console.log('✅ Productos obtenidos con thumbnails:', productos.length);
+                  resolve(productos);
+                }
+              }
+            );
+          }
+        );
+      });
     });
   });
 });
-
 // Obtener productos por categoría
 ipcMain.handle('obtener-productos-categoria', async (event, categoria) => {
   return new Promise((resolve, reject) => {
@@ -226,40 +316,41 @@ ipcMain.handle('buscar-productos', async (event, termino) => {
 });
 
 // Agregar producto
+// ✅ Actualizar los handlers para usar await
 ipcMain.handle('agregar-producto', async (event, producto) => {
-  return new Promise((resolve, reject) => {
-    // Guardar imagen si existe
-    let rutaImagen = null;
+  return new Promise(async (resolve, reject) => {
+    // ✅ Usar await porque guardarImagen ahora es asíncrono
+    let rutasImagen = { completa: null, thumbnail: null };
     if (producto.imagen) {
-      rutaImagen = guardarImagen(producto.referencia, producto.imagen);
+      rutasImagen = await guardarImagen(producto.referencia, producto.imagen);
     }
 
-// Preparar datos con la ruta de imagen Y COSTOS ADICIONALES
-const datosProducto = {
-  referencia: producto.referencia,
-  nombre: producto.nombre,
-  categoria: producto.categoria,
-  costo_base: producto.costo_base,
-  precio_calculado: producto.precio_calculado,  // ← AGREGAR ESTA LÍNEA
-  precio_venta_base: producto.precio_venta_base,
-  variantes: producto.variantes || [],
-  costos_adicionales: producto.costos_adicionales || []
-};
-    // Usar la función de db.js
+    const datosProducto = {
+      referencia: producto.referencia,
+      nombre: producto.nombre,
+      categoria: producto.categoria,
+      costo_base: producto.costo_base,
+      precio_calculado: producto.precio_calculado,
+      precio_venta_base: producto.precio_venta_base,
+      variantes: producto.variantes || [],
+      costos_adicionales: producto.costos_adicionales || []
+    };
+
     db.productos.agregar(datosProducto, (err, resultado) => {
       if (err) {
-        // Si falla, eliminar imagen guardada
-        if (rutaImagen) eliminarImagen(rutaImagen);
+        // Si falla, eliminar imágenes guardadas
+        if (rutasImagen.completa) eliminarImagen(rutasImagen.completa);
+        if (rutasImagen.thumbnail) eliminarImagen(rutasImagen.thumbnail);
         console.error('❌ Error al agregar producto:', err);
         reject(err);
         return;
       }
 
-      // Si el producto se guardó exitosamente, actualizar la imagen en la BD
-      if (rutaImagen) {
+      // ✅ Actualizar ambas rutas en la BD
+      if (rutasImagen.completa) {
         db.db.run(
-          'UPDATE productos SET imagen = ? WHERE id = ?',
-          [rutaImagen, resultado.id],
+          'UPDATE productos SET imagen = ?, imagenThumbnail = ? WHERE id = ?',
+          [rutasImagen.completa, rutasImagen.thumbnail, resultado.id],
           (errImg) => {
             if (errImg) {
               console.error('⚠️ Producto guardado pero error al actualizar imagen:', errImg);
@@ -268,47 +359,47 @@ const datosProducto = {
         );
       }
 
-      console.log('✅ Producto agregado:', resultado);
+      console.log('✅ Producto agregado con imágenes optimizadas');
       resolve({ success: true, id: resultado.id });
     });
   });
 });
 
+
+// Actualizar producto
 // Actualizar producto
 ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
-  return new Promise((resolve, reject) => {
-    // Obtener imagen anterior para eliminarla si se actualiza
-    db.db.get(`SELECT imagen FROM productos WHERE id = ?`, [id], (err, row) => {
+  return new Promise(async (resolve, reject) => {
+    db.db.get(`SELECT imagen, imagenThumbnail FROM productos WHERE id = ?`, [id], async (err, row) => {
       if (err) {
         reject(err);
         return;
       }
 
       const imagenAnterior = row ? row.imagen : null;
-      let nuevaRutaImagen = imagenAnterior; // Mantener la anterior por defecto
+      const thumbnailAnterior = row ? row.imagenThumbnail : null;
+      let rutasImagen = { completa: imagenAnterior, thumbnail: thumbnailAnterior };
 
-      // Si hay nueva imagen, guardarla
+      // ✅ Usar await si hay nueva imagen
       if (datosActualizados.imagen) {
-        nuevaRutaImagen = guardarImagen(datosActualizados.referencia, datosActualizados.imagen);
+        rutasImagen = await guardarImagen(datosActualizados.referencia, datosActualizados.imagen);
 
-        // Eliminar imagen anterior si existía
-        if (imagenAnterior) {
-          eliminarImagen(imagenAnterior);
-        }
+        // Eliminar imágenes anteriores si existían
+        if (imagenAnterior) eliminarImagen(imagenAnterior);
+        if (thumbnailAnterior) eliminarImagen(thumbnailAnterior);
       }
 
-        // Preparar datos para actualizar CON COSTOS ADICIONALES
-        const datosParaActualizar = {
-          referencia: datosActualizados.referencia,
-          nombre: datosActualizados.nombre,
-          categoria: datosActualizados.categoria,
-          costo_base: datosActualizados.costo_base,
-          precio_calculado: datosActualizados.precio_calculado,  // ← AGREGAR ESTA LÍNEA
-          precio_venta_base: datosActualizados.precio_venta_base,
-          variantes: datosActualizados.variantes || [],
-          costos_adicionales: datosActualizados.costos_adicionales || []
-        };
-      // Usar la función de db.js
+      const datosParaActualizar = {
+        referencia: datosActualizados.referencia,
+        nombre: datosActualizados.nombre,
+        categoria: datosActualizados.categoria,
+        costo_base: datosActualizados.costo_base,
+        precio_calculado: datosActualizados.precio_calculado,
+        precio_venta_base: datosActualizados.precio_venta_base,
+        variantes: datosActualizados.variantes || [],
+        costos_adicionales: datosActualizados.costos_adicionales || []
+      };
+
       db.productos.actualizar(id, datosParaActualizar, (err, resultado) => {
         if (err) {
           console.error('❌ Error al actualizar producto:', err);
@@ -316,11 +407,11 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
           return;
         }
 
-        // Si el producto se actualizó exitosamente, actualizar la imagen en la BD
-        if (nuevaRutaImagen) {
+        // ✅ Actualizar rutas de imagen
+        if (rutasImagen.completa) {
           db.db.run(
-            'UPDATE productos SET imagen = ? WHERE id = ?',
-            [nuevaRutaImagen, id],
+            'UPDATE productos SET imagen = ?, imagenThumbnail = ? WHERE id = ?',
+            [rutasImagen.completa, rutasImagen.thumbnail, id],
             (errImg) => {
               if (errImg) {
                 console.error('⚠️ Producto actualizado pero error al actualizar imagen:', errImg);
@@ -329,7 +420,7 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
           );
         }
 
-        console.log('✅ Producto actualizado:', resultado);
+        console.log('✅ Producto actualizado con imágenes optimizadas');
         resolve({ success: true });
       });
     });

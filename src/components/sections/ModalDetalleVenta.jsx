@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingCart, User, Calendar, CreditCard, FileText, Package, Download, AlertCircle } from 'lucide-react';
+import { generarPDFVenta } from '../../utils/generarPDFVenta';
 
 const { ipcRenderer } = window.require('electron');
 
@@ -26,6 +27,12 @@ const ModalDetalleVenta = ({ venta, onClose }) => {
       setLoading(false);
     }
   };
+
+const handleDescargarPDF = () => {
+  if (detalleCompleto) {
+    generarPDFVenta(detalleCompleto);
+  }
+};
 
 const formatDate = (dateString) => {
   // SQLite ahora guarda en hora local, parseamos directamente
@@ -328,14 +335,22 @@ const formatDate = (dateString) => {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t bg-gray-50 flex justify-end sticky bottom-0">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
-          >
-            Cerrar
-          </button>
+            {/* Footer */}
+            <div className="p-6 border-t bg-gray-50 flex justify-between items-center sticky bottom-0">
+              <button
+                onClick={handleDescargarPDF}
+                className="flex items-center space-x-2 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium"
+              >
+                <Download size={18} />
+                <span>Descargar Comprobante</span>
+              </button>
+
+              <button
+                onClick={onClose}
+                className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium"
+              >
+                Cerrar
+              </button>
         </div>
       </div>
     </div>

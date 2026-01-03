@@ -21,6 +21,16 @@ const getIPC = () => {
   }
 };
 
+
+// Función auxiliar para obtener fecha local en formato YYYY-MM-DD
+const getFechaLocal = () => {
+  const hoy = new Date();
+  const año = hoy.getFullYear();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+};
+
 export const useGastos = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas las Categorias');
@@ -32,16 +42,18 @@ export const useGastos = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingGasto, setEditingGasto] = useState(null);
   const [notificacion, setNotificacion] = useState(null);
+  const [modalConfirmacion, setModalConfirmacion] = useState(null);
 
-  const [formData, setFormData] = useState({
-    fecha: new Date().toISOString().split('T')[0],
-    descripcion: '',
-    categoria: 'Proveedores',
-    monto: '',
-    metodo_pago: 'Efectivo',
-    proveedor: '',
-    notas: ''
-  });
+
+const [formData, setFormData] = useState({
+  fecha: getFechaLocal(), // ✅ CAMBIADO
+  descripcion: '',
+  categoria: 'Proveedores',
+  monto: '',
+  metodo_pago: 'Efectivo',
+  proveedor: '',
+  notas: ''
+});
 
   const categorias = [
     { nombre: 'Todas las Categorias', color: 'text-gray-700' },
@@ -93,19 +105,18 @@ export const useGastos = () => {
     cargarEstadisticas();
   }, []);
 
-  // Resetear formulario
-  const resetForm = () => {
-    setFormData({
-      fecha: new Date().toISOString().split('T')[0],
-      descripcion: '',
-      categoria: 'Proveedores',
-      monto: '',
-      metodo_pago: 'Efectivo',
-      proveedor: '',
-      notas: ''
-    });
-    setEditingGasto(null);
-  };
+const resetForm = () => {
+  setFormData({
+    fecha: getFechaLocal(), // ✅ CAMBIADO
+    descripcion: '',
+    categoria: 'Proveedores',
+    monto: '',
+    metodo_pago: 'Efectivo',
+    proveedor: '',
+    notas: ''
+  });
+  setEditingGasto(null);
+};
 
   // Guardar o actualizar gasto
   const handleSubmit = async () => {
@@ -153,23 +164,35 @@ export const useGastos = () => {
   };
 
   // Eliminar gasto
-  const handleDelete = async (id) => {
-    const ipc = getIPC();
-    if (!ipc) {
-      setNotificacion({ mensaje: 'Error: Electron IPC no disponible', tipo: 'error' });
-      return;
-    }
+const handleDelete = async (gasto) => {
+  // Mostrar modal de confirmación
+  setModalConfirmacion({
+    mensaje: `¿Estás seguro de eliminar el gasto "${gasto.descripcion}"?`,
+    onConfirmar: async () => {
+      const ipc = getIPC();
+      if (!ipc) {
+        setNotificacion({ mensaje: 'Error: Electron IPC no disponible', tipo: 'error' });
+        setModalConfirmacion(null);
+        return;
+      }
 
-    if (window.confirm('Estas seguro de eliminar este gasto?')) {
       try {
-        await ipc.invoke('eliminar-gasto', id);
-        cargarGastos();
-        cargarEstadisticas();
+        await ipc.invoke('eliminar-gasto', gasto.id);
+        await cargarGastos();
+        await cargarEstadisticas();
+        setNotificacion({ mensaje: 'Gasto eliminado exitosamente', tipo: 'exito' });
       } catch (error) {
         console.error('Error al eliminar gasto:', error);
+        setNotificacion({ mensaje: 'Error al eliminar el gasto', tipo: 'error' });
+      } finally {
+        setModalConfirmacion(null);
       }
+    },
+    onCancelar: () => {
+      setModalConfirmacion(null);
     }
-  };
+  });
+};
 
   // Obtener color de categoria
   const getCategoriaColor = (categoria) => {
@@ -321,59 +344,147 @@ export const useGastos = () => {
     };
   };
 
-  // Exportar gastos a Excel
-  const exportarGastosExcel = () => {
-    // CAMBIADO: Usar sheetjs-style en lugar de xlsx
-    const XLSX = require('sheetjs-style');
+const exportarGastosExcel = () => {
+  const XLSX = require('sheetjs-style');
 
-    // Preparar los datos para Excel
-    const datosExcel = gastosFiltrados.map(gasto => ({
-      'Fecha': formatDate(gasto.fecha),
-      'Descripcion': gasto.descripcion,
-      'Categoria': gasto.categoria,
-      'Metodo de Pago': gasto.metodo_pago,
-      'Proveedor': gasto.proveedor || 'N/A',
-      'Monto': `$${parseFloat(gasto.monto).toFixed(2)}`,
-      'Notas': gasto.notas || ''
-    }));
+  // Preparar los datos para Excel
+  const datosExcel = gastosFiltrados.map(gasto => ({
+    Fecha: formatDate(gasto.fecha),
+    Descripcion: gasto.descripcion,
+    Categoria: gasto.categoria,
+    MetodoPago: gasto.metodo_pago,
+    Proveedor: gasto.proveedor || 'N/A',
+    Monto: parseFloat(gasto.monto),
+    Notas: gasto.notas || ''
+  }));
 
-    // Agregar fila de total
-    datosExcel.push({
-      'Fecha': '',
-      'Descripcion': '',
-      'Categoria': '',
-      'Metodo de Pago': '',
-      'Proveedor': 'TOTAL',
-      'Monto': `$${totalGastos.toFixed(2)}`,
-      'Notas': ''
-    });
+  const libro = XLSX.utils.book_new();
+  const hoja = XLSX.utils.json_to_sheet(datosExcel);
 
-    // Crear libro de Excel
-    const libro = XLSX.utils.book_new();
-    const hoja = XLSX.utils.json_to_sheet(datosExcel);
+  // ===== CALCULAR TOTALES =====
+  const totalMonto = datosExcel.reduce((sum, item) => sum + (item.Monto || 0), 0);
+  const filaTotales = datosExcel.length + 1;
 
-    // Ajustar ancho de columnas
-    const anchoColumnas = [
-      { wch: 15 }, // Fecha
-      { wch: 35 }, // Descripcion
-      { wch: 18 }, // Categoria
-      { wch: 18 }, // Metodo de Pago
-      { wch: 25 }, // Proveedor
-      { wch: 15 }, // Monto
-      { wch: 30 }  // Notas
-    ];
-    hoja['!cols'] = anchoColumnas;
+  // Agregar fila de totales
+  XLSX.utils.sheet_add_aoa(hoja, [[
+    "", // Fecha
+    "", // Descripcion
+    "", // Categoria
+    "", // MetodoPago
+    "TOTAL", // Proveedor
+    totalMonto, // Monto
+    "" // Notas
+  ]], {
+    origin: { r: filaTotales, c: 0 }
+  });
 
-    // Agregar hoja al libro
-    XLSX.utils.book_append_sheet(libro, hoja, 'Gastos');
+  // Actualizar rango después de agregar totales
+  hoja["!ref"] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: filaTotales, c: 6 }
+  });
 
-    // Generar nombre de archivo con fecha
-    const fecha = new Date().toISOString().split('T')[0];
-    const nombreArchivo = `gastos_${fecha}.xlsx`;
+  // ----- ESTILOS DE HEADER -----
+  for (let C = 0; C <= 6; C++) {
+    const cell = hoja[XLSX.utils.encode_cell({ r: 0, c: C })];
+    if (cell) {
+      cell.s = {
+        fill: { fgColor: { rgb: "F97316" } }, // Color naranja para gastos
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "000000" } },
+          bottom: { style: "thin", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } },
+        },
+      };
+    }
+  }
 
-    // Descargar archivo
-    XLSX.writeFile(libro, nombreArchivo);
-  };
+  // ----- ESTILOS PARA FILA DE TOTALES -----
+  for (let C = 0; C <= 6; C++) {
+    const cell = hoja[XLSX.utils.encode_cell({ r: filaTotales, c: C })];
+    if (cell) {
+      cell.s = {
+        fill: { fgColor: { rgb: "FFF2CC" } },
+        font: { bold: true },
+        alignment: { horizontal: C === 4 ? "left" : "center" },
+        border: {
+          top: { style: "medium", color: { rgb: "000000" } },
+          bottom: { style: "medium", color: { rgb: "000000" } },
+          left: { style: "thin", color: { rgb: "000000" } },
+          right: { style: "thin", color: { rgb: "000000" } },
+        },
+      };
+    }
+  }
+
+  // ----- COLOREAR CATEGORÍAS -----
+  const colCategoria = 2; // Columna de Categoría
+  for (let R = 1; R < filaTotales; R++) {
+    const cellCategoria = hoja[XLSX.utils.encode_cell({ r: R, c: colCategoria })];
+    if (cellCategoria) {
+      const categoria = cellCategoria.v;
+      let bgColor = "FFFFFF";
+
+      // Colores por categoría
+      if (categoria === "Proveedores") bgColor = "FFEDD5"; // Naranja claro
+      else if (categoria === "Marketing") bgColor = "F3E8FF"; // Púrpura claro
+      else if (categoria === "Logistica") bgColor = "DBEAFE"; // Azul claro
+      else if (categoria === "Servicios") bgColor = "FCE7F3"; // Rosa claro
+      else if (categoria === "Renta de Local") bgColor = "D1FAE5"; // Verde claro
+      else if (categoria === "Otros") bgColor = "F3F4F6"; // Gris claro
+
+      cellCategoria.s = {
+        fill: { fgColor: { rgb: bgColor } },
+        font: { bold: true },
+        alignment: { horizontal: "center" },
+        border: {
+          top: { style: "thin" },
+          bottom: { style: "thin" },
+          left: { style: "thin" },
+          right: { style: "thin" },
+        },
+      };
+    }
+  }
+
+  // ----- BORDES PARA TODAS LAS CELDAS -----
+  for (let R = 0; R <= filaTotales; R++) {
+    for (let C = 0; C <= 6; C++) {
+      const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = hoja[cellAddr];
+      if (cell && !cell.s) {
+        cell.s = {
+          border: {
+            top: { style: "thin", color: { rgb: "D1D5DB" } },
+            bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+            left: { style: "thin", color: { rgb: "D1D5DB" } },
+            right: { style: "thin", color: { rgb: "D1D5DB" } },
+          },
+        };
+      }
+    }
+  }
+
+  // ----- AUTO ANCHO DE COLUMNAS -----
+  hoja["!cols"] = [
+    { wch: 15 }, // Fecha
+    { wch: 35 }, // Descripcion
+    { wch: 18 }, // Categoria
+    { wch: 18 }, // MetodoPago
+    { wch: 25 }, // Proveedor
+    { wch: 15 }, // Monto
+    { wch: 30 }  // Notas
+  ];
+
+  XLSX.utils.book_append_sheet(libro, hoja, 'Gastos');
+
+  // Generar nombre de archivo con fecha
+  const fecha = new Date().toLocaleDateString('es-CO').replace(/\//g, '-');
+  XLSX.writeFile(libro, `gastos_Dalu_${fecha}.xlsx`);
+};
 
   return {
     // Estados
@@ -395,6 +506,8 @@ export const useGastos = () => {
     notificacion,
     setNotificacion,
     setFormData,
+    modalConfirmacion,
+
 
     // Constantes
     categorias,

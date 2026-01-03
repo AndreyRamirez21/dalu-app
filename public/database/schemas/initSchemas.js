@@ -40,6 +40,13 @@ function initDatabase() {
 
     // Agregar columna imagen si no existe
     db.run(`ALTER TABLE productos ADD COLUMN imagen TEXT`, () => {});
+    db.run(`
+      ALTER TABLE productos ADD COLUMN imagenThumbnail TEXT
+    `, (err) => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Error al agregar columna imagenThumbnail:', err);
+      }
+    });
 
     // ==================== TABLA DE VARIANTES DE PRODUCTO ====================
     db.run(`CREATE TABLE IF NOT EXISTS variantes_producto (
