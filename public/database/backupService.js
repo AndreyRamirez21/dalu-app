@@ -170,19 +170,19 @@ class BackupService {
     }
   }
 
-  iniciarBackupAutomatico(intervaloHoras = 24) {
-    console.log(`⏰ Backup automático configurado cada ${intervaloHoras} horas`);
+  //iniciarBackupAutomatico(intervaloHoras = 24) {
+  //  console.log(`⏰ Backup automático configurado cada ${intervaloHoras} horas`);
 
     // Backup inicial después de 5 minutos
-    setTimeout(() => {
-      this.crearBackup();
-    }, 5 * 60 * 1000);
+   // setTimeout(() => {
+   //   this.crearBackup();
+   // }, 5 * 60 * 1000);
 
     // Programar backups periódicos
-    setInterval(() => {
-      this.crearBackup();
-    }, intervaloHoras * 60 * 60 * 1000);
-  }
+  //  setInterval(() => {
+   //   this.crearBackup();
+   // }, intervaloHoras * 60 * 60 * 1000);
+  //}
 }
 
 module.exports = BackupService;

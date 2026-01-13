@@ -1,6 +1,6 @@
 {
   "name": "dalu-app",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "public/electron.js",
   "homepage": "./",
@@ -96,8 +96,8 @@
         "to": "database"
       },
       {
-        "from": "build/icons/icon.ico",
-        "to": "icon.ico"
+        "from": "build/icon.ico",
+        "to": "."
       }
     ],
     "asarUnpack": [
@@ -117,7 +117,7 @@
           ]
         }
       ],
-      "icon": "build/icons/icon.ico",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
@@ -128,9 +128,9 @@
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Dalú",
-      "installerIcon": "build/icons/icon.ico",
-      "uninstallerIcon": "build/icons/icon.ico",
-      "installerHeaderIcon": "build/icons/icon.ico",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "perMachine": false

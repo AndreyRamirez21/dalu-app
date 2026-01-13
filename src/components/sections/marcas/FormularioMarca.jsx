@@ -167,6 +167,7 @@ export const FormularioMarca = ({ marcasAliadas }) => {
                   name="porcentaje_comision"
                   value={marcasAliadas.formularioMarca.porcentaje_comision}
                   onChange={marcasAliadas.handleInputMarcaChange}
+                  onWheel={(e) => e.target.blur()}
                   min="0"
                   max="100"
                   step="0.1"

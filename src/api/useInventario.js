@@ -447,7 +447,7 @@ const nuevoProducto = {
     }
   };
 
-  const handleEditarProducto = async (producto) => {
+const handleEditarProducto = async (producto) => {
     const ipc = getIPC();
 
     setProductoEditar(producto);
@@ -467,17 +467,19 @@ setFormulario({
   categoria: producto.categoria,
   costo_base: producto.costo_base.toString(),
   precio_venta_base: producto.precio_venta_base.toString(),
-  precio_calculado: producto.precio_calculado || 0,  // ← AGREGAR ESTO
+  precio_calculado: producto.precio_calculado || 0,
   variantes: producto.variantes.map(v => ({
     talla: v.talla,
     cantidad: v.cantidad,
     ajuste_precio: v.ajuste_precio || 0,
-    tallaManual: false
+    // ✅ Detectar si la talla NO está en la lista predefinida
+    tallaManual: !tallasDisponibles.includes(v.talla)
   })),
   costos_adicionales: (producto.costos_adicionales || []).map(c => ({
     concepto: c.concepto,
     monto: c.monto,
-    conceptoManual: false
+    // ✅ Detectar si el concepto NO está en la lista predefinida
+    conceptoManual: !conceptosCostosDisponibles.includes(c.concepto)
   })),
   imagen: null,
   imagenPreview: imagenPreview

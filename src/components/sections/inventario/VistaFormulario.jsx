@@ -140,6 +140,8 @@ export const VistaFormulario = ({ inventario }) => {
                   name="costo_base"
                   value={inventario.formulario.costo_base}
                   onChange={inventario.handleInputChange}
+                  onWheel={(e) => e.target.blur()}  // ⭐ AGREGAR ESTA LÍNEA
+
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -158,6 +160,7 @@ export const VistaFormulario = ({ inventario }) => {
                   name="precio_venta_base"
                   value={inventario.formulario.precio_venta_base}
                   onChange={inventario.handleInputChange}
+                  onWheel={(e) => e.target.blur()}
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -285,6 +288,7 @@ export const VistaFormulario = ({ inventario }) => {
                             type="text"
                             value={costo.concepto}
                             onChange={(e) => inventario.actualizarCostoAdicional(index, 'concepto', e.target.value)}
+                            onWheel={(e) => e.target.blur()}
                             placeholder="Escribe el concepto..."
                             className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                             autoFocus
@@ -326,8 +330,9 @@ export const VistaFormulario = ({ inventario }) => {
                         <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">$</span>
                         <input
                           type="number"
-                          value={costo.monto}
+                          value={costo.monto || ''}
                           onChange={(e) => inventario.actualizarCostoAdicional(index, 'monto', e.target.value)}
+                          onWheel={(e) => e.target.blur()}
                           placeholder="0.00"
                           step="0.01"
                           min="0"
@@ -395,6 +400,7 @@ export const VistaFormulario = ({ inventario }) => {
                             type="text"
                             value={variante.talla}
                             onChange={(e) => inventario.actualizarVariante(index, 'talla', e.target.value)}
+                            onWheel={(e) => e.target.blur()}
                             placeholder="Ej: 34, 35, etc"
                             className="w-full px-3 py-2 border border-teal-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                             autoFocus
@@ -433,8 +439,9 @@ export const VistaFormulario = ({ inventario }) => {
                       <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad Stock</label>
                       <input
                         type="number"
-                        value={variante.cantidad}
+                        value={variante.cantidad || ''}
                         onChange={(e) => inventario.actualizarVariante(index, 'cantidad', e.target.value)}
+                        onWheel={(e) => e.target.blur()}
                         placeholder="0"
                         min="0"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
@@ -446,8 +453,9 @@ export const VistaFormulario = ({ inventario }) => {
                         <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">$</span>
                         <input
                           type="number"
-                          value={variante.ajuste_precio}
+                          value={variante.ajuste_precio || ''}
                           onChange={(e) => inventario.actualizarVariante(index, 'ajuste_precio', e.target.value)}
+                          onWheel={(e) => e.target.blur()}
                           placeholder="0.00"
                           step="0.01"
                           className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"

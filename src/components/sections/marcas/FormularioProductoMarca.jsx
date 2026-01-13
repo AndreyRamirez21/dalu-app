@@ -113,6 +113,7 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
                   name="precio_venta_base"
                   value={productosMarca.formulario.precio_venta_base}
                   onChange={productosMarca.handleInputChange}
+                  onWheel={(e) => e.target.blur()}
                   placeholder="0.00"
                   step="0.01"
                   min="0"
@@ -198,6 +199,7 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
                           type="text"
                           value={variante.talla}
                           onChange={(e) => productosMarca.actualizarVariante(index, 'talla', e.target.value)}
+                          onWheel={(e) => e.target.blur()}
                           placeholder="Ingresa talla"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                         />
@@ -221,6 +223,7 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
                         type="number"
                         value={variante.cantidad}
                         onChange={(e) => productosMarca.actualizarVariante(index, 'cantidad', e.target.value)}
+                        onWheel={(e) => e.target.blur()}
                         placeholder="Stock"
                         min="0"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
@@ -233,6 +236,7 @@ export const FormularioProductoMarca = ({ productosMarca, marcaNombre }) => {
                         type="number"
                         value={variante.ajuste_precio}
                         onChange={(e) => productosMarca.actualizarVariante(index, 'ajuste_precio', e.target.value)}
+                        onWheel={(e) => e.target.blur()}
                         placeholder="± Precio"
                         step="0.01"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"

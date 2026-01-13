@@ -1461,6 +1461,7 @@ const AlertaFidelidad = () => {
                                         step="0.01"
                                         value={costoAdicional}
                                         onChange={(e) => setCostoAdicional(e.target.value)}
+                                        onWheel={(e) => e.target.blur()}
                                         className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         placeholder="Ingresa el monto (ej: 500.00)"
                                         onKeyPress={(e) => {
@@ -1783,6 +1784,7 @@ const AlertaFidelidad = () => {
                                   step="0.01"
                                   value={montoPagado}
                                   onChange={(e) => setMontoPagado(e.target.value)}
+                                  onWheel={(e) => e.target.blur()}
                                   className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 text-lg font-medium"
                                   placeholder="0.00"
                                 />

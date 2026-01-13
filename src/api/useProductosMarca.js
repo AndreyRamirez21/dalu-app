@@ -184,7 +184,8 @@ export const useProductosMarca = (marcaId, onActualizar) => {
         talla: v.talla,
         cantidad: v.cantidad,
         ajuste_precio: v.ajuste_precio || 0,
-        tallaManual: false
+        tallaManual: !tallasDisponibles.includes(v.talla),
+
       })),
       imagen: null,
       imagenPreview: imagenPreview

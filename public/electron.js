@@ -1,5 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol } = require('electron');
-const path = require('path');
+const { app, BrowserWindow, ipcMain, protocol, Menu } = require('electron');const path = require('path');
 const fs = require('fs');
 const isDev = !app.isPackaged;
 const url = require('url');
@@ -27,28 +26,27 @@ const BackupService = require('./database/backupService');
 let mainWindow;
 let backupService;
 
-// Función para obtener la ruta correcta del icono
-function getIconPath() {
+
+
+
+const getIconPath = () => {
   if (isDev) {
-    return path.join(__dirname, 'icons', 'icon.ico');  // ✅ CORRECTO
+    // En desarrollo, usar desde la carpeta build/
+    return path.join(__dirname, '../build/icon.ico');
   } else {
-    return path.join(process.resourcesPath, 'icons', 'icon.ico');  // ✅ CORRECTO
+    // En producción, usar desde la carpeta de recursos
+    return path.join(process.resourcesPath, '../build/icon.ico');
   }
-}
-
-
+};
 
 function createWindow() {
-  const iconPath = getIconPath();
 
-  console.log('🖼️ Ruta del icono:', iconPath);
-  console.log('🖼️ ¿Existe?:', fs.existsSync(iconPath));
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Dalú',
-    icon: iconPath,
+    icon: getIconPath(), // ✅ Usar función para obtener path correcto
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -56,32 +54,50 @@ function createWindow() {
     }
   });
 
-  // ✅ IMPORTANTE: Forzar icono en Windows de múltiples formas
-  if (process.platform === 'win32') {
-    const { nativeImage } = require('electron');
 
-    // Intentar cargar el icono
-    if (fs.existsSync(iconPath)) {
-      const icon = nativeImage.createFromPath(iconPath);
+crearMenuPersonalizado();
 
-      if (!icon.isEmpty()) {
-        // Establecer el icono de la ventana
-        mainWindow.setIcon(icon);
-
-        // Establecer el icono de la app
-        app.setAppUserModelId('com.dalu.app');
-
-        // En Windows, también setear en el overlay (barra de tareas)
-        mainWindow.setOverlayIcon(icon, 'Dalú');
-
-        console.log('✅ Icono establecido correctamente');
-      } else {
-        console.log('⚠️ El icono está vacío');
-      }
-    } else {
-      console.log('❌ No se encontró el icono en:', iconPath);
-    }
+function crearMenuPersonalizado() {
+  const template = [
+    {
+      label: 'Ayuda',
+      submenu: [
+        {
+          label: 'Acerca de Dalú',
+          click: () => {
+            const { dialog } = require('electron');
+            dialog.showMessageBox({
+              title: 'Dalú v1.0',
+              message: 'Sistema de Gestión de Dalú',
+              detail: 'Desarrollado por Andrey Ramírez\n\nGestión de inventario, ventas, gastos y clientes.\n\n 2026'
+            });
+          }
+        },
+        {
+          type: 'separator' // Línea separadora
+        },
+{
+  label: 'Recordatorio',
+  click: () => {
+    const { dialog } = require('electron');
+    dialog.showMessageBox({
+      title: 'Para mi mejor amiga',
+      message: 'Para ti, Luisa',
+        detail: 'Esta app fue hecha con mucho cariño para ti.\n\n' +
+        'Espero que te sirva para materializar ese sueño que tanto anhelas.\n\n' +
+        'Estoy muy orgulloso de ti y de todo el esfuerzo que has hecho.\n\n' +
+        'Y estoy seguro de que cumplirás todo lo que te propongas.\n\n' +
+        'Con todo mi cariño,\nAndreu'
+    });
   }
+}
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 
   // CORREGIDO: Inicialización del Backup Service
   const dbPath = path.join(app.getPath('userData'), 'dalu.db');
@@ -102,7 +118,7 @@ function createWindow() {
     });
 
     mainWindow.loadURL(startUrl);
-    mainWindow.webContents.openDevTools();
+    //mainWindow.webContents.openDevTools();
 
     console.log('🚀 Modo PRODUCCIÓN');
     console.log('📂 Cargando desde:', startUrl);
