@@ -19,9 +19,21 @@ const getIPC = () => {
   }
 };
 
+// Función para normalizar texto (eliminar tildes/acentos)
+const normalizarTexto = (texto) => {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
 export const useInventario = () => {
   const [vista, setVista] = useState('lista');
   const [searchTerm, setSearchTerm] = useState('');
+  const [tallaFiltro, setTallaFiltro] = useState('Todas');
+  const [busquedaTallaExacta, setBusquedaTallaExacta] = useState(true); // ← AGREGAR ESTO
+
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
   const [productos, setProductos] = useState([]);
   const [productoEditar, setProductoEditar] = useState(null);
@@ -126,13 +138,41 @@ const formularioInicial = {
     }));
   }, [formulario.costo_base, formulario.costos_adicionales]);
 
-  // Productos filtrados
-  const productosFiltrados = productos.filter(p => {
-    const coincideBusqueda = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            p.referencia.toLowerCase().includes(searchTerm.toLowerCase());
-    const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
-    return coincideBusqueda && coincideCategoria;
-  });
+// Productos filtrados (con filtro de talla separado)
+// Productos filtrados (con filtro de talla separado)
+const productosFiltrados = productos.filter(p => {
+  const terminoBusqueda = searchTerm.toLowerCase();
+
+  // Buscar en nombre y referencia
+  const coincideBusqueda = p.nombre.toLowerCase().includes(terminoBusqueda) ||
+                          p.referencia.toLowerCase().includes(terminoBusqueda);
+
+  // Filtro de categoría
+  const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
+
+  // Filtro de talla (búsqueda exacta o flexible, sin tildes, CON STOCK)
+  const coincideTalla = tallaFiltro === 'Todas' ||
+                       !tallaFiltro.trim() ||
+                       (p.variantes && p.variantes.some(v => {
+                         const tallaNormalizada = normalizarTexto(v.talla);
+                         const filtroNormalizado = normalizarTexto(tallaFiltro);
+
+                         // ✅ NUEVO: Solo considerar variantes con stock > 0
+                         if (v.cantidad <= 0) {
+                           return false;
+                         }
+
+                         if (busquedaTallaExacta) {
+                           // Búsqueda EXACTA sin tildes
+                           return tallaNormalizada === filtroNormalizado;
+                         } else {
+                           // Búsqueda FLEXIBLE sin tildes
+                           return tallaNormalizada.includes(filtroNormalizado);
+                         }
+                       }));
+
+  return coincideBusqueda && coincideCategoria && coincideTalla;
+});
 
     const calcularStockTotal = (variantes) => {
       if (!variantes || variantes.length === 0) return 0;
@@ -205,6 +245,8 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
   const totalUnidades = productos.reduce((total, producto) => {
     return total + calcularStockTotal(producto.variantes);
   }, 0);
+
+
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -594,6 +636,10 @@ const datosActualizados = {
     setVista,
     searchTerm,
     setSearchTerm,
+    busquedaTallaExacta,        // ← AGREGAR
+    setBusquedaTallaExacta,
+    tallaFiltro,
+    setTallaFiltro,
     categoriaActiva,
     setCategoriaActiva,
     productos,
@@ -605,6 +651,7 @@ const datosActualizados = {
     modalConfirmacion,
     productosExpandidos,
     referenciasExpandidas, // ← AGREGAR ESTO
+
     formulario,
     errorImagen,
     setErrorImagen,

@@ -27,13 +27,18 @@ function agregarDeuda(datos, callback) {
 }
 
 function obtenerDeudas(callback) {
-  const sql = `SELECT * FROM deudas ORDER BY
-               CASE
-                 WHEN estado = 'Pendiente' THEN 1
-                 WHEN estado = 'Vencida' THEN 0
-                 ELSE 2
-               END,
-               fecha_creacion DESC`;
+const sql = `
+  SELECT d.*,
+         (SELECT COUNT(*) FROM pagos_deuda WHERE deuda_id = d.id) as total_pagos
+  FROM deudas d
+  ORDER BY
+    CASE
+      WHEN d.estado = 'Pendiente' THEN 1
+      WHEN d.estado = 'Vencida' THEN 0
+      ELSE 2
+    END,
+    d.fecha_creacion DESC
+`;
 
   db.all(sql, [], (err, rows) => {
     if (err) {

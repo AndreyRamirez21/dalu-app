@@ -120,18 +120,53 @@ export const VistaLista = ({ inventario }) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-gray-800">Lista de Productos ({inventario.productosFiltrados.length})</h3>
           </div>
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder="Buscar producto o referencia..."
-                value={inventario.searchTerm}
-                onChange={(e) => inventario.setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-          </div>
+<div className="flex items-center space-x-3 mb-4">
+  <div className="flex-1 relative">
+    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+    <input
+      type="text"
+      placeholder="Buscar producto o referencia..."
+      value={inventario.searchTerm}
+      onChange={(e) => inventario.setSearchTerm(e.target.value)}
+      className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+    />
+  </div>
+
+  {/* Filtro de tallas con modo de búsqueda */}
+  <div className="flex items-center space-x-2">
+    <div className="relative">
+      <input
+        type="text"
+        placeholder="🔍 Filtrar por talla..."
+        value={inventario.tallaFiltro === 'Todas' ? '' : inventario.tallaFiltro}
+        onChange={(e) => inventario.setTallaFiltro(e.target.value || 'Todas')}
+        className="w-48 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+      />
+      {inventario.tallaFiltro !== 'Todas' && (
+        <button
+          onClick={() => inventario.setTallaFiltro('Todas')}
+          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          title="Limpiar filtro"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+
+    {/* Toggle para búsqueda exacta/flexible */}
+    <button
+      onClick={() => inventario.setBusquedaTallaExacta(!inventario.busquedaTallaExacta)}
+      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+        inventario.busquedaTallaExacta
+          ? 'bg-teal-100 text-teal-700 border border-teal-300'
+          : 'bg-gray-100 text-gray-600 border border-gray-300'
+      }`}
+      title={inventario.busquedaTallaExacta ? 'Búsqueda exacta (M ≠ Mini)' : 'Búsqueda flexible (3 = 35,36,37)'}
+    >
+      {inventario.busquedaTallaExacta ? '=' : '~'}
+    </button>
+  </div>
+</div>
           <div className="flex items-center space-x-2 overflow-x-auto pb-2">
             {inventario.categorias.map((cat) => (
               <button

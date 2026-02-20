@@ -4,7 +4,11 @@ const db = require('../config/connection');
 
 function obtenerDeudasClientes(callback) {
   db.all(
-    `SELECT * FROM deudas_clientes WHERE estado = 'Pendiente' ORDER BY fecha_creacion DESC`,
+    `SELECT dc.*,
+            (SELECT COUNT(*) FROM abonos_deuda_cliente WHERE deuda_cliente_id = dc.id) as total_abonos
+     FROM deudas_clientes dc
+     WHERE dc.estado = 'Pendiente'
+     ORDER BY dc.fecha_creacion DESC`,
     [],
     (err, rows) => {
       if (err) {
