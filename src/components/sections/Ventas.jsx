@@ -1,11 +1,37 @@
-import React, { useState } from 'react';
-import { ShoppingCart, Eye, Plus, Search, Calendar, X, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ShoppingCart, Eye, Plus, Search, Calendar, X, Download, CheckCircle, AlertCircle } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import ModalAgregarVenta from './ModalAgregarVenta';
 import ModalDetalleVenta from './ModalDetalleVenta';
 import { ModalConfirmacion } from '../common/ModalConfirmacion';
-import { ModalMensaje } from '../common/ModalMensaje';
 import { exportarVentasExcel } from '../../utils/exportExcel';
+
+// ── Toast automático (desaparece solo) ──
+const Toast = ({ mensaje, tipo = 'exito', onDone }) => {
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onDone, 300); // esperar animación de salida
+    }, 2000);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <div
+      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[999] flex items-center space-x-3 px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      } ${tipo === 'exito' ? 'bg-teal-600' : 'bg-red-600'}`}
+    >
+      {tipo === 'exito'
+        ? <CheckCircle size={22} className="text-white flex-shrink-0" />
+        : <AlertCircle size={22} className="text-white flex-shrink-0" />}
+      <span className="text-white font-medium text-sm">{mensaje}</span>
+    </div>
+  );
+};
 
 const Ventas = () => {
   const { ventas, estadisticas, loading, buscarVentas, cargarVentas, cancelarVenta } = useVentas();
@@ -15,9 +41,14 @@ const Ventas = () => {
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
   const [showModalConfirm, setShowModalConfirm] = useState(false);
   const [ventaAConfirmar, setVentaAConfirmar] = useState(null);
-  const [mostrarMensaje, setMostrarMensaje] = useState(false);
-  const [mensajeModal, setMensajeModal] = useState("");
   const [vistaAnual, setVistaAnual] = useState(false);
+
+  // ── Toast state ──
+  const [toast, setToast] = useState(null); // { mensaje, tipo }
+
+  const mostrarToast = (mensaje, tipo = 'exito') => {
+    setToast({ mensaje, tipo });
+  };
 
   const handleSearchChange = (e) => {
     const value = e.target.value;
@@ -41,18 +72,16 @@ const Ventas = () => {
 
   const confirmarCancelacion = async () => {
     if (!ventaAConfirmar) return;
-
     const { id, numero_venta } = ventaAConfirmar;
+    setVentaAConfirmar(null);
     setShowModalConfirm(false);
 
     const resultado = await cancelarVenta(id);
     if (resultado.success) {
-      setMensajeModal(`Venta ${numero_venta} cancelada exitosamente`);
-      setMostrarMensaje(true);
       cargarVentas();
+      mostrarToast(`Venta ${numero_venta} cancelada exitosamente`, 'exito');
     } else {
-      setMensajeModal("Error al cancelar la venta");
-      setMostrarMensaje(true);
+      mostrarToast('Error al cancelar la venta', 'error');
     }
   };
 
@@ -76,35 +105,22 @@ const Ventas = () => {
     });
   };
 
-  // Ordenar ventas por fecha descendente (más reciente primero)
-  const ventasFiltradas = [...ventas].sort((a, b) => {
-    return new Date(b.fecha) - new Date(a.fecha);
-  });
+  const ventasFiltradas = [...ventas].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
-  // Calcular estadísticas anuales
   const calcularEstadisticasAnuales = () => {
     const ahora = new Date();
     const inicioAnio = new Date(ahora.getFullYear(), 0, 1);
-
     const ventasDelAnio = ventas.filter(venta => {
       const fechaVenta = new Date(venta.fecha);
       return fechaVenta >= inicioAnio && venta.estado !== 'Cancelado';
     });
-
     const total_ventas = ventasDelAnio.length;
-    // ✅ CORREGIDO: Sumar solo lo que se pagó (monto_pagado), no el total
     const total_vendido = ventasDelAnio.reduce((sum, v) => sum + (v.monto_pagado || 0), 0);
     const total_pendiente = ventasDelAnio
       .filter(v => v.estado === 'Pendiente')
       .reduce((sum, v) => sum + (v.total - v.monto_pagado), 0);
     const total_costos_adicionales = ventasDelAnio.reduce((sum, v) => sum + (v.costo_bolsa || 0) + (v.costo_etiqueta || 0), 0);
-
-    return {
-      total_ventas,
-      total_vendido,
-      total_pendiente,
-      total_costos_adicionales
-    };
+    return { total_ventas, total_vendido, total_pendiente, total_costos_adicionales };
   };
 
   const estadisticasAnuales = calcularEstadisticasAnuales();
@@ -112,7 +128,16 @@ const Ventas = () => {
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
-      {/* Header de Ventas */}
+      {/* Toast automático */}
+      {toast && (
+        <Toast
+          mensaje={toast.mensaje}
+          tipo={toast.tipo}
+          onDone={() => setToast(null)}
+        />
+      )}
+
+      {/* Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold text-gray-800 mb-2">Gestión de Ventas</h1>
         <p className="text-gray-600">Registra y administra las ventas de tu negocio.</p>
@@ -125,9 +150,7 @@ const Ventas = () => {
             <button
               onClick={() => setVistaAnual(false)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
-                !vistaAnual
-                  ? 'bg-teal-500 text-white'
-                  : 'text-gray-600 hover:text-gray-800'
+                !vistaAnual ? 'bg-teal-500 text-white' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Mes
@@ -135,9 +158,7 @@ const Ventas = () => {
             <button
               onClick={() => setVistaAnual(true)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
-                vistaAnual
-                  ? 'bg-teal-500 text-white'
-                  : 'text-gray-600 hover:text-gray-800'
+                vistaAnual ? 'bg-teal-500 text-white' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Año
@@ -146,43 +167,24 @@ const Ventas = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Total Ventas */}
           <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg p-4 border border-cyan-200">
             <p className="text-xs text-cyan-600 font-medium mb-1">Cantidad</p>
-            <h3 className="text-2xl font-bold text-gray-800 mb-1">
-              {estadisticasMostrar?.total_ventas || 0}
-            </h3>
-            <p className="text-xs text-cyan-600">
-              {vistaAnual ? 'ventas este año' : 'ventas este mes'}
-            </p>
+            <h3 className="text-2xl font-bold text-gray-800 mb-1">{estadisticasMostrar?.total_ventas || 0}</h3>
+            <p className="text-xs text-cyan-600">{vistaAnual ? 'ventas este año' : 'ventas este mes'}</p>
           </div>
-
-          {/* Total Vendido */}
           <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
             <p className="text-xs text-green-600 font-medium mb-1">Total Vendido</p>
-            <h3 className="text-2xl font-bold text-gray-800 mb-1">
-              ${estadisticasMostrar?.total_vendido?.toFixed(2) || '0.00'}
-            </h3>
-            <p className="text-xs text-green-600">
-              {vistaAnual ? 'ingresos anuales' : 'ingresos mensuales'}
-            </p>
+            <h3 className="text-2xl font-bold text-gray-800 mb-1">${estadisticasMostrar?.total_vendido?.toFixed(2) || '0.00'}</h3>
+            <p className="text-xs text-green-600">{vistaAnual ? 'ingresos anuales' : 'ingresos mensuales'}</p>
           </div>
-
-          {/* Pendiente */}
           <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200">
             <p className="text-xs text-red-600 font-medium mb-1">Pendiente</p>
-            <h3 className="text-2xl font-bold text-gray-800 mb-1">
-              ${estadisticasMostrar?.total_pendiente?.toFixed(2) || '0.00'}
-            </h3>
+            <h3 className="text-2xl font-bold text-gray-800 mb-1">${estadisticasMostrar?.total_pendiente?.toFixed(2) || '0.00'}</h3>
             <p className="text-xs text-red-600">por cobrar</p>
           </div>
-
-          {/* Costos Adicionales */}
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
             <p className="text-xs text-blue-600 font-medium mb-1">Costos Extras</p>
-            <h3 className="text-2xl font-bold text-gray-800 mb-1">
-              ${estadisticasMostrar?.total_costos_adicionales?.toFixed(2) || '0.00'}
-            </h3>
+            <h3 className="text-2xl font-bold text-gray-800 mb-1">${estadisticasMostrar?.total_costos_adicionales?.toFixed(2) || '0.00'}</h3>
             <p className="text-xs text-blue-600">bolsas, etiquetas</p>
           </div>
         </div>
@@ -219,7 +221,7 @@ const Ventas = () => {
         </div>
       </div>
 
-      {/* Tabla de Ventas con scroll */}
+      {/* Tabla */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -237,21 +239,16 @@ const Ventas = () => {
           </table>
         </div>
 
-        {/* Contenedor con scroll para el tbody */}
         <div className="overflow-auto" style={{ maxHeight: '500px' }}>
           <table className="w-full">
             <tbody className="divide-y divide-gray-200">
               {loading && ventasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                    Cargando ventas...
-                  </td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">Cargando ventas...</td>
                 </tr>
               ) : ventasFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                    No hay ventas registradas
-                  </td>
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No hay ventas registradas</td>
                 </tr>
               ) : (
                 ventasFiltradas.map((venta) => (
@@ -259,12 +256,8 @@ const Ventas = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-teal-600 font-semibold">{venta.numero_venta}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700">
-                      {venta.cliente_nombre}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-600">
-                      {venta.total_productos} producto(s)
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700">{venta.cliente_nombre}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-600">{venta.total_productos} producto(s)</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-gray-900 font-semibold">${venta.total.toFixed(2)}</div>
                       {venta.estado === 'Pendiente' && (
@@ -278,9 +271,7 @@ const Ventas = () => {
                         {venta.estado}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {formatDate(venta.fecha)}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(venta.fecha)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <button
@@ -309,6 +300,7 @@ const Ventas = () => {
         </div>
       </div>
 
+      {/* Modal Confirmación Cancelar */}
       {showModalConfirm && ventaAConfirmar && (
         <ModalConfirmacion
           titulo="Cancelar Venta"
@@ -329,13 +321,6 @@ const Ventas = () => {
             setShowModalAgregar(false);
             cargarVentas();
           }}
-        />
-      )}
-
-      {mostrarMensaje && (
-        <ModalMensaje
-          mensaje={mensajeModal}
-          onClose={() => setMostrarMensaje(false)}
         />
       )}
 

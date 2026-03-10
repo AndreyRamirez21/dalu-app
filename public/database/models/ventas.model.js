@@ -252,7 +252,13 @@ function obtenerVentas(callback) {
           vp.cantidad,
           vp.precio_unitario,
           p.nombre as producto_nombre,
-          v.talla as talla
+          v.talla as talla,
+          p.costo_base,
+          COALESCE((
+            SELECT SUM(cap.monto)
+            FROM costos_adicionales_producto cap
+            WHERE cap.producto_id = p.id
+          ), 0) as costos_extras
         FROM venta_productos vp
         LEFT JOIN productos p ON vp.producto_id = p.id
         LEFT JOIN variantes_producto v ON vp.variante_id = v.id
@@ -269,6 +275,7 @@ function obtenerVentas(callback) {
             `SELECT
               vma.cantidad,
               vma.precio_unitario,
+              vma.ganancia_tienda,    -- 👈 AGREGAR ESTO
               pma.nombre as producto_nombre,
               vma2.talla as talla,
               ma.nombre as marca
@@ -285,22 +292,24 @@ function obtenerVentas(callback) {
               }
 
               // Combinar todos los productos
-              const todosProductos = [
-                ...productos.map(p => ({
-                  nombre: p.producto_nombre,
-                  talla: p.talla,
-                  cantidad: p.cantidad,
-                  precio: p.precio_unitario,
-                  tipo: 'Propio'
-                })),
-                ...productosMarcas.map(p => ({
-                  nombre: p.producto_nombre,
-                  talla: p.talla,
-                  cantidad: p.cantidad,
-                  precio: p.precio_unitario,
-                  tipo: `Marca: ${p.marca}`
-                }))
-              ];
+            const todosProductos = [
+              ...productos.map(p => ({
+                nombre: p.producto_nombre,
+                talla: p.talla,
+                cantidad: p.cantidad,
+                precio: p.precio_unitario,
+                costo_unitario: (p.costo_base || 0) + (p.costos_extras || 0), // 👈 NUEVO
+                tipo: 'Propio'
+              })),
+              ...productosMarcas.map(p => ({
+                nombre: p.producto_nombre,
+                talla: p.talla,
+                cantidad: p.cantidad,
+                precio: p.precio_unitario,
+                ganancia_tienda: p.ganancia_tienda || 0, // 👈 ya existe en la BD
+                tipo: `Marca: ${p.marca}`
+              }))
+            ];
 
               ventasConDetalles.push({
                 ...venta,
@@ -414,7 +423,7 @@ function obtenerEstadisticasVentas(callback) {
   db.get(
     `SELECT
       COUNT(*) as total_ventas,
-      SUM(v.monto_pagado) as total_vendido,
+        SUM(v.monto_pagado - v.cambio) as total_vendido,
       SUM(CASE WHEN v.estado = 'Pendiente' THEN (v.total - v.monto_pagado) ELSE 0 END) as total_pendiente
     FROM ventas v
     WHERE v.estado != 'Cancelado'

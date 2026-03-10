@@ -250,7 +250,7 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   const [productosSeleccionados, setProductosSeleccionados] = useState([]);
   const [costosAdicionales, setCostosAdicionales] = useState([]);
   const [costoAdicional, setCostoAdicional] = useState('');
-
+  const [busquedaProductoMarca, setBusquedaProductoMarca] = useState('');
   // Cliente
   const [buscarCliente, setBuscarCliente] = useState('');
   const [clientesEncontrados, setClientesEncontrados] = useState([]);
@@ -296,6 +296,8 @@ const cargarMarcasAliadas = async () => {
 
 const handleSeleccionarMarca = async (marca) => {
   setMarcaSeleccionada(marca);
+    setBusquedaProductoMarca(''); // ← agregar esta línea
+
   try {
     const productos = await ipcRenderer.invoke('obtener-productos-marca-aliada', marca.id);
     setProductosMarcaDisponibles(productos);
@@ -1336,91 +1338,131 @@ const AlertaFidelidad = () => {
                                     </div>
                                   ) : (
                                     <div>
-                                      {/* Header de marca seleccionada */}
-                                      <div className="flex items-center justify-between bg-purple-50 p-3 rounded-lg border border-purple-200 mb-4">
-                                        <div className="flex items-center space-x-3">
-                                          <Store size={20} className="text-purple-600" />
-                                          <div>
-                                            <div className="font-bold text-purple-900">{marcaSeleccionada.nombre}</div>
-                                            <div className="text-sm text-purple-600">{productosMarcaDisponibles.length} productos disponibles</div>
-                                          </div>
-                                        </div>
-                                        <button
-                                          onClick={() => {
-                                            setMarcaSeleccionada(null);
-                                            setProductosMarcaDisponibles([]);
-                                          }}
-                                          className="text-purple-600 hover:text-purple-700 text-sm font-medium"
-                                        >
-                                          Cambiar marca
-                                        </button>
-                                      </div>
-
-                                      {/* Lista de productos de la marca */}
-                                      <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
-                                        {productosMarcaDisponibles.map((producto) => (
-                                          <div key={producto.id} className="border rounded-lg p-4 bg-white hover:bg-gray-50">
-                                            <div className="flex items-start space-x-4">
-                                              {/* Imagen del producto */}
-                                              <ImagenProducto
-                                                rutaImagen={producto.imagen}
-                                                nombreProducto={producto.nombre}
-                                                onClickImagen={(img) => {
-                                                  setImagenAmpliada(img);
-                                                  setNombreProductoAmpliado(producto.nombre);
-                                                }}
-                                              />
-
-                                              {/* Información del producto */}
-                                              <div className="flex-1">
-                                                <div className="font-bold text-lg text-gray-800">{producto.nombre}</div>
-                                                <div className="text-sm text-purple-600">Ref: {producto.referencia || 'N/A'}</div>
-                                                <div className="text-sm text-gray-600 mt-1">Precio: ${producto.precio_venta_base}</div>
-
-                                                {/* Variantes/Tallas */}
-                                                {producto.variantes && producto.variantes.length > 0 ? (
-                                                  <div className="mt-3">
-                                                    <p className="text-sm font-medium text-gray-700 mb-2">Selecciona una talla:</p>
-                                                    <div className="flex flex-wrap gap-2">
-                                                      {producto.variantes.map((variante) => (
-                                                        <button
-                                                          key={variante.id}
-                                                          onClick={() => agregarProductoMarca(producto, variante)}
-                                                          disabled={variante.cantidad <= 0}
-                                                          className={`px-3 py-2 rounded-lg border font-medium transition ${
-                                                            variante.cantidad <= 0
-                                                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                                              : variante.cantidad < 5
-                                                                ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200'
-                                                                : 'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200'
-                                                          }`}
-                                                        >
-                                                          <div>
-                                                            <div className="font-bold">{variante.talla}</div>
-                                                            <div className="text-xs">Stock: {variante.cantidad}</div>
-                                                          </div>
-                                                        </button>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                ) : (
-                                                  <button
-                                                    onClick={() => agregarProductoMarca(producto, null)}
-                                                    className="mt-3 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium"
-                                                  >
-                                                    Agregar Producto
-                                                  </button>
-                                                )}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
+                            {/* Header de marca seleccionada */}
+                            <div className="flex items-center justify-between bg-purple-50 p-3 rounded-lg border border-purple-200 mb-4">
+                              <div className="flex items-center space-x-3">
+                                <Store size={20} className="text-purple-600" />
+                                <div>
+                                  <div className="font-bold text-purple-900">{marcaSeleccionada.nombre}</div>
+                                  <div className="text-sm text-purple-600">{productosMarcaDisponibles.length} productos disponibles</div>
                                 </div>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setMarcaSeleccionada(null);
+                                  setProductosMarcaDisponibles([]);
+                                  setBusquedaProductoMarca('');
+                                }}
+                                className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                              >
+                                Cambiar marca
+                              </button>
+                            </div>
+
+                            {/* 🔍 BUSCADOR DE PRODUCTOS */}
+                            <div className="relative mb-3">
+                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                              <input
+                                type="text"
+                                value={busquedaProductoMarca}
+                                onChange={(e) => setBusquedaProductoMarca(e.target.value)}
+                                className="w-full pl-10 pr-10 py-2 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 text-sm"
+                                placeholder="Buscar por nombre o referencia..."
+                              />
+                              {busquedaProductoMarca && (
+                                <button
+                                  onClick={() => setBusquedaProductoMarca('')}
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                  <X size={16} />
+                                </button>
                               )}
                             </div>
+
+                            {/* Lista de productos de la marca */}
+                            <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+                              {(() => {
+                                const productosFiltrados = productosMarcaDisponibles.filter(producto => {
+                                  const termino = busquedaProductoMarca.toLowerCase();
+                                  return (
+                                    producto.nombre.toLowerCase().includes(termino) ||
+                                    (producto.referencia && producto.referencia.toLowerCase().includes(termino))
+                                  );
+                                });
+
+                                if (productosFiltrados.length === 0 && busquedaProductoMarca) {
+                                  return (
+                                    <div className="text-center py-8 text-gray-500">
+                                      <Search size={32} className="mx-auto mb-2 text-gray-300" />
+                                      <p className="text-sm">No se encontraron productos con "<strong>{busquedaProductoMarca}</strong>"</p>
+                                    </div>
+                                  );
+                                }
+
+                                return productosFiltrados.map((producto) => (
+                                  <div key={producto.id} className="border rounded-lg p-4 bg-white hover:bg-gray-50">
+                                    <div className="flex items-start space-x-4">
+                                      {/* Imagen del producto */}
+                                      <ImagenProducto
+                                        rutaImagen={producto.imagen}
+                                        nombreProducto={producto.nombre}
+                                        onClickImagen={(img) => {
+                                          setImagenAmpliada(img);
+                                          setNombreProductoAmpliado(producto.nombre);
+                                        }}
+                                      />
+
+                                      {/* Información del producto */}
+                                      <div className="flex-1">
+                                        <div className="font-bold text-lg text-gray-800">{producto.nombre}</div>
+                                        <div className="text-sm text-purple-600">Ref: {producto.referencia || 'N/A'}</div>
+                                        <div className="text-sm text-gray-600 mt-1">Precio: ${producto.precio_venta_base}</div>
+
+                                        {/* Variantes/Tallas */}
+                                        {producto.variantes && producto.variantes.length > 0 ? (
+                                          <div className="mt-3">
+                                            <p className="text-sm font-medium text-gray-700 mb-2">Selecciona una talla:</p>
+                                            <div className="flex flex-wrap gap-2">
+                                              {producto.variantes.map((variante) => (
+                                                <button
+                                                  key={variante.id}
+                                                  onClick={() => agregarProductoMarca(producto, variante)}
+                                                  disabled={variante.cantidad <= 0}
+                                                  className={`px-3 py-2 rounded-lg border font-medium transition ${
+                                                    variante.cantidad <= 0
+                                                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                      : variante.cantidad < 5
+                                                        ? 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200'
+                                                        : 'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200'
+                                                  }`}
+                                                >
+                                                  <div>
+                                                    <div className="font-bold">{variante.talla}</div>
+                                                    <div className="text-xs">Stock: {variante.cantidad}</div>
+                                                  </div>
+                                                </button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => agregarProductoMarca(producto, null)}
+                                            className="mt-3 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium"
+                                          >
+                                            Agregar Producto
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+                                      </div>
+                               )}
+                           </div>
+                          )}
+                      </div>
 
                                 {/* Costos Adicionales */}
                                 <div>
@@ -1556,7 +1598,7 @@ const AlertaFidelidad = () => {
                       <input
                         type="text"
                         value={datosCliente.nombre}
-                        onChange={(e) => setDatosCliente({ ...datosCliente, nombre: e.target.value })}
+                        onChange={(e) => setDatosCliente({ ...datosCliente, id: null, nombre: e.target.value })}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                         placeholder="Nombre del cliente"
                       />
@@ -1570,7 +1612,7 @@ const AlertaFidelidad = () => {
                       <input
                         type="text"
                         value={datosCliente.cedula}
-                        onChange={(e) => setDatosCliente({ ...datosCliente, cedula: e.target.value })}
+                        onChange={(e) => setDatosCliente({ ...datosCliente, id: null, cedula: e.target.value })}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                         placeholder="Número de cédula"
                       />
@@ -1584,7 +1626,7 @@ const AlertaFidelidad = () => {
                       <input
                         type="tel"
                         value={datosCliente.celular}
-                        onChange={(e) => setDatosCliente({ ...datosCliente, celular: e.target.value })}
+                        onChange={(e) => setDatosCliente({ ...datosCliente, id: null, celular: e.target.value })}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                         placeholder="Número de celular"
                       />
@@ -1598,7 +1640,7 @@ const AlertaFidelidad = () => {
                       <input
                         type="email"
                         value={datosCliente.correo}
-                        onChange={(e) => setDatosCliente({ ...datosCliente, correo: e.target.value })}
+                        onChange={(e) => setDatosCliente({ ...datosCliente, id: null, correo: e.target.value })}
                         className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                         placeholder="correo@ejemplo.com"
                       />

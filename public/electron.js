@@ -1032,32 +1032,35 @@ ipcMain.handle('obtener-estadisticas-cliente', async (event, clienteId) => {
 // Eliminar cliente
 ipcMain.handle('eliminar-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
-    // Primero verificar si tiene ventas asociadas
-    db.db.get('SELECT COUNT(*) as count FROM ventas WHERE cliente_id = ?', [clienteId], (err, row) => {
-      if (err) {
-        reject(err);
-        return;
-      }
+    // Solo bloquear si tiene ventas ACTIVAS (no canceladas)
+    db.db.get(
+      "SELECT COUNT(*) as count FROM ventas WHERE cliente_id = ? AND estado != 'Cancelado'",
+      [clienteId],
+      (err, row) => {
+        if (err) {
+          reject(err);
+          return;
+        }
 
-      if (row.count > 0) {
-        resolve({
-          success: false,
-          error: 'No se puede eliminar un cliente con ventas asociadas'
-        });
-      } else {
-        db.db.run('DELETE FROM clientes WHERE id = ?', [clienteId], function (err) {
-          if (err) {
-            console.error('Error al eliminar cliente:', err);
-            reject(err);
-          } else {
-            resolve({ success: true });
-          }
-        });
+        if (row.count > 0) {
+          resolve({
+            success: false,
+            error: 'No se puede eliminar un cliente con ventas asociadas'
+          });
+        } else {
+          db.db.run('DELETE FROM clientes WHERE id = ?', [clienteId], function (err) {
+            if (err) {
+              console.error('Error al eliminar cliente:', err);
+              reject(err);
+            } else {
+              resolve({ success: true });
+            }
+          });
+        }
       }
-    });
+    );
   });
 });
-
 // ==================== HANDLERS DE FIDELIDAD ====================
 
 // Verificar estado de fidelidad del cliente
@@ -1456,42 +1459,76 @@ function resolverCliente(datosVenta, callback) {
 function guardarClienteNuevo(datosCliente, callback) {
   const { nombre, cedula, correo, celular } = datosCliente;
 
-  console.log('🔵 Intentando guardar cliente:', { nombre, cedula, correo, celular });
-
+  // 1. Si tiene cédula, buscar por cédula primero (ya existía)
   if (cedula) {
     db.db.get(
       'SELECT id FROM clientes WHERE cedula = ?',
       [cedula],
       (err, row) => {
-        if (err) {
-          console.error('❌ Error al buscar cliente por cédula:', err);
-          return callback(err);
+        if (err) return callback(err);
+        if (row) {
+          // Actualizar datos del cliente existente con la nueva info
+          db.db.run(
+            `UPDATE clientes SET
+              nombre = ?,
+              correo = COALESCE(NULLIF(?, ''), correo),
+              celular = COALESCE(NULLIF(?, ''), celular)
+             WHERE id = ?`,
+            [nombre, correo, celular, row.id],
+            (err) => {
+              if (err) return callback(err);
+              callback(null, { id: row.id, existente: true });
+            }
+          );
+        } else {
+          buscarPorNombreOInsertar();
         }
+      }
+    );
+  } else {
+    buscarPorNombreOInsertar();
+  }
+
+  // 2. NUEVO: Buscar por nombre similar antes de insertar
+  function buscarPorNombreOInsertar() {
+    const nombreNormalizado = nombre.trim().toUpperCase();
+    db.db.get(
+      `SELECT id FROM clientes
+       WHERE UPPER(TRIM(nombre)) = ?`,
+      [nombreNormalizado],
+      (err, row) => {
+        if (err) return callback(err);
 
         if (row) {
-          console.log('✅ Cliente existente encontrado:', row.id);
-          callback(null, { id: row.id, existente: true });
+          // Cliente con mismo nombre existe → actualizar sus datos si hay info nueva
+          db.db.run(
+            `UPDATE clientes SET
+              cedula = COALESCE(NULLIF(?, ''), cedula),
+              correo = COALESCE(NULLIF(?, ''), correo),
+              celular = COALESCE(NULLIF(?, ''), celular)
+             WHERE id = ?`,
+            [cedula, correo, celular, row.id],
+            (err) => {
+              if (err) return callback(err);
+              console.log(`✅ Cliente existente encontrado por nombre: ${nombre}, ID: ${row.id}`);
+              callback(null, { id: row.id, existente: true });
+            }
+          );
         } else {
           insertarCliente();
         }
       }
     );
-  } else {
-    insertarCliente();
   }
 
   function insertarCliente() {
-    console.log('📝 Insertando nuevo cliente en BD...');
     db.db.run(
       `INSERT INTO clientes (nombre, cedula, correo, celular)
        VALUES (?, ?, ?, ?)`,
       [nombre, cedula || null, correo || null, celular || null],
       function (err) {
-        if (err) {
-          console.error('❌ Error al insertar cliente:', err);
-          return callback(err);
-        }
-        console.log('✅ Cliente creado con ID:', this.lastID);
+        if (err) return callback(err);
+        console.log('✅ Cliente nuevo creado con ID:', this.lastID);
         callback(null, { id: this.lastID, nuevo: true });
       }
     );
@@ -1575,34 +1612,9 @@ async function actualizarStock(producto) {
   });
 }
 
-async function guardarCostoAdicional(ventaId, costo) {
-  return new Promise((resolve, reject) => {
-    const query = `
-      INSERT INTO costos_adicionales (venta_id, concepto, monto)
-      VALUES (?, ?, ?)
-    `;
 
-    db.db.run(query, [ventaId, costo.concepto, costo.monto], (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
 
-async function crearDeudaCliente(ventaId, clienteId, clienteNombre, montoTotal, montoPagado) {
-  return new Promise((resolve, reject) => {
-    const montoPendiente = montoTotal - montoPagado;
-    const query = `
-      INSERT INTO deudas_clientes (venta_id, cliente_id, cliente_nombre, monto_total, monto_pagado, monto_pendiente, estado)
-      VALUES (?, ?, ?, ?, ?, ?, 'Pendiente')
-    `;
 
-    db.db.run(query, [ventaId, clienteId, clienteNombre, montoTotal, montoPagado, montoPendiente], (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-}
 
 // Obtener todas las ventas
 ipcMain.handle('obtener-ventas', async () => {
@@ -1635,7 +1647,7 @@ ipcMain.handle('obtener-venta-por-id', async (event, id) => {
 
       console.log('📦 Venta encontrada:', venta);
 
-      // Obtener productos propios
+      // Obtener productos propios ← AGREGADO: costos_adicionales_producto y costo_unitario_total
       db.db.all(
         `SELECT
           vp.id,
@@ -1646,9 +1658,22 @@ ipcMain.handle('obtener-venta-por-id', async (event, id) => {
           vp.precio_unitario,
           p.nombre as producto_nombre,
           p.referencia as producto_referencia,
+          p.costo_base,
+          COALESCE(
+            (SELECT SUM(cap.monto)
+             FROM costos_adicionales_producto cap
+             WHERE cap.producto_id = p.id),
+            0
+          ) as costos_adicionales_producto,
+          (p.costo_base + COALESCE(
+            (SELECT SUM(cap.monto)
+             FROM costos_adicionales_producto cap
+             WHERE cap.producto_id = p.id),
+            0
+          )) as costo_unitario_total,
           v.talla as talla,
           (vp.cantidad * vp.precio_unitario) as subtotal,
-          'propio' as tipo_producto
+          'Propio' as tipo
         FROM venta_productos vp
         LEFT JOIN productos p ON vp.producto_id = p.id
         LEFT JOIN variantes_producto v ON vp.variante_id = v.id
@@ -1712,7 +1737,27 @@ ipcMain.handle('obtener-venta-por-id', async (event, id) => {
                     ? costosAdicionales.reduce((sum, costo) => sum + Number(costo.monto || 0), 0)
                     : 0;
 
-                  // Combinar todos los productos
+                  // ── Construir items unificados (igual que usa el Excel) ──
+                  const itemsPropios = (productos || []).map(p => ({
+                    nombre: p.producto_nombre,
+                    talla: p.talla,
+                    cantidad: p.cantidad,
+                    precio: p.precio_unitario,
+                    costo_unitario: p.costo_unitario_total, // costo_base + costos_adicionales_producto
+                    tipo: 'Propio',
+                    subtotal: p.subtotal
+                  }));
+
+                  const itemsMarcas = (productosMarca || []).map(p => ({
+                    nombre: p.producto_nombre,
+                    talla: p.talla,
+                    cantidad: p.cantidad,
+                    precio: p.precio_unitario,
+                    ganancia_tienda: p.ganancia_tienda,
+                    tipo: p.marca_nombre || 'Marca Aliada',
+                    subtotal: p.subtotal
+                  }));
+
                   const todosLosProductos = [
                     ...(productos || []),
                     ...(productosMarca || [])
@@ -1724,7 +1769,8 @@ ipcMain.handle('obtener-venta-por-id', async (event, id) => {
                     productos_propios: productos || [],
                     productos_marca_aliada: productosMarca || [],
                     costos_adicionales: costosAdicionales || [],
-                    total_costos_adicionales: totalCostosAdicionales
+                    total_costos_adicionales: totalCostosAdicionales,
+                    items: [...itemsPropios, ...itemsMarcas] // ← para el cálculo de ganancia
                   };
 
                   console.log('✅ Resultado final:', resultado);
@@ -1940,39 +1986,78 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
               finalizarCancelacion();
             }
 
-            function finalizarCancelacion() {
-              // 5. Marcar la venta como cancelada
-              db.db.run(
-                "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
-                [ventaId],
-                (err) => {
+        function finalizarCancelacion() {
+          // 5a. Cancelar la deuda asociada a esta venta (si existe)
+          db.db.run(
+            `UPDATE deudas_clientes
+             SET estado = 'Cancelado', fecha_actualizado = datetime('now', 'localtime')
+             WHERE venta_id = ? AND estado = 'Pendiente'`,
+            [ventaId],
+            (err) => {
+              if (err) {
+                console.error('❌ Error al cancelar deuda asociada:', err);
+                // Continuamos aunque falle esto
+              } else {
+                console.log(`✅ Deuda asociada a venta ${ventaId} cancelada`);
+              }
+            }
+          );
+
+          // 5b. Marcar la venta como cancelada
+          db.db.run(
+            "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
+            [ventaId],
+            (err) => {
+              if (err) {
+                db.db.run('ROLLBACK');
+                console.error('❌ Error al actualizar estado de venta:', err);
+                reject(err);
+              } else {
+                db.db.run('COMMIT', (err) => {
                   if (err) {
-                    db.run('ROLLBACK');
-                    console.error('❌ Error al actualizar estado de venta:', err);
+                    console.error('❌ Error al hacer commit:', err);
                     reject(err);
                   } else {
-                    db.db.run('COMMIT', (err) => {
-                      if (err) {
-                        console.error('❌ Error al hacer commit:', err);
-                        reject(err);
-                      } else {
-                        console.log(`✅ Venta ${ventaId} cancelada correctamente`);
-                        if (venta.cliente_id) {
-                          console.log(`✅ Estadísticas del cliente ${venta.cliente_id} actualizadas`);
-                        }
-                        resolve({ success: true });
-                      }
-                    });
+                    console.log(`✅ Venta ${ventaId} cancelada correctamente`);
+                    if (venta.cliente_id) {
+                      console.log(`✅ Estadísticas del cliente ${venta.cliente_id} actualizadas`);
+                    }
+                    resolve({ success: true });
                   }
-                }
-              );
+                });
+              }
             }
+          );
+        }
           }
         });
       });
     });
   });
 });
+
+
+// ==================== IPC CLIENTES ====================
+
+// Actualizar nombre del cliente en una venta específica
+ipcMain.handle('actualizar-nombre-cliente-venta', async (event, ventaId, nuevoNombre) => {
+  return new Promise((resolve, reject) => {
+    db.db.run(
+      'UPDATE ventas SET cliente_nombre = ? WHERE id = ?',
+      [nuevoNombre, ventaId],
+      function (err) {
+        if (err) {
+          console.error('Error al actualizar nombre en venta:', err);
+          reject(err);
+        } else {
+          console.log(`✅ Nombre actualizado en venta ${ventaId}: ${nuevoNombre}`);
+          resolve({ success: true });
+        }
+      }
+    );
+  });
+});
+
 
 // ==================== IPC HANDLERS PARA DEUDAS DE CLIENTES ====================
 
@@ -2087,7 +2172,7 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
 
       // 1. Ventas del mes actual
       db.db.get(`
-        SELECT SUM(monto_pagado) as total
+        SELECT SUM(monto_pagado - cambio) as total
         FROM ventas
         WHERE estado != 'Cancelado'
         AND date(fecha) >= date('now', 'start of month')
@@ -2098,10 +2183,10 @@ ipcMain.handle('obtener-dashboard-stats', async () => {
 
         // 2. Ventas del mes anterior
         db.db.get(`
-          SELECT SUM(monto_pagado) as total
-          FROM ventas
-          WHERE estado != 'Cancelado'
-          AND date(fecha) >= date('now', 'start of month', '-1 month')
+            SELECT SUM(monto_pagado - cambio) as total
+            FROM ventas
+            WHERE estado != 'Cancelado'
+            AND date(fecha) >= date('now', 'start of month')
           AND date(fecha) < date('now', 'start of month')
         `, [], (err, row) => {
           if (!err && row) {
@@ -2416,7 +2501,7 @@ ipcMain.handle('obtener-datos-grafica', async () => {
       promesas.push(
         new Promise((resolveVenta) => {
           db.db.get(`
-            SELECT COALESCE(SUM(monto_pagado), 0) as total
+            SELECT COALESCE(SUM(monto_pagado - cambio), 0) as total
             FROM ventas
             WHERE estado != 'Cancelado'
             AND date(fecha) BETWEEN date(?) AND date(?)
@@ -2711,7 +2796,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
 
       // 1. Ventas TOTALES (solo monto pagado)
       db.db.get(`
-        SELECT SUM(monto_pagado) as total
+        SELECT SUM(monto_pagado - cambio) as total
         FROM ventas
         WHERE estado != 'Cancelado'
         AND monto_pagado > 0
@@ -2723,11 +2808,11 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
 
         // 2. Ventas del período anterior
         db.db.get(`
-          SELECT SUM(monto_pagado) as total
-          FROM ventas
-          WHERE estado != 'Cancelado'
-          AND monto_pagado > 0
-          AND date(fecha) BETWEEN date(?) AND date(?)
+            SELECT SUM(monto_pagado - cambio) as total
+            FROM ventas
+            WHERE estado != 'Cancelado'
+            AND monto_pagado > 0
+            AND date(fecha) BETWEEN date(?) AND date(?)
         `, [periodoAnterior.inicio, periodoAnterior.fin], (err, row) => {
           if (!err && row) {
             estadisticas.ventasMesAnterior = row.total || 0;
@@ -2736,7 +2821,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
           // 3. Ventas PROPIAS (PROPORCIONAL al pago)
           db.db.get(`
             SELECT COALESCE(
-              SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)),
+            SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)),
               0
             ) as total
             FROM venta_productos vp
@@ -2752,7 +2837,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
 
             // 4. Ventas MARCAS ALIADAS (monto total pagado de ventas con marcas)
             db.db.get(`
-              SELECT COALESCE(SUM(DISTINCT v.monto_pagado), 0) as total
+              SELECT COALESCE(SUM(DISTINCT (v.monto_pagado - v.cambio)), 0) as total
               FROM ventas v
               INNER JOIN ventas_marca_aliada vma ON vma.venta_id = v.id
               WHERE v.estado != 'Cancelado'
@@ -2766,7 +2851,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
               // 5. Tu INGRESO de marcas aliadas (PROPORCIONAL al pago)
               db.db.get(`
                 SELECT COALESCE(
-                  SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)),
+                  SUM(vma.ganancia_tienda * ((v.monto_pagado - v.cambio) / v.total)),
                   0
                 ) as total
                 FROM ventas_marca_aliada vma
@@ -2825,7 +2910,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                                  WHERE cap.producto_id = p.id),
                                 0
                               )
-                            ) * (v.monto_pagado / v.total)
+                            ) * ((v.monto_pagado - v.cambio) / v.total)
                           ),
                           0
                         ) as total
@@ -2844,7 +2929,7 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
                         // 10. Costos adicionales (PROPORCIONAL al pago)
                         db.db.get(`
                           SELECT COALESCE(
-                            SUM(ca.monto * (v.monto_pagado / v.total)),
+                            SUM(ca.monto * ((v.monto_pagado - v.cambio) / v.total)),
                             0
                           ) as total
                           FROM costos_adicionales ca
@@ -2911,7 +2996,7 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
         new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(
-              SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)),
+            SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)),
               0
             ) as total
             FROM venta_productos vp
@@ -2931,7 +3016,8 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
       promesas.push(
         new Promise((resolve) => {
           db.db.get(`
-            SELECT COALESCE(SUM(DISTINCT v.monto_pagado), 0) as total
+            SELECT COALESCE(SUM(DISTINCT (v.monto_pagado - v.cambio)), 0) as total
+
             FROM ventas v
             INNER JOIN ventas_marca_aliada vma ON vma.venta_id = v.id
             WHERE v.estado != 'Cancelado'
@@ -2949,7 +3035,7 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
         new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(
-              SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)),
+SUM(vma.ganancia_tienda * ((v.monto_pagado - v.cambio) / v.total)),
               0
             ) as total
             FROM ventas_marca_aliada vma
@@ -2979,7 +3065,7 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
                      WHERE cap.producto_id = p.id),
                     0
                   )
-                ) * (v.monto_pagado / v.total)
+                ) * ((v.monto_pagado - v.cambio) / v.total)
               ),
               0
             ) as total
@@ -3002,7 +3088,7 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
         new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(
-              SUM(ca.monto * (v.monto_pagado / v.total)),
+              SUM(ca.monto * ((v.monto_pagado - v.cambio) / v.total),
               0
             ) as total
             FROM costos_adicionales ca
@@ -3061,8 +3147,8 @@ ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
         p.id,
         p.nombre,
         p.referencia as codigo,
-        SUM(vp.cantidad * (v.monto_pagado / v.total)) as cantidad,
-        SUM(vp.precio_unitario * vp.cantidad * (v.monto_pagado / v.total)) as total_ventas
+        SUM(vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as cantidad,
+        SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as total_ventas
       FROM venta_productos vp
       INNER JOIN productos p ON vp.producto_id = p.id
       INNER JOIN ventas v ON vp.venta_id = v.id
@@ -3543,9 +3629,9 @@ ipcMain.handle('obtener-estadisticas-marcas-aliadas', async () => {
     db.db.get(`
       SELECT
         COUNT(DISTINCT vma.venta_id) as total_ventas,
-        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_vendido,
-        SUM(vma.comision_marca * (v.monto_pagado / v.total)) as total_comision_marcas,
-        SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)) as total_ganancia_tienda
+SUM(vma.subtotal * ((v.monto_pagado - v.cambio) / v.total)) as total_vendido,
+SUM(vma.comision_marca * ((v.monto_pagado - v.cambio) / v.total)) as total_comision_marcas,
+SUM(vma.ganancia_tienda * ((v.monto_pagado - v.cambio) / v.total)) as total_ganancia_tienda
       FROM ventas_marca_aliada vma
       INNER JOIN ventas v ON vma.venta_id = v.id
       WHERE v.estado != 'Cancelado'
@@ -3573,10 +3659,10 @@ ipcMain.handle('obtener-estadisticas-marca', async (event, marcaId) => {
     db.db.get(`
       SELECT
         COUNT(DISTINCT vma.venta_id) as total_ventas,
-        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_vendido,
-        SUM(vma.comision_marca * (v.monto_pagado / v.total)) as total_comision_marca,
-        SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)) as total_ganancia_tienda,
-        SUM(vma.cantidad * (v.monto_pagado / v.total)) as total_unidades_vendidas
+SUM(vma.subtotal * ((v.monto_pagado - v.cambio) / v.total)) as total_vendido,
+SUM(vma.comision_marca * ((v.monto_pagado - v.cambio) / v.total)) as total_comision_marca,
+SUM(vma.ganancia_tienda * ((v.monto_pagado - v.cambio) / v.total)) as total_ganancia_tienda,
+SUM(vma.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as total_unidades_vendidas
       FROM ventas_marca_aliada vma
       INNER JOIN ventas v ON vma.venta_id = v.id
       WHERE vma.marca_aliada_id = ?
@@ -3614,7 +3700,7 @@ ipcMain.handle('obtener-ventas-marca', async (event, marcaId) => {
         v.monto_pagado,
         (v.total - v.monto_pagado) as saldo_pendiente,
         CASE
-          WHEN v.total > 0 THEN ROUND((v.monto_pagado * 100.0 / v.total), 2)
+          WHEN v.total > 0 THEN ROUND(((v.monto_pagado - v.cambio) * 100.0 / v.total), 2)
           ELSE 0
         END as porcentaje_pagado,
         GROUP_CONCAT(
@@ -3622,17 +3708,17 @@ ipcMain.handle('obtener-ventas-marca', async (event, marcaId) => {
         ) as productos,
         COALESCE(SUM(vma.subtotal), 0) as total_venta,
         CASE
-          WHEN v.total > 0 THEN COALESCE(SUM(vma.subtotal * (v.monto_pagado / v.total)), 0)
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.subtotal * ((v.monto_pagado - v.cambio) / v.total)), 0)
           ELSE 0
         END as total_venta_pagado,
         COALESCE(SUM(vma.comision_marca), 0) as comision_marca_total,
         CASE
-          WHEN v.total > 0 THEN COALESCE(SUM(vma.comision_marca * (v.monto_pagado / v.total)), 0)
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.comision_marca * ((v.monto_pagado - v.cambio) / v.total)), 0)
           ELSE 0
         END as comision_marca_pagado,
         COALESCE(SUM(vma.ganancia_tienda), 0) as ganancia_tienda_total,
         CASE
-          WHEN v.total > 0 THEN COALESCE(SUM(vma.ganancia_tienda * (v.monto_pagado / v.total)), 0)
+          WHEN v.total > 0 THEN COALESCE(SUM(vma.ganancia_tienda * ((v.monto_pagado - v.cambio) / v.total)), 0)
           ELSE 0
         END as ganancia_tienda_pagado
       FROM ventas_marca_aliada vma
@@ -3663,8 +3749,8 @@ ipcMain.handle('obtener-productos-mas-vendidos-marca', async (event, marcaId) =>
         pma.id,
         pma.nombre,
         pma.referencia,
-        SUM(vma.cantidad * (v.monto_pagado / v.total)) as total_vendido,
-        SUM(vma.subtotal * (v.monto_pagado / v.total)) as total_ingresos,
+        SUM(vma.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as total_vendido,
+        SUM(vma.subtotal * ((v.monto_pagado - v.cambio) / v.total)) as total_ingresos,
         COUNT(DISTINCT vma.venta_id) as num_ventas
       FROM ventas_marca_aliada vma
       INNER JOIN productos_marca_aliada pma ON vma.producto_marca_id = pma.id

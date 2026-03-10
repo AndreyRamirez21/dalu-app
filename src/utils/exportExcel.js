@@ -132,23 +132,31 @@ export function exportarInventarioExcel(productos) {
 
 // ✅ EXPORTAR VENTAS A EXCEL - VERSIÓN CORREGIDA
 export function exportarVentasExcel(ventas) {
-  const datosExcel = ventas.map((venta) => {
+  const ventasOrdenadas = [...ventas].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+
+const datosExcel = ventasOrdenadas.map((venta) => {
     const montoPendiente = venta.total - venta.monto_pagado;
 
     let productosDetalle = '';
     let subtotalPropios = 0;
     let subtotalMarcas = 0;
+    let gananciaBrutaVenta = 0; // 👈 NUEVO
 
     if (venta.items && venta.items.length > 0) {
       productosDetalle = venta.items.map(item => {
         const tallaStr = item.talla ? ` (${item.talla})` : '';
         const tipoStr = item.tipo !== 'Propio' ? ` - ${item.tipo}` : '';
-
         const subtotalItem = item.cantidad * item.precio;
+
         if (item.tipo === 'Propio') {
           subtotalPropios += subtotalItem;
+          // Ganancia = (precio - costo) * cantidad
+          const costoTotal = (item.costo_unitario || 0) * item.cantidad;
+          gananciaBrutaVenta += subtotalItem - costoTotal; // 👈 NUEVO
         } else {
           subtotalMarcas += subtotalItem;
+          gananciaBrutaVenta += (item.ganancia_tienda || 0) * item.cantidad; // 👈 NUEVO
         }
 
         return `${item.cantidad}x ${item.nombre}${tallaStr}${tipoStr}`;
@@ -162,11 +170,8 @@ export function exportarVentasExcel(ventas) {
     return {
       NumeroVenta: venta.numero_venta,
       Fecha: new Date(venta.fecha).toLocaleString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
       }),
       Cliente: venta.cliente_nombre || 'Cliente General',
       Productos: productosDetalle,
@@ -174,8 +179,9 @@ export function exportarVentasExcel(ventas) {
       SubtotalPropios: subtotalPropios,
       SubtotalMarcas: subtotalMarcas,
       CostosAdicionales: costosAdicionalesReales,
-      Descuento: -(venta.descuento_monto || 0), // Negativo para mostrar como resta
+      Descuento: -(venta.descuento_monto || 0),
       Total: venta.total,
+      GananciaBruta: gananciaBrutaVenta, // 👈 NUEVO
       MontoPagado: venta.monto_pagado,
       Cambio: venta.cambio || 0,
       Pendiente: montoPendiente,
@@ -197,39 +203,32 @@ export function exportarVentasExcel(ventas) {
   const totalPagado = datosExcel.reduce((sum, item) => sum + (item.MontoPagado || 0), 0);
   const totalCambio = datosExcel.reduce((sum, item) => sum + (item.Cambio || 0), 0);
   const totalPendiente = datosExcel.reduce((sum, item) => sum + (item.Pendiente || 0), 0);
+const totalGananciaBruta = datosExcel.reduce((sum, item) => sum + (item.GananciaBruta || 0), 0);
 
   const filaTotales = datosExcel.length + 1;
 
-  // Agregar fila de totales (16 columnas)
-  XLSX.utils.sheet_add_aoa(hoja, [[
-    "", // NumeroVenta
-    "", // Fecha
-    "", // Cliente
-    "TOTALES", // Productos
-    "", // CantidadTotal
-    totalSubtotalPropios, // SubtotalPropios
-    totalSubtotalMarcas, // SubtotalMarcas
-    totalCostosAdicionales, // CostosAdicionales
-    totalDescuento, // Descuento
-    totalVentas, // Total
-    totalPagado, // MontoPagado
-    totalCambio, // Cambio
-    totalPendiente, // Pendiente
-    "", // MetodoPago
-    "", // Estado
-    "" // Notas
-  ]], {
-    origin: { r: filaTotales, c: 0 }
-  });
+XLSX.utils.sheet_add_aoa(hoja, [[
+  "", "", "", "TOTALES", "",
+  totalSubtotalPropios,
+  totalSubtotalMarcas,
+  totalCostosAdicionales,
+  totalDescuento,
+  totalVentas,
+  totalGananciaBruta, // 👈 col 10
+  totalPagado,
+  totalCambio,
+  totalPendiente,
+  "", "", ""
+]], { origin: { r: filaTotales, c: 0 } });
 
-  // Actualizar rango después de agregar totales
-  hoja["!ref"] = XLSX.utils.encode_range({
-    s: { r: 0, c: 0 },
-    e: { r: filaTotales, c: 15 }
-  });
+// Actualizar rango a 17 columnas (índice 0-16)
+hoja["!ref"] = XLSX.utils.encode_range({
+  s: { r: 0, c: 0 },
+  e: { r: filaTotales, c: 16 } // 👈 era 15, ahora 16
+});
 
   // ----- ESTILOS DE HEADER -----
-  for (let C = 0; C <= 15; C++) {
+  for (let C = 0; C <= 16; C++) {
     const cell = hoja[XLSX.utils.encode_cell({ r: 0, c: C })];
     if (cell) {
       cell.s = {
@@ -247,7 +246,7 @@ export function exportarVentasExcel(ventas) {
   }
 
   // ----- ESTILOS PARA FILA DE TOTALES -----
-  for (let C = 0; C <= 15; C++) {
+  for (let C = 0; C <= 16; C++) {
     const cell = hoja[XLSX.utils.encode_cell({ r: filaTotales, c: C })];
     if (cell) {
       cell.s = {
@@ -265,7 +264,7 @@ export function exportarVentasExcel(ventas) {
   }
 
   // ----- COLOREAR ESTADOS -----
-  const colEstado = 14;
+  const colEstado = 15;
   for (let R = 1; R < filaTotales; R++) {
     const cellEstado = hoja[XLSX.utils.encode_cell({ r: R, c: colEstado })];
     if (cellEstado) {
@@ -308,7 +307,7 @@ export function exportarVentasExcel(ventas) {
     }
   }
 
-  // ----- AUTO ANCHO DE COLUMNAS -----
+  // Ancho de columnas — agregar GananciaBruta después de Total
   hoja["!cols"] = [
     { wch: 15 }, // NumeroVenta
     { wch: 18 }, // Fecha
@@ -320,6 +319,7 @@ export function exportarVentasExcel(ventas) {
     { wch: 17 }, // CostosAdicionales
     { wch: 12 }, // Descuento
     { wch: 12 }, // Total
+    { wch: 15 }, // GananciaBruta 👈 NUEVA
     { wch: 14 }, // MontoPagado
     { wch: 10 }, // Cambio
     { wch: 12 }, // Pendiente
