@@ -1,13 +1,13 @@
 // src/components/sections/inventario/VistaLista.jsx
 import React, { useState, memo } from 'react';
-import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X, RefreshCw } from 'lucide-react';
 import { exportarInventarioExcel } from "../../../utils/exportExcel";
-import { ImagenProducto } from './ImagenProducto'; // ✅ IMPORTAR COMPONENTE OPTIMIZADO
+import { ImagenProducto } from './ImagenProducto';
+import PanelRotacion from './PanelRotacion'; // ✅ NUEVO
 
-// ✅ Modal para ver imagen ampliada (CORREGIDO)
+// ── Modal imagen ampliada ────────────────────────────────────────
 const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
   if (!imagenBase64) return null;
-
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
@@ -15,7 +15,7 @@ const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
     >
       <div
         className="relative max-w-4xl max-h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()} // Evitar cerrar al hacer clic en el contenido
+        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onCerrar}
@@ -23,10 +23,8 @@ const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
         >
           <X size={24} className="text-gray-700" />
         </button>
-
         <div className="p-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">{nombreProducto}</h3>
-          {/* ✅ MOSTRAR IMAGEN DIRECTAMENTE (ya está en base64) */}
           <img
             src={imagenBase64}
             alt={nombreProducto}
@@ -37,8 +35,10 @@ const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
     </div>
   );
 };
+
+// ── Componente principal ─────────────────────────────────────────
 export const VistaLista = ({ inventario }) => {
-  const [imagenAmpliada, setImagenAmpliada] = useState(null);
+  const [imagenAmpliada, setImagenAmpliada]           = useState(null);
   const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
 
   const getStockIcon = (stock) => {
@@ -47,9 +47,9 @@ export const VistaLista = ({ inventario }) => {
     return null;
   };
 
-  const abrirImagenAmpliada = (imagenBase64, nombreProducto) => {
+  const abrirImagenAmpliada = (imagenBase64, nombre) => {
     setImagenAmpliada(imagenBase64);
-    setNombreProductoAmpliado(nombreProducto);
+    setNombreProductoAmpliado(nombre);
   };
 
   const cerrarImagenAmpliada = () => {
@@ -59,7 +59,8 @@ export const VistaLista = ({ inventario }) => {
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
-      {/* Modal de imagen ampliada */}
+
+      {/* Modal imagen */}
       {imagenAmpliada && (
         <ModalImagen
           imagenBase64={imagenAmpliada}
@@ -68,9 +69,43 @@ export const VistaLista = ({ inventario }) => {
         />
       )}
 
+      {/* ✅ Panel de rotación (se monta aquí, se muestra/oculta solo) */}
+      <PanelRotacion
+        panelRotacionAbierto={inventario.panelRotacionAbierto}
+        cerrarPanelRotacion={inventario.cerrarPanelRotacion}
+        cargarRotacion={inventario.cargarRotacion}
+        rotacionFiltrada={inventario.rotacionFiltrada}
+        resumenRotacion={inventario.resumenRotacion}
+        cargandoRotacion={inventario.cargandoRotacion}
+        errorRotacion={inventario.errorRotacion}
+        filtroEstadoRotacion={inventario.filtroEstadoRotacion}
+        setFiltroEstadoRotacion={inventario.setFiltroEstadoRotacion}
+        searchRotacion={inventario.searchRotacion}
+        setSearchRotacion={inventario.setSearchRotacion}
+        productoRotacionExpandido={inventario.productoRotacionExpandido}
+        setProductoRotacionExpandido={inventario.setProductoRotacionExpandido}
+        historialVariante={inventario.historialVariante}
+        setHistorialVariante={inventario.setHistorialVariante}
+        cargandoHistorial={inventario.cargandoHistorial}
+        cargarHistorialVariante={inventario.cargarHistorialVariante}
+        getColorEstadoRotacion={inventario.getColorEstadoRotacion}
+        formatearFechaRotacion={inventario.formatearFechaRotacion}
+      />
+
+      {/* ── Barra de botones superior ── */}
       <div className="flex items-center justify-between mb-6">
         <div></div>
         <div className="flex items-center space-x-3">
+
+          {/* ✅ NUEVO: Botón Rotación de Inventario */}
+          <button
+            onClick={inventario.abrirPanelRotacion}
+            className="flex items-center space-x-2 px-5 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition font-medium shadow-sm"
+          >
+            <RefreshCw size={20} />
+            <span>Rotación</span>
+          </button>
+
           <button
             onClick={() => exportarInventarioExcel(inventario.productos)}
             className="flex items-center space-x-2 px-5 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-medium shadow-sm"
@@ -78,6 +113,7 @@ export const VistaLista = ({ inventario }) => {
             <Package size={20} />
             <span>Exportar Excel</span>
           </button>
+
           <button
             onClick={() => {
               inventario.resetFormulario();
@@ -91,7 +127,7 @@ export const VistaLista = ({ inventario }) => {
         </div>
       </div>
 
-      {/* Tarjetas de estadísticas */}
+      {/* ── Tarjetas de estadísticas ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-sm border p-6">
           <div className="text-sm font-medium text-gray-500 uppercase mb-2">Total Productos</div>
@@ -115,58 +151,60 @@ export const VistaLista = ({ inventario }) => {
         </div>
       </div>
 
+      {/* ── Tabla de productos ── */}
       <div className="bg-white rounded-xl shadow-sm border">
         <div className="p-6 border-b">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-gray-800">Lista de Productos ({inventario.productosFiltrados.length})</h3>
+            <h3 className="text-xl font-bold text-gray-800">
+              Lista de Productos ({inventario.productosFiltrados.length})
+            </h3>
           </div>
-<div className="flex items-center space-x-3 mb-4">
-  <div className="flex-1 relative">
-    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-    <input
-      type="text"
-      placeholder="Buscar producto o referencia..."
-      value={inventario.searchTerm}
-      onChange={(e) => inventario.setSearchTerm(e.target.value)}
-      className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-    />
-  </div>
 
-  {/* Filtro de tallas con modo de búsqueda */}
-  <div className="flex items-center space-x-2">
-    <div className="relative">
-      <input
-        type="text"
-        placeholder="🔍 Filtrar por talla..."
-        value={inventario.tallaFiltro === 'Todas' ? '' : inventario.tallaFiltro}
-        onChange={(e) => inventario.setTallaFiltro(e.target.value || 'Todas')}
-        className="w-48 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-      />
-      {inventario.tallaFiltro !== 'Todas' && (
-        <button
-          onClick={() => inventario.setTallaFiltro('Todas')}
-          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          title="Limpiar filtro"
-        >
-          ✕
-        </button>
-      )}
-    </div>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Buscar producto o referencia..."
+                value={inventario.searchTerm}
+                onChange={(e) => inventario.setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
 
-    {/* Toggle para búsqueda exacta/flexible */}
-    <button
-      onClick={() => inventario.setBusquedaTallaExacta(!inventario.busquedaTallaExacta)}
-      className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-        inventario.busquedaTallaExacta
-          ? 'bg-teal-100 text-teal-700 border border-teal-300'
-          : 'bg-gray-100 text-gray-600 border border-gray-300'
-      }`}
-      title={inventario.busquedaTallaExacta ? 'Búsqueda exacta (M ≠ Mini)' : 'Búsqueda flexible (3 = 35,36,37)'}
-    >
-      {inventario.busquedaTallaExacta ? '=' : '~'}
-    </button>
-  </div>
-</div>
+            <div className="flex items-center space-x-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="🔍 Filtrar por talla..."
+                  value={inventario.tallaFiltro === 'Todas' ? '' : inventario.tallaFiltro}
+                  onChange={(e) => inventario.setTallaFiltro(e.target.value || 'Todas')}
+                  className="w-48 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+                {inventario.tallaFiltro !== 'Todas' && (
+                  <button
+                    onClick={() => inventario.setTallaFiltro('Todas')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    title="Limpiar filtro"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => inventario.setBusquedaTallaExacta(!inventario.busquedaTallaExacta)}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                  inventario.busquedaTallaExacta
+                    ? 'bg-teal-100 text-teal-700 border border-teal-300'
+                    : 'bg-gray-100 text-gray-600 border border-gray-300'
+                }`}
+                title={inventario.busquedaTallaExacta ? 'Búsqueda exacta' : 'Búsqueda flexible'}
+              >
+                {inventario.busquedaTallaExacta ? '=' : '~'}
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center space-x-2 overflow-x-auto pb-2">
             {inventario.categorias.map((cat) => (
               <button
@@ -225,7 +263,7 @@ export const VistaLista = ({ inventario }) => {
 
                   return (
                     <div key={grupo.id} className="bg-white hover:bg-gray-50 transition">
-                      {/* Fila principal del GRUPO */}
+                      {/* Fila del grupo */}
                       <div className="px-6 py-4 flex items-center">
                         <button
                           onClick={() => inventario.toggleExpandirProducto(grupo.id)}
@@ -240,17 +278,14 @@ export const VistaLista = ({ inventario }) => {
                               {grupo.referencias.length} ref(s)
                             </div>
                           </div>
-
                           <div className="flex-1 min-w-[200px]">
                             <div className="font-bold text-lg text-gray-800">{grupo.nombre}</div>
                           </div>
-
                           <div className="w-32 flex justify-start">
                             <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium">
                               {grupo.categoria}
                             </span>
                           </div>
-
                           <div className="w-24">
                             <div className="flex items-center justify-start space-x-2">
                               <span className={`text-lg font-bold ${
@@ -263,13 +298,11 @@ export const VistaLista = ({ inventario }) => {
                               {getStockIcon(grupo.stockTotal)}
                             </div>
                           </div>
-
                           <div className="w-28 flex justify-start">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${inventario.getEstadoStyle(grupo.stockTotal)}`}>
                               {inventario.getEstadoTexto(grupo.stockTotal)}
                             </span>
                           </div>
-
                           <div className="w-24"></div>
                         </div>
                       </div>
@@ -284,7 +317,7 @@ export const VistaLista = ({ inventario }) => {
 
                               return (
                                 <div key={producto.id} className="bg-white border rounded-lg p-4">
-                                  {/* Cabecera de la referencia CON IMAGEN */}
+                                  {/* Cabecera de referencia */}
                                   <div className="flex items-center">
                                     <button
                                       onClick={() => inventario.toggleExpandirReferencia(producto.id)}
@@ -293,94 +326,69 @@ export const VistaLista = ({ inventario }) => {
                                       {expandidoReferencia ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                     </button>
 
-                                    {/* ✅ IMAGEN OPTIMIZADA CON LAZY LOADING */}
-                                        <div className="mr-3">
-                                          <ImagenProducto
-                                            rutaImagen={producto.imagen}
-                                            rutaThumbnail={producto.imagenThumbnail} // ✅ AGREGAR ESTO
-                                            nombreProducto={`${producto.nombre} - ${producto.referencia}`}
-                                            onClickImagen={(img) => abrirImagenAmpliada(img, `${producto.nombre} - ${producto.referencia}`)}
-                                            useThumbnail={true} // Usa thumbnail en la lista
-                                          />
-                                        </div>
+                                    <div className="mr-3">
+                                      <ImagenProducto
+                                        rutaImagen={producto.imagen}
+                                        rutaThumbnail={producto.imagenThumbnail}
+                                        nombreProducto={`${producto.nombre} - ${producto.referencia}`}
+                                        onClickImagen={(img) => abrirImagenAmpliada(img, `${producto.nombre} - ${producto.referencia}`)}
+                                        useThumbnail={true}
+                                      />
+                                    </div>
 
                                     <div className="flex-1 grid grid-cols-8 gap-3 items-center">
-                                      {/* Referencia */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">REFERENCIA</div>
                                         <div className="text-sm font-mono text-gray-800 font-semibold">{producto.referencia}</div>
                                       </div>
-
-                                      {/* Costo Base */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">COSTO BASE</div>
                                         <div className="text-sm text-gray-700">${producto.costo_base.toFixed(2)}</div>
                                       </div>
-
-                                      {/* Costos Extras */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">COSTOS EXTRAS</div>
                                         <div className="text-sm">
                                           {(() => {
                                             const costosAdicionales = producto.costos_adicionales || [];
-                                            const totalCostosExtrasUnitario = costosAdicionales.reduce((sum, c) => sum + parseFloat(c.monto || 0), 0);
-                                            const stockTotal = producto.variantes
-                                              ? producto.variantes.reduce((s, v) => s + v.cantidad, 0)
-                                              : 0;
-                                            const totalCostosExtras = totalCostosExtrasUnitario * stockTotal;
-
-                                            if (costosAdicionales.length === 0) {
-                                              return <span className="text-gray-400 text-xs">Sin costos</span>;
-                                            }
-
+                                            const totalUnitario = costosAdicionales.reduce((s, c) => s + parseFloat(c.monto || 0), 0);
+                                            const stockTotal = producto.variantes?.reduce((s, v) => s + v.cantidad, 0) || 0;
+                                            const totalExtras = totalUnitario * stockTotal;
+                                            if (costosAdicionales.length === 0) return <span className="text-gray-400 text-xs">Sin costos</span>;
                                             return (
                                               <div className="flex flex-col">
-                                                <span className="text-orange-600 font-bold">${totalCostosExtras.toFixed(2)}</span>
+                                                <span className="text-orange-600 font-bold">${totalExtras.toFixed(2)}</span>
                                                 <span className="text-xs text-gray-500">({costosAdicionales.length} item{costosAdicionales.length > 1 ? 's' : ''} × {stockTotal})</span>
                                               </div>
                                             );
                                           })()}
                                         </div>
                                       </div>
-
-                                      {/* Precio Venta */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">PRECIO VENTA</div>
                                         <div className="text-sm font-medium text-gray-900">${producto.precio_venta_base.toFixed(2)}</div>
                                       </div>
-
-                                      {/* Margen Real */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">MARGEN REAL</div>
                                         <div className="text-sm text-green-600 font-bold">
                                           {(() => {
                                             const costoBase = parseFloat(producto.costo_base) || 0;
                                             const precioVenta = parseFloat(producto.precio_venta_base) || 0;
-                                            const costosAdicionales = producto.costos_adicionales
-                                              ? producto.costos_adicionales.reduce((sum, c) => sum + parseFloat(c.monto || 0), 0)
-                                              : 0;
-                                            const costoTotal = costoBase + costosAdicionales;
-
+                                            const costosAd = (producto.costos_adicionales || []).reduce((s, c) => s + parseFloat(c.monto || 0), 0);
+                                            const costoTotal = costoBase + costosAd;
                                             if (!costoTotal || !precioVenta) return '0.0%';
-                                            const margenReal = ((precioVenta - costoTotal) / precioVenta) * 100;
-                                            return `${margenReal.toFixed(1)}%`;
+                                            return `${(((precioVenta - costoTotal) / precioVenta) * 100).toFixed(1)}%`;
                                           })()}
                                         </div>
                                       </div>
-
-                                      {/* Stock */}
                                       <div>
                                         <div className="text-xs text-gray-500 font-medium mb-1">STOCK</div>
                                         <div className={`text-sm font-bold ${
                                           stockReferencia === 0 ? 'text-red-600' :
-                                          stockReferencia <= 2 ? 'text-yellow-600' :
-                                          'text-gray-800'
+                                          stockReferencia <= 2 ? 'text-yellow-600' : 'text-gray-800'
                                         }`}>
                                           {stockReferencia}
                                         </div>
                                       </div>
-
-                                      {/* Acciones */}
                                       <div className="col-span-2">
                                         <div className="text-xs text-gray-500 font-medium mb-1">ACCIONES</div>
                                         <div className="flex items-center space-x-2">
@@ -404,7 +412,7 @@ export const VistaLista = ({ inventario }) => {
                                   </div>
 
                                   {/* Variantes */}
-                                  {expandidoReferencia && producto.variantes && producto.variantes.length > 0 && (
+                                  {expandidoReferencia && producto.variantes?.length > 0 && (
                                     <div className="mt-4 ml-8 border-l-2 border-blue-200 pl-4">
                                       <div className="text-xs font-semibold text-gray-500 uppercase mb-3">
                                         Tallas / Variantes ({producto.variantes.length})
@@ -424,15 +432,14 @@ export const VistaLista = ({ inventario }) => {
                                                 <div className="text-xs text-gray-500">
                                                   Stock: <span className={`font-semibold ${
                                                     variante.cantidad === 0 ? 'text-red-600' :
-                                                    variante.cantidad < 5 ? 'text-yellow-600' :
-                                                    'text-green-600'
+                                                    variante.cantidad < 5 ? 'text-yellow-600' : 'text-green-600'
                                                   }`}>{variante.cantidad}</span>
                                                 </div>
                                               </div>
                                             </div>
                                             {variante.ajuste_precio !== 0 && (
                                               <div className="text-xs text-blue-600 font-medium">
-                                                {variante.ajuste_precio > 0 ? '+' : ''} ${variante.ajuste_precio.toFixed(2)}
+                                                {variante.ajuste_precio > 0 ? '+' : ''}${variante.ajuste_precio.toFixed(2)}
                                               </div>
                                             )}
                                           </div>

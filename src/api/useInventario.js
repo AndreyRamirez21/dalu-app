@@ -1,7 +1,7 @@
 // src/api/useInventario.js
 import { useState, useEffect } from 'react';
 import { validarImagen, procesarImagen } from '../utils/imagenUtils';
-// Helper para IPC de Electron
+
 const getIPC = () => {
   try {
     if (typeof window !== 'undefined' && window.require) {
@@ -19,7 +19,6 @@ const getIPC = () => {
   }
 };
 
-// Función para normalizar texto (eliminar tildes/acentos)
 const normalizarTexto = (texto) => {
   return texto
     .normalize('NFD')
@@ -32,8 +31,7 @@ export const useInventario = () => {
   const [vista, setVista] = useState('lista');
   const [searchTerm, setSearchTerm] = useState('');
   const [tallaFiltro, setTallaFiltro] = useState('Todas');
-  const [busquedaTallaExacta, setBusquedaTallaExacta] = useState(true); // ← AGREGAR ESTO
-
+  const [busquedaTallaExacta, setBusquedaTallaExacta] = useState(true);
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
   const [productos, setProductos] = useState([]);
   const [productoEditar, setProductoEditar] = useState(null);
@@ -42,11 +40,20 @@ export const useInventario = () => {
   const [notificacion, setNotificacion] = useState(null);
   const [modalConfirmacion, setModalConfirmacion] = useState(null);
   const [productosExpandidos, setProductosExpandidos] = useState({});
-  const [referenciasExpandidas, setReferenciasExpandidas] = useState({}); // ← NUEVO
+  const [referenciasExpandidas, setReferenciasExpandidas] = useState({});
   const [errorImagen, setErrorImagen] = useState(null);
 
+  // ✅ NUEVO: Estados para el panel de rotación
+  const [panelRotacionAbierto, setPanelRotacionAbierto] = useState(false);
+  const [rotacionData, setRotacionData] = useState([]);
+  const [cargandoRotacion, setCargandoRotacion] = useState(false);
+  const [errorRotacion, setErrorRotacion] = useState(null);
+  const [filtroEstadoRotacion, setFiltroEstadoRotacion] = useState('Todos');
+  const [searchRotacion, setSearchRotacion] = useState('');
+  const [productoRotacionExpandido, setProductoRotacionExpandido] = useState(null);
+  const [historialVariante, setHistorialVariante] = useState(null);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
-  // ✅ ACTUALIZADO: Nuevas categorías agregadas
   const categorias = [
     'Todos',
     'Deluxe',
@@ -63,12 +70,8 @@ export const useInventario = () => {
     'Varios'
   ];
 
-  // ✅ ACTUALIZADO: Solo tallas de ropa (sin números de calzado)
-  const tallasDisponibles = [
-    'XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'
-  ];
+  const tallasDisponibles = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Única'];
 
-  // ✅ NUEVO: Conceptos predefinidos para costos adicionales
   const conceptosCostosDisponibles = [
     'Bolsa protectora',
     'Bolsa de despacho',
@@ -83,27 +86,24 @@ export const useInventario = () => {
     'Costo extra (bolsa de regalo decoración personalizada)'
   ];
 
-  // ✅ ACTUALIZADO: Formulario inicial con costos adicionales
-const formularioInicial = {
-  referencia: '',
-  nombre: '',
-  categoria: 'Deluxe',
-  costo_base: '',
-  precio_venta_base: '',
-  precio_calculado: 0,  // ← AGREGAR ESTO
-  variantes: [],
-  costos_adicionales: [],
-  imagen: null,
-    imagenThumbnail: null,     // ⭐ NUEVO
-  rutaImagen: null,
-  imagenPreview: null,
-    cargandoImagen: false,     // ⭐ NUEVO
-
-};
+  const formularioInicial = {
+    referencia: '',
+    nombre: '',
+    categoria: 'Deluxe',
+    costo_base: '',
+    precio_venta_base: '',
+    precio_calculado: 0,
+    variantes: [],
+    costos_adicionales: [],
+    imagen: null,
+    imagenThumbnail: null,
+    rutaImagen: null,
+    imagenPreview: null,
+    cargandoImagen: false,
+  };
 
   const [formulario, setFormulario] = useState(formularioInicial);
 
-  // Función para cargar productos
   const cargarProductos = async () => {
     const ipc = getIPC();
     if (!ipc) {
@@ -129,7 +129,6 @@ const formularioInicial = {
     cargarProductos();
   }, []);
 
-  // ✅ NUEVO: Actualizar precio_calculado cuando cambien los costos
   useEffect(() => {
     const nuevoPrecioCalculado = calcularPrecioSugerido();
     setFormulario(prev => ({
@@ -138,74 +137,192 @@ const formularioInicial = {
     }));
   }, [formulario.costo_base, formulario.costos_adicionales]);
 
-// Productos filtrados (con filtro de talla separado)
-// Productos filtrados (con filtro de talla separado)
-const productosFiltrados = productos.filter(p => {
-  const terminoBusqueda = searchTerm.toLowerCase();
+  // ====================================================================
+  // ✅ NUEVO: Funciones del panel de rotación
+  // ====================================================================
 
-  // Buscar en nombre y referencia
-  const coincideBusqueda = p.nombre.toLowerCase().includes(terminoBusqueda) ||
-                          p.referencia.toLowerCase().includes(terminoBusqueda);
+  const abrirPanelRotacion = async () => {
+    setPanelRotacionAbierto(true);
+    await cargarRotacion();
+  };
 
-  // Filtro de categoría
-  const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
+  const cerrarPanelRotacion = () => {
+    setPanelRotacionAbierto(false);
+    setProductoRotacionExpandido(null);
+    setHistorialVariante(null);
+    setSearchRotacion('');
+    setFiltroEstadoRotacion('Todos');
+  };
 
-  // Filtro de talla (búsqueda exacta o flexible, sin tildes, CON STOCK)
-  const coincideTalla = tallaFiltro === 'Todas' ||
-                       !tallaFiltro.trim() ||
-                       (p.variantes && p.variantes.some(v => {
-                         const tallaNormalizada = normalizarTexto(v.talla);
-                         const filtroNormalizado = normalizarTexto(tallaFiltro);
+  const cargarRotacion = async () => {
+    const ipc = getIPC();
+    if (!ipc) return;
 
-                         // ✅ NUEVO: Solo considerar variantes con stock > 0
-                         if (v.cantidad <= 0) {
-                           return false;
-                         }
+    try {
+      setCargandoRotacion(true);
+      setErrorRotacion(null);
+      const data = await ipc.invoke('obtener-rotacion-inventario');
+      setRotacionData(data);
+    } catch (err) {
+      console.error('Error al cargar rotación:', err);
+      setErrorRotacion('No se pudo cargar la información de rotación');
+    } finally {
+      setCargandoRotacion(false);
+    }
+  };
 
-                         if (busquedaTallaExacta) {
-                           // Búsqueda EXACTA sin tildes
-                           return tallaNormalizada === filtroNormalizado;
-                         } else {
-                           // Búsqueda FLEXIBLE sin tildes
-                           return tallaNormalizada.includes(filtroNormalizado);
-                         }
-                       }));
+  const cargarHistorialVariante = async (varianteId, talla, nombreProducto) => {
+    const ipc = getIPC();
+    if (!ipc) return;
 
-  return coincideBusqueda && coincideCategoria && coincideTalla;
-});
+    try {
+      setCargandoHistorial(true);
+      const historial = await ipc.invoke('obtener-historial-variante', varianteId);
+      setHistorialVariante({
+        varianteId,
+        talla,
+        nombreProducto,
+        datos: historial
+      });
+    } catch (err) {
+      console.error('Error al cargar historial:', err);
+    } finally {
+      setCargandoHistorial(false);
+    }
+  };
 
-    const calcularStockTotal = (variantes) => {
-      if (!variantes || variantes.length === 0) return 0;
-      return variantes.reduce((total, v) => total + v.cantidad, 0);
+  // Filtrar datos de rotación por estado y búsqueda
+  const rotacionFiltrada = rotacionData.filter(producto => {
+    const coincideBusqueda =
+      !searchRotacion ||
+      producto.nombre.toLowerCase().includes(searchRotacion.toLowerCase()) ||
+      producto.referencia.toLowerCase().includes(searchRotacion.toLowerCase());
+
+    const coincideEstado =
+      filtroEstadoRotacion === 'Todos' ||
+      producto.variantes.some(v => v.estado_rotacion === filtroEstadoRotacion);
+
+    return coincideBusqueda && coincideEstado;
+  });
+
+  // Resumen estadístico de rotación
+  const resumenRotacion = (() => {
+    let sinMovimiento = 0;
+    let rotacionLenta = 0;
+    let rotacionNormal = 0;
+    let nuevos = 0;
+    let agotados = 0;
+    let promDiasHastaPrimeraVenta = [];
+    let promDiasSinVenta = [];
+
+    rotacionData.forEach(producto => {
+      producto.variantes.forEach(v => {
+        switch (v.estado_rotacion) {
+          case 'Sin movimiento': sinMovimiento++; break;
+          case 'Rotación lenta': rotacionLenta++; break;
+          case 'Rotación normal': rotacionNormal++; break;
+          case 'Nuevo': nuevos++; break;
+          case 'Agotado': agotados++; break;
+        }
+        if (v.dias_hasta_primera_venta != null) {
+          promDiasHastaPrimeraVenta.push(v.dias_hasta_primera_venta);
+        }
+        if (v.dias_desde_ultima_venta != null) {
+          promDiasSinVenta.push(v.dias_desde_ultima_venta);
+        }
+      });
+    });
+
+    const promedio = arr =>
+      arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+    return {
+      sinMovimiento,
+      rotacionLenta,
+      rotacionNormal,
+      nuevos,
+      agotados,
+      promedioDiasHastaPrimeraVenta: promedio(promDiasHastaPrimeraVenta),
+      promedioDiasSinVenta: promedio(promDiasSinVenta)
     };
+  })();
 
+  // Helper: color del badge de estado
+  const getColorEstadoRotacion = (estado) => {
+    switch (estado) {
+      case 'Sin movimiento': return 'bg-red-100 text-red-700 border border-red-200';
+      case 'Rotación lenta': return 'bg-orange-100 text-orange-700 border border-orange-200';
+      case 'Rotación normal': return 'bg-green-100 text-green-700 border border-green-200';
+      case 'Nuevo': return 'bg-blue-100 text-blue-700 border border-blue-200';
+      case 'Agotado': return 'bg-gray-100 text-gray-600 border border-gray-200';
+      default: return 'bg-gray-100 text-gray-600';
+    }
+  };
 
+  // Helper: formatear fecha legible
+  const formatearFechaRotacion = (fechaStr) => {
+    if (!fechaStr) return '—';
+    try {
+      const fecha = new Date(fechaStr);
+      return fecha.toLocaleDateString('es-CO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+    } catch {
+      return fechaStr;
+    }
+  };
 
-// ✅ NUEVO: Agrupar productos por nombre
-const productosAgrupados = productosFiltrados.reduce((grupos, producto) => {
-  const clave = `${producto.nombre}-${producto.categoria}`; // Agrupar por nombre + categoría
+  // ====================================================================
+  // Lógica existente (sin cambios)
+  // ====================================================================
 
-  if (!grupos[clave]) {
-    grupos[clave] = {
-      id: clave, // ID único para el grupo
-      nombre: producto.nombre,
-      categoria: producto.categoria,
-      referencias: [],
-      stockTotal: 0,
-      imagen: producto.imagen // Tomar la primera imagen encontrada
-    };
-  }
+  const productosFiltrados = productos.filter(p => {
+    const terminoBusqueda = searchTerm.toLowerCase();
+    const coincideBusqueda =
+      p.nombre.toLowerCase().includes(terminoBusqueda) ||
+      p.referencia.toLowerCase().includes(terminoBusqueda);
+    const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
+    const coincideTalla =
+      tallaFiltro === 'Todas' ||
+      !tallaFiltro.trim() ||
+      (p.variantes && p.variantes.some(v => {
+        const tallaNormalizada = normalizarTexto(v.talla);
+        const filtroNormalizado = normalizarTexto(tallaFiltro);
+        if (v.cantidad <= 0) return false;
+        if (busquedaTallaExacta) {
+          return tallaNormalizada === filtroNormalizado;
+        } else {
+          return tallaNormalizada.includes(filtroNormalizado);
+        }
+      }));
+    return coincideBusqueda && coincideCategoria && coincideTalla;
+  });
 
-  // Agregar esta referencia al grupo
-  grupos[clave].referencias.push(producto);
-  grupos[clave].stockTotal += calcularStockTotal(producto.variantes);
+  const calcularStockTotal = (variantes) => {
+    if (!variantes || variantes.length === 0) return 0;
+    return variantes.reduce((total, v) => total + v.cantidad, 0);
+  };
 
-  return grupos;
-}, {});
+  const productosAgrupados = productosFiltrados.reduce((grupos, producto) => {
+    const clave = `${producto.nombre}-${producto.categoria}`;
+    if (!grupos[clave]) {
+      grupos[clave] = {
+        id: clave,
+        nombre: producto.nombre,
+        categoria: producto.categoria,
+        referencias: [],
+        stockTotal: 0,
+        imagen: producto.imagen
+      };
+    }
+    grupos[clave].referencias.push(producto);
+    grupos[clave].stockTotal += calcularStockTotal(producto.variantes);
+    return grupos;
+  }, {});
 
-// Convertir objeto a array
-const productosAgrupadosArray = Object.values(productosAgrupados);
-
+  const productosAgrupadosArray = Object.values(productosAgrupados);
 
   const toggleExpandirProducto = (productoId) => {
     setProductosExpandidos(prev => ({
@@ -214,7 +331,6 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     }));
   };
 
-  // ✅ NUEVO: Toggle para referencias individuales
   const toggleExpandirReferencia = (referenciaId) => {
     setReferenciasExpandidas(prev => ({
       ...prev,
@@ -222,7 +338,6 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     }));
   };
 
-  // Estadísticas
   const totalProductos = productos.length;
   const stockBajo = productos.filter(p => {
     const stockTotal = calcularStockTotal(p.variantes);
@@ -246,8 +361,6 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     return total + calcularStockTotal(producto.variantes);
   }, 0);
 
-
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormulario(prev => ({ ...prev, [name]: value }));
@@ -257,23 +370,17 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
     const file = e.target.files[0];
     if (!file) return;
 
-    // Validar imagen PRIMERO
-    const validacion = validarImagen(file, 5); // Máximo 5MB
-
+    const validacion = validarImagen(file, 5);
     if (!validacion.valido) {
-      // ✅ Mostrar modal de error en lugar de alert
       setErrorImagen(validacion.error);
-      e.target.value = ''; // Limpiar input
+      e.target.value = '';
       return;
     }
 
-    // Marcar como cargando
     setFormulario(prev => ({ ...prev, cargandoImagen: true }));
 
     try {
-      // Procesar imagen
       const imagenProcesada = await procesarImagen(file);
-
       setFormulario(prev => ({
         ...prev,
         imagen: imagenProcesada.imagenCompleta,
@@ -281,61 +388,48 @@ const productosAgrupadosArray = Object.values(productosAgrupados);
         imagenPreview: imagenProcesada.thumbnail,
         cargandoImagen: false
       }));
-
     } catch (error) {
       console.error('Error al procesar imagen:', error);
       setErrorImagen(error.message || 'Error al procesar la imagen');
-      e.target.value = ''; // Limpiar input
+      e.target.value = '';
       setFormulario(prev => ({ ...prev, cargandoImagen: false }));
     }
   };
 
-const eliminarImagen = () => {
-  setFormulario(prev => ({
-    ...prev,
-    imagen: null,
-    imagenThumbnail: null,   // ⭐ NUEVO
-    imagenPreview: null,
-    rutaImagen: null
-  }));
-};
+  const eliminarImagen = () => {
+    setFormulario(prev => ({
+      ...prev,
+      imagen: null,
+      imagenThumbnail: null,
+      imagenPreview: null,
+      rutaImagen: null
+    }));
+  };
 
-  // ✅ ACTUALIZADO: Agregar variante con control de modo manual
   const agregarVariante = () => {
     setFormulario(prev => ({
       ...prev,
       variantes: [...prev.variantes, { talla: 'S', cantidad: 0, ajuste_precio: 0, tallaManual: false }]
     }));
   };
-const actualizarVariante = (index, campo, valor) => {
-  setFormulario(prev => {
-    const nuevasVariantes = [...prev.variantes];
 
-    // Si se está cambiando la talla y es "manual", activar modo manual
-    if (campo === 'talla' && valor === '__MANUAL__') {
-      nuevasVariantes[index] = {
-        ...nuevasVariantes[index],
-        talla: '',
-        tallaManual: true
-      };
-    } else if (campo === 'tallaManual') {
-      // Permite desactivar el modo manual
-      nuevasVariantes[index] = {
-        ...nuevasVariantes[index],
-        tallaManual: valor,
-        talla: valor ? nuevasVariantes[index].talla : 'S'
-      };
-    } else {
-      // Para cualquier otro cambio (incluido escribir en el input)
-      nuevasVariantes[index] = {
-        ...nuevasVariantes[index],
-        [campo]: valor
-      };
-    }
-
-    return { ...prev, variantes: nuevasVariantes };
-  });
-};
+  const actualizarVariante = (index, campo, valor) => {
+    setFormulario(prev => {
+      const nuevasVariantes = [...prev.variantes];
+      if (campo === 'talla' && valor === '__MANUAL__') {
+        nuevasVariantes[index] = { ...nuevasVariantes[index], talla: '', tallaManual: true };
+      } else if (campo === 'tallaManual') {
+        nuevasVariantes[index] = {
+          ...nuevasVariantes[index],
+          tallaManual: valor,
+          talla: valor ? nuevasVariantes[index].talla : 'S'
+        };
+      } else {
+        nuevasVariantes[index] = { ...nuevasVariantes[index], [campo]: valor };
+      }
+      return { ...prev, variantes: nuevasVariantes };
+    });
+  };
 
   const eliminarVariante = (index) => {
     setFormulario(prev => ({
@@ -344,46 +438,31 @@ const actualizarVariante = (index, campo, valor) => {
     }));
   };
 
-  // ✅ ACTUALIZADO: Agregar costo adicional con control de modo manual
   const agregarCostoAdicional = () => {
     setFormulario(prev => ({
       ...prev,
-      costos_adicionales: [
-        ...prev.costos_adicionales,
-        { concepto: '', monto: 0, conceptoManual: false }
-      ]
+      costos_adicionales: [...prev.costos_adicionales, { concepto: '', monto: 0, conceptoManual: false }]
     }));
   };
 
   const actualizarCostoAdicional = (index, campo, valor) => {
     setFormulario(prev => {
       const nuevosCostos = [...prev.costos_adicionales];
-
-      // Si se está cambiando el concepto y es "manual", activar modo manual
       if (campo === 'concepto' && valor === '__MANUAL__') {
-        nuevosCostos[index] = {
-          ...nuevosCostos[index],
-          concepto: '',
-          conceptoManual: true
-        };
+        nuevosCostos[index] = { ...nuevosCostos[index], concepto: '', conceptoManual: true };
       } else if (campo === 'conceptoManual') {
-        // Permite desactivar el modo manual
         nuevosCostos[index] = {
           ...nuevosCostos[index],
           conceptoManual: valor,
           concepto: valor ? nuevosCostos[index].concepto : ''
         };
       } else {
-        // Para cualquier otro cambio (incluido escribir en el input)
-        nuevosCostos[index] = {
-          ...nuevosCostos[index],
-          [campo]: valor
-        };
+        nuevosCostos[index] = { ...nuevosCostos[index], [campo]: valor };
       }
-
       return { ...prev, costos_adicionales: nuevosCostos };
     });
   };
+
   const eliminarCostoAdicional = (index) => {
     setFormulario(prev => ({
       ...prev,
@@ -391,26 +470,18 @@ const actualizarVariante = (index, campo, valor) => {
     }));
   };
 
-  // ✅ NUEVO: Calcular total de costos adicionales
   const calcularTotalCostosAdicionales = () => {
     return formulario.costos_adicionales.reduce((total, costo) => {
       return total + (parseFloat(costo.monto) || 0);
     }, 0);
   };
 
-const calcularPrecioSugerido = () => {
-  const costoBase = parseFloat(formulario.costo_base) || 0;
-  const totalCostosAdicionales = calcularTotalCostosAdicionales();
-
-  // ✅ margen SOLO al costo base
-  const precioCalculado = (costoBase / 0.65) + totalCostosAdicionales;
-
-  // Redondear a miles
-  const precioRedondeado = Math.ceil(precioCalculado / 1000) * 1000;
-
-  return precioRedondeado;
-};
-
+  const calcularPrecioSugerido = () => {
+    const costoBase = parseFloat(formulario.costo_base) || 0;
+    const totalCostosAdicionales = calcularTotalCostosAdicionales();
+    const precioCalculado = (costoBase / 0.65) + totalCostosAdicionales;
+    return Math.ceil(precioCalculado / 1000) * 1000;
+  };
 
   const resetFormulario = () => {
     setFormulario(formularioInicial);
@@ -449,31 +520,26 @@ const calcularPrecioSugerido = () => {
       return;
     }
 
-// ✅ ACTUALIZADO: Preparar datos con costos adicionales y precio calculado
-const nuevoProducto = {
-  referencia: formulario.referencia.trim(),
-  nombre: formulario.nombre.trim(),
-  categoria: formulario.categoria,
-  costo_base: parseFloat(formulario.costo_base),
-  precio_calculado: calcularPrecioSugerido(),
-  precio_venta_base: parseFloat(formulario.precio_venta_base),
-  variantes: formulario.variantes.map(v => ({
-    talla: v.talla,
-    cantidad: parseInt(v.cantidad),
-    ajuste_precio: parseFloat(v.ajuste_precio) || 0
-  })),
-  costos_adicionales: formulario.costos_adicionales
-    .filter(c => c.concepto.trim() !== '')
-    .map(c => ({
-      concepto: c.concepto.trim(),
-      monto: parseFloat(c.monto)
-    })),
-  // ✅ CORREGIDO: Pasar ambas imágenes
-  imagen: formulario.imagen ? {
-    name: `${formulario.referencia}_${Date.now()}.jpg`,
-    data: formulario.imagen,              // Imagen completa
-  } : null
-};
+    const nuevoProducto = {
+      referencia: formulario.referencia.trim(),
+      nombre: formulario.nombre.trim(),
+      categoria: formulario.categoria,
+      costo_base: parseFloat(formulario.costo_base),
+      precio_calculado: calcularPrecioSugerido(),
+      precio_venta_base: parseFloat(formulario.precio_venta_base),
+      variantes: formulario.variantes.map(v => ({
+        talla: v.talla,
+        cantidad: parseInt(v.cantidad),
+        ajuste_precio: parseFloat(v.ajuste_precio) || 0
+      })),
+      costos_adicionales: formulario.costos_adicionales
+        .filter(c => c.concepto.trim() !== '')
+        .map(c => ({ concepto: c.concepto.trim(), monto: parseFloat(c.monto) })),
+      imagen: formulario.imagen ? {
+        name: `${formulario.referencia}_${Date.now()}.jpg`,
+        data: formulario.imagen,
+      } : null
+    };
 
     try {
       await ipc.invoke('agregar-producto', nuevoProducto);
@@ -489,9 +555,8 @@ const nuevoProducto = {
     }
   };
 
-const handleEditarProducto = async (producto) => {
+  const handleEditarProducto = async (producto) => {
     const ipc = getIPC();
-
     setProductoEditar(producto);
 
     let imagenPreview = null;
@@ -503,29 +568,27 @@ const handleEditarProducto = async (producto) => {
       }
     }
 
-setFormulario({
-  referencia: producto.referencia,
-  nombre: producto.nombre,
-  categoria: producto.categoria,
-  costo_base: producto.costo_base.toString(),
-  precio_venta_base: producto.precio_venta_base.toString(),
-  precio_calculado: producto.precio_calculado || 0,
-  variantes: producto.variantes.map(v => ({
-    talla: v.talla,
-    cantidad: v.cantidad,
-    ajuste_precio: v.ajuste_precio || 0,
-    // ✅ Detectar si la talla NO está en la lista predefinida
-    tallaManual: !tallasDisponibles.includes(v.talla)
-  })),
-  costos_adicionales: (producto.costos_adicionales || []).map(c => ({
-    concepto: c.concepto,
-    monto: c.monto,
-    // ✅ Detectar si el concepto NO está en la lista predefinida
-    conceptoManual: !conceptosCostosDisponibles.includes(c.concepto)
-  })),
-  imagen: null,
-  imagenPreview: imagenPreview
-});
+    setFormulario({
+      referencia: producto.referencia,
+      nombre: producto.nombre,
+      categoria: producto.categoria,
+      costo_base: producto.costo_base.toString(),
+      precio_venta_base: producto.precio_venta_base.toString(),
+      precio_calculado: producto.precio_calculado || 0,
+      variantes: producto.variantes.map(v => ({
+        talla: v.talla,
+        cantidad: v.cantidad,
+        ajuste_precio: v.ajuste_precio || 0,
+        tallaManual: !tallasDisponibles.includes(v.talla)
+      })),
+      costos_adicionales: (producto.costos_adicionales || []).map(c => ({
+        concepto: c.concepto,
+        monto: c.monto,
+        conceptoManual: !conceptosCostosDisponibles.includes(c.concepto)
+      })),
+      imagen: null,
+      imagenPreview: imagenPreview
+    });
 
     setVista('editar');
   };
@@ -563,31 +626,27 @@ setFormulario({
       return;
     }
 
-const datosActualizados = {
-  referencia: formulario.referencia.trim(),
-  nombre: formulario.nombre.trim(),
-  categoria: formulario.categoria,
-  costo_base: parseFloat(formulario.costo_base),
-  precio_calculado: calcularPrecioSugerido(),
-  precio_venta_base: parseFloat(formulario.precio_venta_base),
-  variantes: formulario.variantes.map(v => ({
-    talla: v.talla,
-    cantidad: parseInt(v.cantidad),
-    ajuste_precio: parseFloat(v.ajuste_precio) || 0
-  })),
-  costos_adicionales: formulario.costos_adicionales
-    .filter(c => c.concepto.trim() !== '')
-    .map(c => ({
-      concepto: c.concepto.trim(),
-      monto: parseFloat(c.monto)
-    })),
-  // ✅ CORREGIDO: Pasar ambas imágenes
-  imagen: formulario.imagen ? {
-    name: `${formulario.referencia}_${Date.now()}.jpg`,
-    data: formulario.imagen,
-    thumbnail: formulario.imagenThumbnail
-  } : null
-};
+    const datosActualizados = {
+      referencia: formulario.referencia.trim(),
+      nombre: formulario.nombre.trim(),
+      categoria: formulario.categoria,
+      costo_base: parseFloat(formulario.costo_base),
+      precio_calculado: calcularPrecioSugerido(),
+      precio_venta_base: parseFloat(formulario.precio_venta_base),
+      variantes: formulario.variantes.map(v => ({
+        talla: v.talla,
+        cantidad: parseInt(v.cantidad),
+        ajuste_precio: parseFloat(v.ajuste_precio) || 0
+      })),
+      costos_adicionales: formulario.costos_adicionales
+        .filter(c => c.concepto.trim() !== '')
+        .map(c => ({ concepto: c.concepto.trim(), monto: parseFloat(c.monto) })),
+      imagen: formulario.imagen ? {
+        name: `${formulario.referencia}_${Date.now()}.jpg`,
+        data: formulario.imagen,
+        thumbnail: formulario.imagenThumbnail
+      } : null
+    };
 
     try {
       await ipc.invoke('actualizar-producto', productoEditar.id, datosActualizados);
@@ -631,12 +690,12 @@ const datosActualizados = {
   };
 
   return {
-    // Estados
+    // Estados existentes
     vista,
     setVista,
     searchTerm,
     setSearchTerm,
-    busquedaTallaExacta,        // ← AGREGAR
+    busquedaTallaExacta,
     setBusquedaTallaExacta,
     tallaFiltro,
     setTallaFiltro,
@@ -650,8 +709,7 @@ const datosActualizados = {
     setNotificacion,
     modalConfirmacion,
     productosExpandidos,
-    referenciasExpandidas, // ← AGREGAR ESTO
-
+    referenciasExpandidas,
     formulario,
     errorImagen,
     setErrorImagen,
@@ -663,17 +721,16 @@ const datosActualizados = {
 
     // Datos computados
     productosFiltrados,
-    productosAgrupados: productosAgrupadosArray, // ← AGREGAR ESTO
-
+    productosAgrupados: productosAgrupadosArray,
     totalProductos,
     stockBajo,
     agotados,
-
-    // Funciones
-    cargarProductos,
     totalUnidades,
+
+    // Funciones existentes
+    cargarProductos,
     toggleExpandirProducto,
-    toggleExpandirReferencia, // ← AGREGAR ESTO
+    toggleExpandirReferencia,
     calcularStockTotal,
     getEstadoStyle,
     getEstadoTexto,
@@ -687,12 +744,35 @@ const datosActualizados = {
     actualizarCostoAdicional,
     eliminarCostoAdicional,
     calcularTotalCostosAdicionales,
-    calcularPrecioSugerido,  // ← AGREGAR ESTO
+    calcularPrecioSugerido,
     resetFormulario,
     handleGuardarProducto,
     handleEditarProducto,
     handleActualizarProducto,
     handleEliminarProducto,
-    handleCancelar
+    handleCancelar,
+
+    // ✅ NUEVO: Panel de rotación
+    panelRotacionAbierto,
+    abrirPanelRotacion,
+    cerrarPanelRotacion,
+    cargarRotacion,
+    rotacionData,
+    rotacionFiltrada,
+    resumenRotacion,
+    cargandoRotacion,
+    errorRotacion,
+    filtroEstadoRotacion,
+    setFiltroEstadoRotacion,
+    searchRotacion,
+    setSearchRotacion,
+    productoRotacionExpandido,
+    setProductoRotacionExpandido,
+    historialVariante,
+    setHistorialVariante,
+    cargandoHistorial,
+    cargarHistorialVariante,
+    getColorEstadoRotacion,
+    formatearFechaRotacion
   };
 };

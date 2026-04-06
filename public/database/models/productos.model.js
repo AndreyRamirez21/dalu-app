@@ -17,11 +17,12 @@ function agregarProducto(datos, callback) {
   db.serialize(() => {
     db.run('BEGIN TRANSACTION');
 
-    const sqlProducto = `
-      INSERT INTO productos
-      (referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tiene_variantes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
+    // ✅ ACTUALIZADO: Incluir fecha_ingreso explícitamente
+const sqlProducto = `
+  INSERT INTO productos
+  (referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tiene_variantes)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
 
     const tieneVariantes = variantes?.length > 0 ? 1 : 0;
 
@@ -46,11 +47,12 @@ function agregarProducto(datos, callback) {
             return callback(null, { id: productoId });
           }
 
-          const sqlVariante = `
-            INSERT INTO variantes_producto
-            (producto_id, talla, cantidad, ajuste_precio)
-            VALUES (?, ?, ?, ?)
-          `;
+          // ✅ ACTUALIZADO: Incluir fecha_ingreso en variantes
+const sqlVariante = `
+  INSERT INTO variantes_producto
+  (producto_id, talla, cantidad, ajuste_precio, fecha_ingreso)
+  VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+`;
 
           let insertadas = 0;
 
@@ -122,11 +124,9 @@ function obtenerProductos(callback) {
       return;
     }
 
-    // Procesar las variantes y costos adicionales
     const productos = rows.map((row) => {
       const producto = { ...row };
 
-      // Procesar variantes
       if (row.variantes_data) {
         producto.variantes = row.variantes_data.split('|').map((v) => {
           const [id, talla, cantidad, ajuste_precio] = v.split(':');
@@ -141,7 +141,6 @@ function obtenerProductos(callback) {
         producto.variantes = [];
       }
 
-      // Procesar costos adicionales
       if (row.costos_adicionales_data && row.costos_adicionales_data !== '') {
         producto.costos_adicionales = row.costos_adicionales_data.split('|').map((c) => {
           const [id, concepto, monto] = c.split(':');
@@ -328,46 +327,78 @@ function actualizarProducto(id, datos, callback) {
             );
 
             const actualizarVariantes = () => {
-              db.run(
-                'DELETE FROM variantes_producto WHERE producto_id = ?',
+              // ✅ ACTUALIZADO: Al actualizar variantes, conservar fechas de ingreso y ventas existentes
+              // Primero obtenemos las variantes existentes para preservar sus fechas
+              db.all(
+                'SELECT id, talla, fecha_ingreso, fecha_primera_venta, fecha_ultima_venta, total_unidades_vendidas FROM variantes_producto WHERE producto_id = ?',
                 [id],
-                (err) => {
+                (err, variantesExistentes) => {
                   if (err) {
                     db.run('ROLLBACK');
                     return callback(err);
                   }
 
-                  if (!variantes || variantes.length === 0) {
-                    db.run('COMMIT');
-                    return callback(null, { id, ...datos });
-                  }
-
-                  const sqlVariante = `
-                    INSERT INTO variantes_producto
-                    (producto_id, talla, cantidad, ajuste_precio)
-                    VALUES (?, ?, ?, ?)
-                  `;
-
-                  let insertadas = 0;
-
-                  variantes.forEach((v) => {
-                    db.run(
-                      sqlVariante,
-                      [id, v.talla, v.cantidad, v.ajuste_precio || 0],
-                      (err) => {
-                        if (err) {
-                          db.run('ROLLBACK');
-                          return callback(err);
-                        }
-
-                        insertadas++;
-                        if (insertadas === variantes.length) {
-                          db.run('COMMIT');
-                          callback(null, { id, ...datos });
-                        }
-                      }
-                    );
+                  // Crear mapa de variantes existentes por talla
+                  const mapaVariantes = {};
+                  variantesExistentes.forEach(v => {
+                    mapaVariantes[v.talla] = v;
                   });
+
+                  db.run(
+                    'DELETE FROM variantes_producto WHERE producto_id = ?',
+                    [id],
+                    (err) => {
+                      if (err) {
+                        db.run('ROLLBACK');
+                        return callback(err);
+                      }
+
+                      if (!variantes || variantes.length === 0) {
+                        db.run('COMMIT');
+                        return callback(null, { id, ...datos });
+                      }
+
+                      // ✅ ACTUALIZADO: Preservar fecha_ingreso original si la talla ya existía
+                        const sqlVariante = `
+                          INSERT INTO variantes_producto
+                          (producto_id, talla, cantidad, ajuste_precio)
+                          VALUES (?, ?, ?, ?)
+                        `;
+
+                      let insertadas = 0;
+
+                      variantes.forEach((v) => {
+                        const varianteAnterior = mapaVariantes[v.talla];
+                        const fechaIngreso = varianteAnterior
+                          ? varianteAnterior.fecha_ingreso
+                          : `datetime('now', 'localtime')`;
+                        const fechaPrimeraVenta = varianteAnterior ? varianteAnterior.fecha_primera_venta : null;
+                        const fechaUltimaVenta = varianteAnterior ? varianteAnterior.fecha_ultima_venta : null;
+                        const totalVendidas = varianteAnterior ? varianteAnterior.total_unidades_vendidas : 0;
+
+                        db.run(
+                          sqlVariante,
+                          [id, v.talla, v.cantidad, v.ajuste_precio || 0,
+                           varianteAnterior ? varianteAnterior.fecha_ingreso : null,
+                           fechaPrimeraVenta,
+                           fechaUltimaVenta,
+                           totalVendidas],
+                          (err) => {
+                            if (err) {
+                              db.run('ROLLBACK');
+                              return callback(err);
+                            }
+
+                            insertadas++;
+                            if (insertadas === variantes.length) {
+                              db.run('COMMIT');
+                              callback(null, { id, ...datos });
+                            }
+                          }
+                        );
+                      });
+                    }
+                  );
                 }
               );
             };
@@ -404,9 +435,195 @@ function actualizarProducto(id, datos, callback) {
   });
 }
 
+// ✅ NUEVA: Registrar venta en historial de variante y actualizar fechas de rotación
+function registrarVentaVariante(varianteId, productoId, ventaId, cantidadVendida, precioVenta, callback) {
+  const ahora = `datetime('now', 'localtime')`;
+
+  // 1. Insertar en historial
+  db.run(
+    `INSERT INTO historial_ventas_variante
+     (variante_id, producto_id, venta_id, cantidad_vendida, precio_venta, fecha_venta)
+     VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+    [varianteId, productoId, ventaId, cantidadVendida, precioVenta],
+    (err) => {
+      if (err) {
+        console.error('Error al insertar historial de venta variante:', err);
+        return callback && callback(err);
+      }
+
+      // 2. Actualizar fechas en la variante
+      db.run(
+        `UPDATE variantes_producto SET
+           fecha_primera_venta = COALESCE(fecha_primera_venta, datetime('now', 'localtime')),
+           fecha_ultima_venta  = datetime('now', 'localtime'),
+           total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?
+         WHERE id = ?`,
+        [cantidadVendida, varianteId],
+        (err) => {
+          if (err) {
+            console.error('Error al actualizar fechas de variante:', err);
+          }
+          callback && callback(null);
+        }
+      );
+    }
+  );
+}
+
+// ✅ NUEVA: Obtener datos de rotación completos para el panel
+function obtenerRotacionInventario(callback) {
+  const sql = `
+    SELECT
+      p.id as producto_id,
+      p.referencia,
+      p.nombre,
+      p.categoria,
+p.fecha_creado as fecha_ingreso_producto,
+      p.precio_venta_base,
+      p.costo_base,
+
+      -- Datos de la variante
+      vp.id as variante_id,
+      vp.talla,
+      vp.cantidad as stock_actual,
+      vp.fecha_ingreso as fecha_ingreso_variante,
+      vp.fecha_primera_venta,
+      vp.fecha_ultima_venta,
+      vp.total_unidades_vendidas,
+
+      -- Días en inventario desde ingreso
+      CAST(
+        (julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado)))
+        AS INTEGER
+      ) as dias_en_inventario,
+
+      -- Días hasta primera venta (tiempo de primera rotación)
+      CASE
+        WHEN vp.fecha_primera_venta IS NOT NULL THEN
+          CAST(
+            (julianday(vp.fecha_primera_venta) - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado)))
+            AS INTEGER
+          )
+        ELSE NULL
+      END as dias_hasta_primera_venta,
+
+      -- Días desde última venta
+      CASE
+        WHEN vp.fecha_ultima_venta IS NOT NULL THEN
+          CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER)
+        ELSE NULL
+      END as dias_desde_ultima_venta,
+
+      -- Estado de rotación
+      CASE
+        WHEN vp.cantidad = 0 AND vp.fecha_ultima_venta IS NOT NULL THEN 'Agotado'
+        WHEN vp.fecha_primera_venta IS NULL AND
+             CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
+             THEN 'Sin movimiento'
+        WHEN vp.fecha_primera_venta IS NULL THEN 'Nuevo'
+        WHEN CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
+             THEN 'Rotación lenta'
+        ELSE 'Rotación normal'
+      END as estado_rotacion,
+
+      -- Total ventas en pesos de esta variante
+      COALESCE((
+        SELECT SUM(hvv.cantidad_vendida * hvv.precio_venta)
+        FROM historial_ventas_variante hvv
+        WHERE hvv.variante_id = vp.id
+      ), 0) as total_ingresos_variante,
+
+      -- Número de veces que se vendió
+      COALESCE((
+        SELECT COUNT(DISTINCT hvv.venta_id)
+        FROM historial_ventas_variante hvv
+        WHERE hvv.variante_id = vp.id
+      ), 0) as numero_ventas
+
+    FROM productos p
+    INNER JOIN variantes_producto vp ON vp.producto_id = p.id
+    ORDER BY
+      CASE
+        WHEN vp.fecha_primera_venta IS NULL AND
+             CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
+             THEN 0
+        WHEN CAST((julianday('now') - julianday(COALESCE(vp.fecha_ultima_venta, vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 30
+             THEN 1
+        ELSE 2
+      END ASC,
+      dias_en_inventario DESC
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('Error al obtener rotación de inventario:', err);
+      return callback(err, null);
+    }
+
+    // Agrupar por producto
+    const productosMap = {};
+    rows.forEach(row => {
+      const key = row.producto_id;
+      if (!productosMap[key]) {
+        productosMap[key] = {
+          producto_id: row.producto_id,
+          referencia: row.referencia,
+          nombre: row.nombre,
+          categoria: row.categoria,
+          fecha_ingreso_producto: row.fecha_ingreso_producto,
+          precio_venta_base: row.precio_venta_base,
+          costo_base: row.costo_base,
+          variantes: []
+        };
+      }
+      productosMap[key].variantes.push({
+        variante_id: row.variante_id,
+        talla: row.talla,
+        stock_actual: row.stock_actual,
+        fecha_ingreso_variante: row.fecha_ingreso_variante,
+        fecha_primera_venta: row.fecha_primera_venta,
+        fecha_ultima_venta: row.fecha_ultima_venta,
+        total_unidades_vendidas: row.total_unidades_vendidas || 0,
+        dias_en_inventario: row.dias_en_inventario,
+        dias_hasta_primera_venta: row.dias_hasta_primera_venta,
+        dias_desde_ultima_venta: row.dias_desde_ultima_venta,
+        estado_rotacion: row.estado_rotacion,
+        total_ingresos_variante: row.total_ingresos_variante || 0,
+        numero_ventas: row.numero_ventas || 0
+      });
+    });
+
+    const resultado = Object.values(productosMap);
+    callback(null, resultado);
+  });
+}
+
+// ✅ NUEVA: Obtener historial de ventas de una variante específica
+function obtenerHistorialVariante(varianteId, callback) {
+  const sql = `
+    SELECT
+      hvv.id,
+      hvv.cantidad_vendida,
+      hvv.precio_venta,
+      hvv.fecha_venta,
+      hvv.venta_id,
+      v.numero_venta,
+      v.cliente_nombre
+    FROM historial_ventas_variante hvv
+    INNER JOIN ventas v ON hvv.venta_id = v.id
+    WHERE hvv.variante_id = ?
+    ORDER BY hvv.fecha_venta DESC
+  `;
+
+  db.all(sql, [varianteId], (err, rows) => {
+    if (err) {
+      return callback(err, null);
+    }
+    callback(null, rows);
+  });
+}
 
 function eliminarProducto(id, callback) {
-  // El CASCADE en la definición de la tabla se encarga de eliminar las variantes y costos adicionales
   db.run('DELETE FROM productos WHERE id = ?', [id], function (err) {
     if (err) {
       callback(err, null);
@@ -466,5 +683,9 @@ module.exports = {
   actualizarProducto,
   eliminarProducto,
   obtenerEstadisticasInventario,
-  actualizarStockVariante
+  actualizarStockVariante,
+  // ✅ NUEVAS exportaciones
+  registrarVentaVariante,
+  obtenerRotacionInventario,
+  obtenerHistorialVariante
 };

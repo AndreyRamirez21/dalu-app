@@ -1355,6 +1355,13 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
          }
        }
 
+       // 4️⃣B ACTUALIZAR STOCK DE PRODUCTOS PROPIOS
+       if (datosVentaDB.productos && datosVentaDB.productos.length > 0) {
+         for (const producto of datosVentaDB.productos) {
+           await actualizarStock(producto, resultado.id);
+         }
+       }
+
         // 5️⃣ CREAR DEUDA SI APLICA
         const tieneDeuda = datosVenta.monto_pagado < datosVenta.total;
 
@@ -1595,20 +1602,37 @@ async function guardarDetalleVenta(ventaId, producto) {
   });
 }
 
-async function actualizarStock(producto) {
+async function actualizarStock(producto, ventaId) {
   return new Promise((resolve, reject) => {
-    if (producto.variante_id) {
-      db.db.run(
-        'UPDATE variantes_producto SET cantidad = cantidad - ? WHERE id = ?',
-        [producto.cantidad, producto.variante_id],
-        (err) => {
-          if (err) reject(err);
-          else resolve();
+    if (!producto.variante_id) return resolve();
+
+    // ✅ NO descontamos stock aquí (ya lo hace db.ventas.crear internamente)
+    // Solo registramos en historial de rotación y actualizamos fechas
+
+    db.db.run(
+      `INSERT INTO historial_ventas_variante
+       (variante_id, producto_id, venta_id, cantidad_vendida, precio_venta, fecha_venta)
+       VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))`,
+      [producto.variante_id, producto.producto_id, ventaId, producto.cantidad, producto.precio_unitario],
+      (errH) => {
+        if (errH) {
+          console.error('⚠️ Error historial variante:', errH);
         }
-      );
-    } else {
-      resolve();
-    }
+
+        db.db.run(
+          `UPDATE variantes_producto SET
+             fecha_primera_venta = COALESCE(fecha_primera_venta, datetime('now', 'localtime')),
+             fecha_ultima_venta  = datetime('now', 'localtime'),
+             total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?
+           WHERE id = ?`,
+          [producto.cantidad, producto.variante_id],
+          (errF) => {
+            if (errF) console.error('⚠️ Error fechas variante:', errF);
+            resolve();
+          }
+        );
+      }
+    );
   });
 }
 
@@ -3774,6 +3798,170 @@ ipcMain.handle('obtener-productos-mas-vendidos-marca', async (event, marcaId) =>
     });
   });
 });
+
+
+// Handler: Obtener panel de rotación de inventario
+ipcMain.handle('obtener-rotacion-inventario', async () => {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      SELECT
+        p.id as producto_id,
+        p.referencia,
+        p.nombre,
+        p.categoria,
+        p.precio_venta_base,
+        p.costo_base,
+        p.fecha_creado as fecha_ingreso_producto,
+
+        vp.id as variante_id,
+        vp.talla,
+        vp.cantidad as stock_actual,
+        COALESCE(vp.fecha_ingreso, p.fecha_creado) as fecha_ingreso_variante,
+        vp.fecha_primera_venta,
+        vp.fecha_ultima_venta,
+        COALESCE(vp.total_unidades_vendidas, 0) as total_unidades_vendidas,
+
+        -- Días en inventario
+        CAST(
+          (julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado)))
+          AS INTEGER
+        ) as dias_en_inventario,
+
+        -- Días hasta primera venta
+        CASE
+          WHEN vp.fecha_primera_venta IS NOT NULL THEN
+            CAST(
+              (julianday(vp.fecha_primera_venta) -
+               julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado)))
+              AS INTEGER
+            )
+          ELSE NULL
+        END as dias_hasta_primera_venta,
+
+        -- Días desde última venta
+        CASE
+          WHEN vp.fecha_ultima_venta IS NOT NULL THEN
+            CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER)
+          ELSE NULL
+        END as dias_desde_ultima_venta,
+
+        -- Estado de rotación calculado
+        CASE
+          WHEN vp.cantidad = 0 AND vp.fecha_ultima_venta IS NOT NULL THEN 'Agotado'
+          WHEN vp.fecha_primera_venta IS NULL AND
+               CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
+               THEN 'Sin movimiento'
+          WHEN vp.fecha_primera_venta IS NULL THEN 'Nuevo'
+          WHEN CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
+               THEN 'Rotación lenta'
+          ELSE 'Rotación normal'
+        END as estado_rotacion,
+
+        -- Ingresos totales de esta variante
+        COALESCE((
+          SELECT SUM(hvv.cantidad_vendida * hvv.precio_venta)
+          FROM historial_ventas_variante hvv
+          WHERE hvv.variante_id = vp.id
+        ), 0) as total_ingresos_variante,
+
+        -- Número de ventas distintas
+        COALESCE((
+          SELECT COUNT(DISTINCT hvv.venta_id)
+          FROM historial_ventas_variante hvv
+          WHERE hvv.variante_id = vp.id
+        ), 0) as numero_ventas
+
+      FROM productos p
+      INNER JOIN variantes_producto vp ON vp.producto_id = p.id
+ORDER BY
+  CASE
+    WHEN vp.fecha_primera_venta IS NULL AND
+         CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
+         THEN 0
+    WHEN vp.fecha_ultima_venta IS NOT NULL AND
+         CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
+         THEN 1
+    ELSE 2
+  END ASC,
+  COALESCE(vp.fecha_ingreso, p.fecha_creado) DESC
+    `;
+
+    db.db.all(sql, [], (err, rows) => {
+      if (err) {
+        console.error('❌ Error al obtener rotación de inventario:', err);
+        return reject(err);
+      }
+
+      // Agrupar filas por producto
+      const productosMap = {};
+      rows.forEach(row => {
+        const key = row.producto_id;
+        if (!productosMap[key]) {
+          productosMap[key] = {
+            producto_id: row.producto_id,
+            referencia: row.referencia,
+            nombre: row.nombre,
+            categoria: row.categoria,
+            fecha_ingreso_producto: row.fecha_ingreso_producto,
+            precio_venta_base: row.precio_venta_base,
+            costo_base: row.costo_base,
+            variantes: []
+          };
+        }
+        productosMap[key].variantes.push({
+          variante_id: row.variante_id,
+          talla: row.talla,
+          stock_actual: row.stock_actual,
+          fecha_ingreso_variante: row.fecha_ingreso_variante,
+          fecha_primera_venta: row.fecha_primera_venta,
+          fecha_ultima_venta: row.fecha_ultima_venta,
+          total_unidades_vendidas: row.total_unidades_vendidas,
+          dias_en_inventario: row.dias_en_inventario,
+          dias_hasta_primera_venta: row.dias_hasta_primera_venta,
+          dias_desde_ultima_venta: row.dias_desde_ultima_venta,
+          estado_rotacion: row.estado_rotacion,
+          total_ingresos_variante: row.total_ingresos_variante,
+          numero_ventas: row.numero_ventas
+        });
+      });
+
+      const resultado = Object.values(productosMap);
+      console.log(`✅ Rotación obtenida: ${resultado.length} productos`);
+      resolve(resultado);
+    });
+  });
+});
+
+// Handler: Obtener historial detallado de ventas de una variante específica
+ipcMain.handle('obtener-historial-variante', async (event, varianteId) => {
+  return new Promise((resolve, reject) => {
+    db.db.all(
+      `SELECT
+         hvv.id,
+         hvv.cantidad_vendida,
+         hvv.precio_venta,
+         hvv.fecha_venta,
+         hvv.venta_id,
+         v.numero_venta,
+         v.cliente_nombre
+       FROM historial_ventas_variante hvv
+       INNER JOIN ventas v ON hvv.venta_id = v.id
+       WHERE hvv.variante_id = ?
+       ORDER BY hvv.fecha_venta ASC`,
+      [varianteId],
+      (err, rows) => {
+        if (err) {
+          console.error('❌ Error al obtener historial de variante:', err);
+          return reject(err);
+        }
+        resolve(rows || []);
+      }
+    );
+  });
+});
+
+
+
 
 // ==================== APP LIFECYCLE ====================
 

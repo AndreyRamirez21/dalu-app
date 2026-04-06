@@ -34,6 +34,8 @@ function initDatabase() {
       precio_venta_base REAL NOT NULL,
       tiene_variantes INTEGER DEFAULT 0,
       imagen TEXT,
+      -- ✅ NUEVO: Fecha de ingreso del producto al inventario
+      fecha_ingreso DATETIME DEFAULT (datetime('now', 'localtime')),
       fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
       fecha_actualizado DATETIME DEFAULT (datetime('now', 'localtime'))
     )`);
@@ -48,6 +50,13 @@ function initDatabase() {
       }
     });
 
+    // ✅ NUEVO: Agregar fecha_ingreso si no existe (para bases de datos ya creadas)
+db.run(`ALTER TABLE productos ADD COLUMN fecha_ingreso DATETIME`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar columna fecha_ingreso:', err);
+  }
+});
+
     // ==================== TABLA DE VARIANTES DE PRODUCTO ====================
     db.run(`CREATE TABLE IF NOT EXISTS variantes_producto (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,12 +64,64 @@ function initDatabase() {
       talla TEXT NOT NULL,
       cantidad INTEGER DEFAULT 0,
       ajuste_precio REAL DEFAULT 0,
+      -- ✅ NUEVO: Fechas de rotación por variante
+      fecha_ingreso DATETIME DEFAULT (datetime('now', 'localtime')),
+      fecha_primera_venta DATETIME,
+      fecha_ultima_venta DATETIME,
+      total_unidades_vendidas INTEGER DEFAULT 0,
       fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE,
       UNIQUE(producto_id, talla)
     )`);
 
-    // ✅ NUEVA: TABLA DE COSTOS ADICIONALES DEL PRODUCTO
+    // ✅ NUEVO: Agregar columnas de rotación a variantes si no existen (para BDs ya creadas)
+db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_ingreso DATETIME`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar fecha_ingreso a variantes:', err);
+  }
+});
+    db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_primera_venta DATETIME`, (err) => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Error al agregar fecha_primera_venta a variantes:', err);
+      }
+    });
+    db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_ultima_venta DATETIME`, (err) => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Error al agregar fecha_ultima_venta a variantes:', err);
+      }
+    });
+    db.run(`ALTER TABLE variantes_producto ADD COLUMN total_unidades_vendidas INTEGER DEFAULT 0`, (err) => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Error al agregar total_unidades_vendidas a variantes:', err);
+      }
+    });
+
+    // ✅ NUEVO: Tabla de historial de ventas por variante (para rastreo detallado)
+    db.run(`CREATE TABLE IF NOT EXISTS historial_ventas_variante (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      variante_id INTEGER NOT NULL,
+      producto_id INTEGER NOT NULL,
+      venta_id INTEGER NOT NULL,
+      cantidad_vendida INTEGER NOT NULL,
+      precio_venta REAL NOT NULL,
+      fecha_venta DATETIME DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY(variante_id) REFERENCES variantes_producto(id) ON DELETE CASCADE,
+      FOREIGN KEY(producto_id) REFERENCES productos(id) ON DELETE CASCADE,
+      FOREIGN KEY(venta_id) REFERENCES ventas(id)
+    )`, (err) => {
+      if (err) {
+        console.error('Error al crear historial_ventas_variante:', err);
+      } else {
+        console.log('✅ Tabla historial_ventas_variante creada/verificada');
+      }
+    });
+
+    db.run(`CREATE INDEX IF NOT EXISTS idx_historial_variante ON historial_ventas_variante(variante_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_historial_producto ON historial_ventas_variante(producto_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_historial_venta ON historial_ventas_variante(venta_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_historial_fecha ON historial_ventas_variante(fecha_venta)`);
+
+    // ✅ NUEVO: TABLA DE COSTOS ADICIONALES DEL PRODUCTO
     db.run(`CREATE TABLE IF NOT EXISTS costos_adicionales_producto (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       producto_id INTEGER NOT NULL,
@@ -98,7 +159,6 @@ function initDatabase() {
       FOREIGN KEY(cliente_id) REFERENCES clientes(id)
     )`);
 
-    // Agregar cliente_id si no existe
     db.run(`ALTER TABLE ventas ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)`, () => {});
     db.run(`CREATE INDEX IF NOT EXISTS idx_ventas_cliente ON ventas(cliente_id)`);
 
@@ -207,7 +267,6 @@ function initDatabase() {
   //--------------- TABLAS DE MARCAS ALIADAS------------------
   //----------------------------------------------------------
 
-  // Tabla de Marcas Aliadas
   db.run(`
     CREATE TABLE IF NOT EXISTS marcas_aliadas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +282,6 @@ function initDatabase() {
     );
   `);
 
-  // Tabla de Productos de Marcas Aliadas (SIN categoria y costo_base)
   db.run(`
     CREATE TABLE IF NOT EXISTS productos_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,7 +296,6 @@ function initDatabase() {
     );
   `);
 
-  // Tabla de Variantes de Productos de Marca Aliada
   db.run(`
     CREATE TABLE IF NOT EXISTS variantes_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -250,7 +307,6 @@ function initDatabase() {
     );
   `);
 
-  // Tabla de Ventas de Marca Aliada
   db.run(`
     CREATE TABLE IF NOT EXISTS ventas_marca_aliada (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -270,26 +326,10 @@ function initDatabase() {
     );
   `);
 
-  // Índices para mejorar rendimiento
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_productos_marca_marca_id
-    ON productos_marca_aliada(marca_aliada_id);
-  `);
-
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_variantes_marca_producto_id
-    ON variantes_marca_aliada(producto_marca_id);
-  `);
-
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_ventas_marca_marca_id
-    ON ventas_marca_aliada(marca_aliada_id);
-  `);
-
-  db.run(`
-    CREATE INDEX IF NOT EXISTS idx_ventas_marca_venta_id
-    ON ventas_marca_aliada(venta_id);
-  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_productos_marca_marca_id ON productos_marca_aliada(marca_aliada_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_variantes_marca_producto_id ON variantes_marca_aliada(producto_marca_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ventas_marca_marca_id ON ventas_marca_aliada(marca_aliada_id);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ventas_marca_venta_id ON ventas_marca_aliada(venta_id);`);
 
   console.log('✅ Tablas de Marcas Aliadas creadas exitosamente');
 }
