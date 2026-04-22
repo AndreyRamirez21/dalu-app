@@ -2845,7 +2845,10 @@ ipcMain.handle('obtener-estadisticas-periodo', async (event, periodo) => {
           // 3. Ventas PROPIAS (PROPORCIONAL al pago)
           db.db.get(`
             SELECT COALESCE(
-            SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)),
+                SUM(
+                  (vp.precio_unitario * vp.cantidad / v.subtotal)
+                  * (v.monto_pagado - v.cambio)
+                ),
               0
             ) as total
             FROM venta_productos vp
@@ -3020,7 +3023,10 @@ ipcMain.handle('obtener-grafica-periodo', async (event, periodo) => {
         new Promise((resolve) => {
           db.db.get(`
             SELECT COALESCE(
-            SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)),
+            SUM(
+              (vp.precio_unitario * vp.cantidad / v.subtotal)
+              * (v.monto_pagado - v.cambio)
+            ),
               0
             ) as total
             FROM venta_productos vp
@@ -3874,6 +3880,7 @@ ipcMain.handle('obtener-rotacion-inventario', async () => {
       FROM productos p
       INNER JOIN variantes_producto vp ON vp.producto_id = p.id
 ORDER BY
+  COALESCE(vp.fecha_ingreso, p.fecha_creado) DESC,
   CASE
     WHEN vp.fecha_primera_venta IS NULL AND
          CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
@@ -3882,8 +3889,7 @@ ORDER BY
          CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
          THEN 1
     ELSE 2
-  END ASC,
-  COALESCE(vp.fecha_ingreso, p.fecha_creado) DESC
+  END ASC
     `;
 
     db.db.all(sql, [], (err, rows) => {

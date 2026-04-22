@@ -64,52 +64,76 @@ const PanelRotacion = ({
 
   // ── Exportar a Excel ──────────────────────────────────────────
   const exportarExcel = () => {
-    const filas = [];
+    const wb = XLSX.utils.book_new();
 
-    rotacionFiltrada.forEach(producto => {
-      const variantesFiltradas = filtroEstadoRotacion === 'Todos'
-        ? producto.variantes
-        : producto.variantes.filter(v => v.estado_rotacion === filtroEstadoRotacion);
-
-      variantesFiltradas.forEach(v => {
-        filas.push({
-          'Producto':             producto.nombre,
-          'Referencia':           producto.referencia,
-          'Categoría':            producto.categoria,
-          'Talla':                v.talla,
-          'Stock actual':         v.stock_actual,
-          'Fecha ingreso':        formatearFechaRotacion(v.fecha_ingreso_variante),
-          '1ª Venta':             formatearFechaRotacion(v.fecha_primera_venta),
-          'Última venta':         formatearFechaRotacion(v.fecha_ultima_venta),
-          'Días en inventario':   v.dias_en_inventario ?? '',
-          'Días hasta 1ª venta':  v.dias_hasta_primera_venta ?? '',
-          'Días desde última':    v.dias_desde_ultima_venta ?? '',
-          'Total vendidas':       v.total_unidades_vendidas,
-          'Nº ventas':            v.numero_ventas,
-          'Estado':               v.estado_rotacion,
-          'Precio venta base':    producto.precio_venta_base,
-          'Costo base':           producto.costo_base,
-        });
-      });
-    });
-
-    const ws = XLSX.utils.json_to_sheet(filas);
-
-    ws['!cols'] = [
-      { wch: 28 }, { wch: 22 }, { wch: 14 }, { wch: 8 },
-      { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
-      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 13 },
-      { wch: 9 },  { wch: 18 }, { wch: 14 }, { wch: 11 },
+    const estados = [
+      'Sin movimiento',
+      'Rotación lenta',
+      'Rotación normal',
+      'Nuevo',
+      'Agotado'
     ];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Rotación');
+    const generarFilas = (estadoFiltro) => {
+      const filas = [];
 
-    const filtroLabel = filtroEstadoRotacion === 'Todos'
-      ? 'todos'
-      : filtroEstadoRotacion.replace(/ /g, '_');
+      rotacionFiltrada.forEach(producto => {
+        const variantesFiltradas = estadoFiltro === 'Todos'
+          ? producto.variantes
+          : producto.variantes.filter(v => v.estado_rotacion === estadoFiltro);
+
+        variantesFiltradas.forEach(v => {
+          filas.push({
+            'Producto': producto.nombre,
+            'Referencia': producto.referencia,
+            'Categoría': producto.categoria,
+            'Talla': v.talla,
+            'Stock actual': v.stock_actual,
+            'Fecha ingreso': formatearFechaRotacion(v.fecha_ingreso_variante),
+            '1ª Venta': formatearFechaRotacion(v.fecha_primera_venta),
+            'Última venta': formatearFechaRotacion(v.fecha_ultima_venta),
+            'Días en inventario': v.dias_en_inventario ?? '',
+            'Días hasta 1ª venta': v.dias_hasta_primera_venta ?? '',
+            'Días desde última': v.dias_desde_ultima_venta ?? '',
+            'Total vendidas': v.total_unidades_vendidas,
+            'Nº ventas': v.numero_ventas,
+            'Estado': v.estado_rotacion,
+            'Precio venta base': producto.precio_venta_base,
+            'Costo base': producto.costo_base,
+          });
+        });
+      });
+
+      return filas;
+    };
+
+    // 🟣 Hoja general (Todos)
+    const filasTodos = generarFilas('Todos');
+    const wsTodos = XLSX.utils.json_to_sheet(filasTodos);
+    XLSX.utils.book_append_sheet(wb, wsTodos, 'Todos');
+
+    // 🟢 Crear una hoja por cada estado
+    estados.forEach(estado => {
+      const filas = generarFilas(estado);
+
+      if (filas.length > 0) {
+        const ws = XLSX.utils.json_to_sheet(filas);
+
+        ws['!cols'] = [
+          { wch: 28 }, { wch: 22 }, { wch: 14 }, { wch: 8 },
+          { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 },
+          { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 13 },
+          { wch: 9 },  { wch: 18 }, { wch: 14 }, { wch: 11 },
+        ];
+
+        // Excel no permite nombres muy largos
+        const nombreHoja = estado.replace('Rotación ', 'Rot. ');
+        XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+      }
+    });
+
     const fecha = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `rotacion_inventario_${filtroLabel}_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `rotacion_inventario_${fecha}.xlsx`);
   };
 
   return (

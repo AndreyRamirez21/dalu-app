@@ -268,7 +268,8 @@ const ModalAgregarVenta = ({ onClose, onSuccess }) => {
   const [subMetodoPago, setSubMetodoPago] = useState(''); // Para Tarjeta Crédito/Débito o Davivienda/Daviplata/Nequi
   const [montoPagado, setMontoPagado] = useState('');
   const [notas, setNotas] = useState('');
-
+  const [descuentoManual, setDescuentoManual] = useState({ tipo: null, valor: 0 });
+  const [mostrarDescuento, setMostrarDescuento] = useState(false);
   const metodosPago = ['Efectivo', 'Tarjeta', 'Transferencia', 'Mixto'];
 
   // Marcas aliadas
@@ -607,6 +608,9 @@ const calcularTotalMarcas = () => {
       correo: '',
       celular: ''
     });
+  setDescuentoManual({ tipo: null, valor: 0 });
+    setMostrarDescuento(false);
+
     // ✅ Usar función del hook
     resetearFidelidad();
   };
@@ -623,8 +627,23 @@ const calcularTotal = () => {
   const subtotal = calcularSubtotal();
   const costos = calcularCostosTotal();
   const totalMarcas = calcularTotalMarcas();
-  const subtotalConDescuento = aplicarDescuentoFidelidad(subtotal);
-  return Math.max(0, subtotalConDescuento + costos + totalMarcas);
+
+  // Descuento fidelidad sobre subtotal propio
+  const subtotalConFidelidad = descuentoActivo ? aplicarDescuentoFidelidad(subtotal) : subtotal;
+
+  // Descuento manual también solo sobre subtotal propio
+  const descManual = calcularDescuentoManualMonto();
+  const subtotalFinal = Math.max(0, subtotalConFidelidad - descManual);
+
+  return subtotalFinal + costos + totalMarcas;
+};
+
+const calcularDescuentoManualMonto = () => {
+  const subtotal = calcularSubtotal(); // solo productos propios
+
+  if (descuentoManual.tipo === 'porcentaje') return subtotal * descuentoManual.valor / 100;
+  if (descuentoManual.tipo === 'fijo') return Math.min(descuentoManual.valor, subtotal);
+  return 0;
 };
 
   const calcularCambio = () => {
@@ -714,9 +733,15 @@ const metodoPagoCompleto = subMetodoPago
       monto_pagado: pagado,
       cambio: metodoPago === 'Efectivo' ? calcularCambio() : 0,
       metodo_pago: metodoPagoCompleto,
-      notas: (descuentoActivo && descuentoAplicable > 0)
-        ? `Descuento de fidelidad aplicado: ${descuentoAplicable}%`
-        : notas,
+      descuento_manual_tipo: descuentoManual.tipo,
+      descuento_manual_valor: descuentoManual.valor,
+      descuento_manual_monto: calcularDescuentoManualMonto(),
+        notas: [
+          (descuentoActivo && descuentoAplicable > 0) ? `Descuento fidelidad: ${descuentoAplicable}%` : null,
+          (descuentoManual.tipo === 'porcentaje') ? `Descuento adicional: ${descuentoManual.valor}%` : null,
+          (descuentoManual.tipo === 'fijo') ? `Descuento adicional fijo: $${descuentoManual.valor}` : null,
+          notas
+        ].filter(Boolean).join(' | ') || notas,
       // ✅ FIDELIDAD: Información completa
       presento_tarjeta: tarjetaPresentada,
       descuento_fidelidad_aplicado: descuentoActivo && descuentoAplicable > 0,
@@ -740,6 +765,10 @@ if (resultado.success) {
         // ✅ CORREGIDO: Pasar el subtotal (sin costos) para fidelidad
         await procesarFidelidadPostVenta(datosCliente.id, subtotalBase);
       }
+
+    setDescuentoManual({ tipo: null, valor: 0 }); // ← aquí
+    setMostrarDescuento(false);
+
 
       // ✅ CORREGIDO: Solo mostrar mensaje de descuento si SE APLICÓ
       let mensajeExito = `Venta ${resultado.numero_venta} creada exitosamente`;
@@ -1742,6 +1771,76 @@ const AlertaFidelidad = () => {
           </div>
         )}
 
+{/* Descuento adicional */}
+<div className="border-t border-gray-100 pt-2">
+  {!mostrarDescuento ? (
+    <button
+      onClick={() => setMostrarDescuento(true)}
+      className="text-sm text-gray-400 hover:text-teal-600 transition flex items-center gap-1"
+    >
+      <Plus size={14} />
+      Aplicar descuento adicional
+    </button>
+  ) : (
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-gray-500 whitespace-nowrap">Descuento:</span>
+
+      <div className="flex gap-1">
+        {[5, 10, 15].map(pct => (
+          <button
+            key={pct}
+            onClick={() => setDescuentoManual(
+              descuentoManual.tipo === 'porcentaje' && descuentoManual.valor === pct
+                ? { tipo: null, valor: 0 }
+                : { tipo: 'porcentaje', valor: pct }
+            )}
+            className={`px-3 py-1 rounded-md text-sm transition ${
+              descuentoManual.tipo === 'porcentaje' && descuentoManual.valor === pct
+                ? 'bg-teal-500 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {pct}%
+          </button>
+        ))}
+      </div>
+
+      <div className="relative flex-1 max-w-[140px]">
+        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          value={descuentoManual.tipo === 'fijo' ? descuentoManual.valor : ''}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value) || 0;
+            setDescuentoManual(val > 0 ? { tipo: 'fijo', valor: val } : { tipo: null, valor: 0 });
+          }}
+          onWheel={(e) => e.target.blur()}
+          className="w-full pl-6 pr-2 py-1 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+          placeholder="Monto fijo"
+        />
+      </div>
+
+      {calcularDescuentoManualMonto() > 0 && (
+        <span className="text-sm text-green-600 font-medium ml-auto">
+          -${calcularDescuentoManualMonto().toFixed(2)}
+        </span>
+      )}
+
+      <button
+        onClick={() => {
+          setMostrarDescuento(false);
+          setDescuentoManual({ tipo: null, valor: 0 });
+
+        }}
+        className="text-gray-400 hover:text-gray-600 transition"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  )}
+</div>
         {/* Descuento de Fidelidad */}
         {descuentoActivo && descuentoAplicable > 0 && (
           <div className="flex justify-between text-sm text-green-600 font-medium">
@@ -1757,6 +1856,17 @@ const AlertaFidelidad = () => {
             <span className="font-medium">{datosCliente.nombre}</span>
           </div>
         )}
+
+    {calcularDescuentoManualMonto() > 0 && (
+      <div className="flex justify-between text-sm text-green-600 font-medium">
+        <span>
+          {descuentoManual.tipo === 'porcentaje'
+            ? `Descuento adicional (${descuentoManual.valor}%):`
+            : 'Descuento adicional (fijo):'}
+        </span>
+        <span>-${calcularDescuentoManualMonto().toFixed(2)}</span>
+      </div>
+    )}
 
         {/* Total */}
         <div className="border-t pt-2 flex justify-between">
