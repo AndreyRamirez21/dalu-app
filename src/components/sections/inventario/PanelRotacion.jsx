@@ -462,6 +462,11 @@ const ProductoRotacionRow = ({
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getColorEstadoRotacion(variante.estado_rotacion)}`}>
                       {variante.estado_rotacion}
                     </span>
+                    {variante.stock_actual === 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                        Agotado
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 text-center">
                     {variante.numero_ventas > 0 ? (

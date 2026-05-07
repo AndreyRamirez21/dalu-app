@@ -202,6 +202,38 @@ export const VistaLista = ({ inventario }) => {
               >
                 {inventario.busquedaTallaExacta ? '=' : '~'}
               </button>
+              {/* Filtro por rango de precio */}
+              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                <span className="text-xs text-gray-400 font-medium whitespace-nowrap">$ Precio</span>
+                <input
+                  type="number"
+                  placeholder="Mín"
+                  value={inventario.precioMin}
+                  onChange={(e) => inventario.setPrecioMin(e.target.value)}
+                  onWheel={(e) => e.target.blur()}
+
+                  className="w-20 text-sm border-none outline-none text-gray-700 placeholder-gray-300"
+                />
+                <span className="text-gray-300 text-sm">—</span>
+                <input
+                  type="number"
+                  placeholder="Máx"
+                  value={inventario.precioMax}
+                  onChange={(e) => inventario.setPrecioMax(e.target.value)}
+                    onWheel={(e) => e.target.blur()}
+
+                  className="w-20 text-sm border-none outline-none text-gray-700 placeholder-gray-300"
+                />
+                {(inventario.precioMin !== '' || inventario.precioMax !== '') && (
+                  <button
+                    onClick={() => { inventario.setPrecioMin(''); inventario.setPrecioMax(''); }}
+                    className="text-gray-400 hover:text-gray-600 ml-1"
+                    title="Limpiar filtro de precio"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

@@ -3,6 +3,7 @@ const fs = require('fs');
 const isDev = !app.isPackaged;
 const url = require('url');
 const sharp = require('sharp');
+const devolucionesModel = require('./database/models/devoluciones.model');
 
 // Registrar protocolo personalizado para cargar imágenes locales
 app.setAppUserModelId('com.dalu.app'); // Identificador para agrupar ventanas y mostrar icono correcto
@@ -54,7 +55,7 @@ function createWindow() {
     }
   });
 
-
+devolucionesModel.inicializarTablas();
 crearMenuPersonalizado();
 
 function crearMenuPersonalizado() {
@@ -791,6 +792,58 @@ ipcMain.handle('obtener-historial-pagos', async (event, deudaId) => {
   });
 });
 
+
+//---------------------DEVOLUCIONES----------------------------------------------
+// ── Registrar devolución completa ──
+ipcMain.handle('registrar-devolucion', async (event, datos) => {
+  return new Promise((resolve, reject) => {
+    devolucionesModel.registrarDevolucion(datos, (err, resultado) => {
+      if (err) {
+        console.error('❌ Error al registrar devolución:', err);
+        reject(err);
+      } else {
+        console.log('✅ Devolución registrada:', resultado);
+        resolve(resultado);
+      }
+    });
+  });
+});
+
+// ── Obtener todas las devoluciones ──
+ipcMain.handle('obtener-devoluciones', async () => {
+  return new Promise((resolve, reject) => {
+    devolucionesModel.obtener((err, devoluciones) => {
+      if (err) reject(err);
+      else resolve(devoluciones);
+    });
+  });
+});
+
+// ── Obtener devoluciones de una venta específica ──
+ipcMain.handle('obtener-devoluciones-venta', async (event, ventaId) => {
+  return new Promise((resolve, reject) => {
+    devolucionesModel.obtenerPorVenta(ventaId, (err, devoluciones) => {
+      if (err) reject(err);
+      else resolve(devoluciones);
+    });
+  });
+});
+
+// ── Obtener deuda pendiente de un cliente (para la UI de devoluciones) ──
+ipcMain.handle('obtener-deuda-pendiente-cliente', async (event, clienteId) => {
+  return new Promise((resolve, reject) => {
+    db.db.get(`
+      SELECT id, monto_pendiente, venta_id
+      FROM deudas_clientes
+      WHERE cliente_id = ? AND estado = 'Pendiente'
+      ORDER BY fecha_creacion DESC
+      LIMIT 1
+    `, [clienteId], (err, row) => {
+      if (err) reject(err);
+      else resolve(row || null);
+    });
+  });
+});
 
 // ==================== HANDLERS PARA CLIENTES (CORREGIDOS) ====================
 
@@ -3851,17 +3904,17 @@ ipcMain.handle('obtener-rotacion-inventario', async () => {
           ELSE NULL
         END as dias_desde_ultima_venta,
 
-        -- Estado de rotación calculado
-        CASE
-          WHEN vp.cantidad = 0 AND vp.fecha_ultima_venta IS NOT NULL THEN 'Agotado'
-          WHEN vp.fecha_primera_venta IS NULL AND
-               CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
-               THEN 'Sin movimiento'
-          WHEN vp.fecha_primera_venta IS NULL THEN 'Nuevo'
-          WHEN CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
-               THEN 'Rotación lenta'
-          ELSE 'Rotación normal'
-        END as estado_rotacion,
+
+    -- Estado de rotación calculado (agotado ya no bloquea la rotación)
+    CASE
+      WHEN vp.fecha_primera_venta IS NULL AND
+           CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
+           THEN 'Sin movimiento'
+      WHEN vp.fecha_primera_venta IS NULL THEN 'Nuevo'
+      WHEN CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
+           THEN 'Rotación lenta'
+      ELSE 'Rotación normal'
+    END as estado_rotacion,
 
         -- Ingresos totales de esta variante
         COALESCE((

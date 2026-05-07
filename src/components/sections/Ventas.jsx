@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Eye, Plus, Search, Calendar, X, Download, CheckCircle, AlertCircle } from 'lucide-react';
+import { ShoppingCart, Eye, Plus, Search, Calendar, X, Download, CheckCircle, AlertCircle,RefreshCw  } from 'lucide-react';
 import { useVentas } from '../../api/useVentas';
 import ModalAgregarVenta from './ModalAgregarVenta';
 import ModalDetalleVenta from './ModalDetalleVenta';
 import { ModalConfirmacion } from '../common/ModalConfirmacion';
 import { exportarVentasExcel } from '../../utils/exportExcel';
+import ModalDevolucion from './ModalDevolucion';
 
 // ── Toast automático (desaparece solo) ──
 const Toast = ({ mensaje, tipo = 'exito', onDone }) => {
@@ -42,6 +43,7 @@ const Ventas = () => {
   const [showModalConfirm, setShowModalConfirm] = useState(false);
   const [ventaAConfirmar, setVentaAConfirmar] = useState(null);
   const [vistaAnual, setVistaAnual] = useState(false);
+const [showModalDevolucion, setShowModalDevolucion] = useState(false);
 
   // ── Toast state ──
   const [toast, setToast] = useState(null); // { mensaje, tipo }
@@ -218,6 +220,17 @@ const Ventas = () => {
             <Plus className="w-5 h-5" />
             <span>Nueva Venta</span>
           </button>
+          <button onClick={() => setShowModalDevolucion(true)}
+            className="flex items-center space-x-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium">
+            <RefreshCw className="w-5 h-5" />
+            <span>Devolución</span>
+          </button>
+          {showModalDevolucion && (
+            <ModalDevolucion
+              onClose={() => setShowModalDevolucion(false)}
+              onSuccess={() => { setShowModalDevolucion(false); cargarVentas(); mostrarToast('Devolución registrada', 'exito'); }}
+            />
+          )}
         </div>
       </div>
 

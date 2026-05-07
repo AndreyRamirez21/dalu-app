@@ -31,6 +31,8 @@ export const useInventario = () => {
   const [vista, setVista] = useState('lista');
   const [searchTerm, setSearchTerm] = useState('');
   const [tallaFiltro, setTallaFiltro] = useState('Todas');
+  const [precioMin, setPrecioMin] = useState('');
+  const [precioMax, setPrecioMax] = useState('');
   const [busquedaTallaExacta, setBusquedaTallaExacta] = useState(true);
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
   const [productos, setProductos] = useState([]);
@@ -297,7 +299,12 @@ export const useInventario = () => {
           return tallaNormalizada.includes(filtroNormalizado);
         }
       }));
-    return coincideBusqueda && coincideCategoria && coincideTalla;
+      const min = precioMin !== '' ? parseFloat(precioMin) : null;
+      const max = precioMax !== '' ? parseFloat(precioMax) : null;
+      const coincidePrecio =
+        (min === null || p.precio_venta_base >= min) &&
+        (max === null || p.precio_venta_base <= max);
+return coincideBusqueda && coincideCategoria && coincideTalla && coincidePrecio;
   });
 
   const calcularStockTotal = (variantes) => {
@@ -698,6 +705,8 @@ export const useInventario = () => {
     busquedaTallaExacta,
     setBusquedaTallaExacta,
     tallaFiltro,
+    precioMin, setPrecioMin,
+    precioMax, setPrecioMax,
     setTallaFiltro,
     categoriaActiva,
     setCategoriaActiva,
