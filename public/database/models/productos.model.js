@@ -361,8 +361,8 @@ function actualizarProducto(id, datos, callback) {
                       // ✅ ACTUALIZADO: Preservar fecha_ingreso original si la talla ya existía
                         const sqlVariante = `
                           INSERT INTO variantes_producto
-                          (producto_id, talla, cantidad, ajuste_precio)
-                          VALUES (?, ?, ?, ?)
+                          (producto_id, talla, cantidad, ajuste_precio, fecha_ingreso, fecha_primera_venta, fecha_ultima_venta, total_unidades_vendidas)
+                          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         `;
 
                       let insertadas = 0;

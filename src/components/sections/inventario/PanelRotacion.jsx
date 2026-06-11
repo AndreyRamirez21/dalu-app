@@ -53,14 +53,12 @@ const PanelRotacion = ({
     setDragStartX(null);
   };
 
-  const estadosFiltro = [
-    { valor: 'Todos',           label: 'Todos',           color: 'bg-gray-100 text-gray-700' },
-    { valor: 'Sin movimiento',  label: 'Sin movimiento',  color: 'bg-red-100 text-red-700' },
-    { valor: 'Rotación lenta',  label: 'Rotación lenta',  color: 'bg-orange-100 text-orange-700' },
-    { valor: 'Rotación normal', label: 'Rotación normal', color: 'bg-green-100 text-green-700' },
-    { valor: 'Nuevo',           label: 'Nuevo',           color: 'bg-blue-100 text-blue-700' },
-    { valor: 'Agotado',         label: 'Agotado',         color: 'bg-gray-100 text-gray-500' },
-  ];
+const estadosFiltro = [
+  { valor: 'Todos',           label: 'Todos',           color: 'bg-gray-100 text-gray-700' },
+  { valor: 'Rotación lenta',  label: 'Rotación lenta',  color: 'bg-red-100 text-red-700' },
+  { valor: 'Rotación normal', label: 'Rotación normal', color: 'bg-orange-100 text-orange-700' },
+  { valor: 'Rotación rápida', label: 'Rotación rápida', color: 'bg-green-100 text-green-700' },
+];
 
   // ── Exportar a Excel ──────────────────────────────────────────
   const exportarExcel = () => {
@@ -222,20 +220,19 @@ const PanelRotacion = ({
 
         {/* ── Resumen de estadísticas ── */}
         {!cargandoRotacion && !errorRotacion && (
-          <div className="px-6 py-3 bg-gray-50 border-b grid grid-cols-5 gap-3">
-            <ResumenCard valor={resumenRotacion.sinMovimiento}  label="Sin movimiento"  color="text-red-600"    bgColor="bg-red-50" />
-            <ResumenCard valor={resumenRotacion.rotacionLenta}  label="Rotación lenta"  color="text-orange-600" bgColor="bg-orange-50" />
-            <ResumenCard valor={resumenRotacion.rotacionNormal} label="Rotación normal" color="text-green-600"  bgColor="bg-green-50" />
-            <ResumenCard valor={resumenRotacion.nuevos}         label="Nuevos"          color="text-blue-600"   bgColor="bg-blue-50" />
-            <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
-              <p className="text-lg font-bold text-purple-600">
-                {resumenRotacion.promedioDiasHastaPrimeraVenta != null
-                  ? `${resumenRotacion.promedioDiasHastaPrimeraVenta}d`
-                  : '—'}
-              </p>
-              <p className="text-xs text-gray-500 leading-tight">Días prom. a 1ª venta</p>
-            </div>
+        <div className="px-6 py-3 bg-gray-50 border-b grid grid-cols-4 gap-3">
+          <ResumenCard valor={resumenRotacion.rotacionLenta}  label="Rotación lenta"  color="text-red-600"    bgColor="bg-red-50" />
+          <ResumenCard valor={resumenRotacion.rotacionNormal} label="Rotación normal" color="text-orange-600" bgColor="bg-orange-50" />
+          <ResumenCard valor={resumenRotacion.rotacionRapida} label="Rotación rápida" color="text-green-600"  bgColor="bg-green-50" />
+          <div className="bg-purple-50 rounded-lg px-3 py-2 text-center">
+            <p className="text-lg font-bold text-purple-600">
+              {resumenRotacion.promedioDiasHastaPrimeraVenta != null
+                ? `${resumenRotacion.promedioDiasHastaPrimeraVenta}d`
+                : '—'}
+            </p>
+            <p className="text-xs text-gray-500 leading-tight">Días prom. a 1ª venta</p>
           </div>
+        </div>
         )}
 
         {/* ── Filtros y búsqueda ── */}
@@ -360,12 +357,10 @@ const ProductoRotacionRow = ({
 
   if (variantesMostradas.length === 0) return null;
 
-  const estadoCritico =
-    producto.variantes.some(v => v.estado_rotacion === 'Sin movimiento')  ? 'Sin movimiento'  :
-    producto.variantes.some(v => v.estado_rotacion === 'Rotación lenta')  ? 'Rotación lenta'  :
-    producto.variantes.some(v => v.estado_rotacion === 'Rotación normal') ? 'Rotación normal' :
-    producto.variantes.some(v => v.estado_rotacion === 'Nuevo')           ? 'Nuevo'           :
-    'Agotado';
+const estadoCritico =
+  producto.variantes.some(v => v.estado_rotacion === 'Rotación lenta')  ? 'Rotación lenta'  :
+  producto.variantes.some(v => v.estado_rotacion === 'Rotación normal') ? 'Rotación normal' :
+  'Rotación rápida';
 
   const totalUnidades = producto.variantes.reduce((s, v) => s + (v.stock_actual || 0), 0);
   const totalVendidas = producto.variantes.reduce((s, v) => s + (v.total_unidades_vendidas || 0), 0);

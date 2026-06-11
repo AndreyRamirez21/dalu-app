@@ -3,7 +3,7 @@ import { Bell, User } from 'lucide-react';
 
 const Header = ({ title, subtitle }) => {
   return (
-    <div className="bg-white shadow-sm border-b px-8 py-6">
+    <div className="bg-white shadow-sm border-b px-8 py-9">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">{title}</h2>

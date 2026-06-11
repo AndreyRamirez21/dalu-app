@@ -10,6 +10,8 @@ import Clientes from './components/sections/Clientes';
 import Estadisticas from './components/sections/Estadisticas';
 import Backups from './components/sections/GestionBackups';
 import { MarcasAliadas } from './components/sections/marcas/MarcasAliadas';
+import Caja from './components/sections/Caja';
+import IA from './components/sections/IA';
 
 const App = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -30,10 +32,14 @@ const App = () => {
         return <Clientes />;
       case 'estadisticas':
         return <Estadisticas />;
+      case 'caja':
+        return <Caja />;
       case 'backups':
         return <Backups />;
       case 'marcas-aliadas':
         return <MarcasAliadas />;
+      case 'ia':
+      return <IA />;
       default:
         return <Dashboard />;
 
@@ -70,6 +76,11 @@ const App = () => {
       title: 'Gestión de Estadisticas',
       subtitle: 'Visualiza las estadísticas de Dalú.'
       },
+
+      caja: {
+      title: 'Caja',
+      subtitle: 'Control de entradas y salidas de dinero.' },
+
             backups: {
             title: 'Gestión de Backups',
             subtitle: 'Gestion de los respaldos de la base de datos.'
@@ -78,22 +89,30 @@ const App = () => {
       marcas: {
       title: 'Gestión de marcas aliadas',
       subtitle: 'Gestion de tus marcas aliadas.'
+      },
+
+      ia: {
+      title: 'Asistente IA',
+      subtitle: 'Análisis inteligente de tu negocio con Claude.'
       }
+
     };
     return titles[activeSection] || titles.dashboard;
   };
 
   const { title, subtitle } = getTitleAndSubtitle();
 
-  return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
-      <div className="flex-1 overflow-auto">
-        <Header title={title} subtitle={subtitle} />
+return (
+  <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
+    <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      <Header title={title} subtitle={subtitle} />
+      <div className="flex-1 overflow-x-auto overflow-y-auto">
         {renderContent()}
       </div>
     </div>
-  );
+  </div>
+);
 };
 
 export default App;;

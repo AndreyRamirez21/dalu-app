@@ -485,8 +485,12 @@ const ModalDetalleVenta = ({ venta, onClose }) => {
                         <tbody className="divide-y divide-gray-200">
                           {detalleCompleto.productos_propios.map((producto, index) => (
                             <tr key={index} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 text-sm text-gray-800">{producto.producto_nombre || 'Producto sin nombre'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{producto.talla || '-'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-800">
+                                  <div className="font-medium">{producto.producto_nombre || 'Producto sin nombre'}</div>
+                                  {producto.producto_referencia && (
+                                    <div className="text-xs text-gray-400 mt-0.5">Ref: {producto.producto_referencia}</div>
+                                  )}
+                                </td>                              <td className="px-4 py-3 text-sm text-gray-600">{producto.talla || '-'}</td>
                               <td className="px-4 py-3 text-sm text-gray-800 text-center">{producto.cantidad}</td>
                               <td className="px-4 py-3 text-sm text-gray-800 text-right">${Number(producto.precio_unitario).toFixed(2)}</td>
                               <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">${Number(producto.subtotal).toFixed(2)}</td>
@@ -574,6 +578,27 @@ const ModalDetalleVenta = ({ venta, onClose }) => {
                   </div>
                 </div>
               )}
+
+          {/* Nota de devolución */}
+          {detalleCompleto.tiene_devolucion === 1 && detalleCompleto.notas &&
+            detalleCompleto.notas.includes('Devolución') && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 -mx-3">
+              <div className="text-sm">
+                <span className="text-purple-700 font-medium">
+                  {detalleCompleto.notas
+                    .split(' | ')
+                    .filter(n => n.includes('Devolución'))
+                    .map((nota, i) => (
+                      <div key={i} className="flex items-start gap-2 mt-1 first:mt-0">
+                        <span>🔄</span>
+                        <span>{nota.replace('🔄 ', '')}</span>
+                      </div>
+                    ))
+                  }
+                </span>
+              </div>
+            </div>
+          )}
 
               <div className="border-t pt-3 flex justify-between">
                 <span className="font-bold text-gray-800">Total:</span>

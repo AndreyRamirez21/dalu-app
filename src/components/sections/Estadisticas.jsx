@@ -260,9 +260,112 @@ const PeriodSummary = ({ data }) => {
 };
 
 // ============================================
-// COMPONENTE: Top Productos
+// COMPONENTE: Modal Detalle Producto
 // ============================================
-const TopProductos = ({ productos }) => {
+const DetalleProductoModal = ({ producto, periodo, onClose }) => {
+  const [detalles, setDetalles] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const cargar = async () => {
+      try {
+        const data = await ipcRenderer.invoke('obtener-detalle-producto-top', producto.nombre, periodo);
+        setDetalles(data);
+      } catch (err) {
+        console.error('Error al cargar detalle:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    cargar();
+  }, [producto, periodo]);
+
+  const formatFecha = (fechaStr) => {
+    const fecha = new Date(fechaStr);
+    return fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">{producto.nombre}</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {detalles.length} venta(s) · {producto.cantidad?.toFixed(0)} unidades totales
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="overflow-y-auto flex-1 p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : detalles.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">No hay detalles disponibles</div>
+          ) : (
+            <div className="space-y-3">
+              {detalles.map((item, index) => (
+                <div key={index} className="bg-gray-50 rounded-xl p-4 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-700 font-bold text-sm">
+                      x{item.cantidad}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800">
+                        Ref: <span className="text-blue-600">{item.referencia}</span>
+                        {item.talla && item.talla !== 'Única' && (
+                          <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                            {item.talla}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Venta #{item.numero_venta} · {item.cliente_nombre}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-green-600">
+                      ${item.subtotal.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-xs text-gray-400">{formatFecha(item.fecha)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer con totales */}
+        {!loading && detalles.length > 0 && (
+          <div className="border-t p-4 bg-gray-50 rounded-b-2xl flex justify-between items-center">
+            <span className="text-sm text-gray-600 font-medium">Total del período</span>
+            <span className="text-lg font-bold text-green-600">
+              ${producto.total_ventas?.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// COMPONENTE: Top Productos (con modal al hacer clic)
+// ============================================
+const TopProductos = ({ productos, periodoActual }) => {
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+
   const colores = [
     { bg: 'bg-yellow-100', bar: 'bg-yellow-500', text: 'text-yellow-700', icon: '🥇' },
     { bg: 'bg-gray-100', bar: 'bg-gray-400', text: 'text-gray-600', icon: '🥈' },
@@ -281,48 +384,66 @@ const TopProductos = ({ productos }) => {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
-      <div className="mb-6">
-        <h3 className="text-lg font-bold text-gray-800">Top 5 Productos Propios Más Vendidos</h3>
-        <p className="text-sm text-gray-500">Basado en cantidad vendida en el período seleccionado</p>
-      </div>
+    <>
+      <div className="bg-white rounded-xl shadow-sm border p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-gray-800">Top 5 Productos Propios Más Vendidos</h3>
+          <p className="text-sm text-gray-500">Haz clic en un producto para ver el detalle de ventas</p>
+        </div>
 
-      <div className="space-y-4">
-        {productos.map((producto, index) => {
-          const porcentaje = productos[0].cantidad > 0 ? (producto.cantidad / productos[0].cantidad) * 100 : 0;
-          const color = colores[index];
+        <div className="space-y-4">
+          {productos.map((producto, index) => {
+            const porcentaje = productos[0].cantidad > 0 ? (producto.cantidad / productos[0].cantidad) * 100 : 0;
+            const color = colores[index];
 
-          return (
-            <div key={index} className={`${color.bg} rounded-lg p-4 transition-all hover:shadow-md`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-3 flex-1">
-                  <span className="text-2xl">{color.icon}</span>
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-gray-800">{producto.nombre}</h4>
-                    <p className="text-xs text-gray-500">Código: {producto.codigo || 'N/A'}</p>
+            return (
+              <div
+                key={index}
+                onClick={() => setProductoSeleccionado(producto)}
+                className={`${color.bg} rounded-lg p-4 transition-all hover:shadow-md cursor-pointer hover:scale-[1.01]`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3 flex-1">
+                    <span className="text-2xl">{color.icon}</span>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-800">{producto.nombre}</h4>
+                      <p className="text-xs text-gray-500 flex items-center space-x-1">
+                        <span>Toca para ver detalle</span>
+                        <span>→</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-2xl font-bold ${color.text}`}>{producto.cantidad?.toFixed(0)}</div>
+                    <div className="text-xs text-gray-500">unidades</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className={`text-2xl font-bold ${color.text}`}>{producto.cantidad}</div>
-                  <div className="text-xs text-gray-500">unidades</div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                  <div className={`${color.bar} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${porcentaje}%` }}></div>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">
+                    Ingresos: <span className="font-semibold text-green-600">
+                      ${producto.total_ventas?.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
+                    </span>
+                  </span>
+                  <span className="text-gray-500">{porcentaje.toFixed(1)}% del líder</span>
                 </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                <div className={`${color.bar} h-2.5 rounded-full transition-all duration-500`} style={{ width: `${porcentaje}%` }}></div>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">
-                  Ingresos: <span className="font-semibold text-green-600">
-                    ${producto.total_ventas.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-                  </span>
-                </span>
-                <span className="text-gray-500">{porcentaje.toFixed(1)}% del líder</span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
+
+      {/* Modal */}
+      {productoSeleccionado && (
+        <DetalleProductoModal
+          producto={productoSeleccionado}
+          periodo={periodoActual}
+          onClose={() => setProductoSeleccionado(null)}
+        />
+      )}
+    </>
   );
 };
 
@@ -335,13 +456,13 @@ const Estadisticas = () => {
   const [estadisticas, setEstadisticas] = useState(null);
   const [datosGrafica, setDatosGrafica] = useState([]);
   const [topProductos, setTopProductos] = useState([]);
-
+  const [periodoActual, setPeriodoActual] = useState(null);
   const cargarEstadisticas = async (periodo) => {
     if (!periodo || !periodo.inicio || !periodo.fin) {
       console.error('Período inválido:', periodo);
       return;
     }
-
+    setPeriodoActual(periodo);
     setLoading(true);
     setError(null);
 
@@ -591,8 +712,7 @@ const Estadisticas = () => {
           </div>
         </div>
 
-        <TopProductos productos={topProductos} />
-      </>
+<TopProductos productos={topProductos} periodoActual={periodoActual} />      </>
     );
   };
 

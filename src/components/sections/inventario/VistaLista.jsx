@@ -58,7 +58,7 @@ export const VistaLista = ({ inventario }) => {
   };
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+<div className="p-8 bg-gray-50 min-w-0">
 
       {/* Modal imagen */}
       {imagenAmpliada && (

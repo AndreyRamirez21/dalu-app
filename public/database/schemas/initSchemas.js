@@ -263,6 +263,32 @@ db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_ingreso DATETIME`, (err)
     console.log('✅ Tablas creadas correctamente');
   });
 
+
+  //----------------------------------------------------------
+  //--------------- TABLAS DE CAJA------------------
+  //----------------------------------------------------------
+
+db.run(`
+CREATE TABLE IF NOT EXISTS caja_movimientos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL CHECK(tipo IN ('entrada', 'salida', 'ajuste', 'apertura')),
+  concepto TEXT NOT NULL,
+  monto REAL NOT NULL,
+  saldo_resultante REAL NOT NULL,
+  origen TEXT DEFAULT 'manual',  -- 'manual', 'venta', 'gasto'
+  referencia_id INTEGER,         -- id de venta o gasto si aplica
+  fecha TEXT DEFAULT (datetime('now', 'localtime')),
+  notas TEXT
+);`);
+db.run(`
+
+CREATE TABLE IF NOT EXISTS caja_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  saldo_inicial REAL DEFAULT 0,
+  fecha_apertura TEXT DEFAULT (datetime('now', 'localtime'))
+);`);
+
+
   //----------------------------------------------------------
   //--------------- TABLAS DE MARCAS ALIADAS------------------
   //----------------------------------------------------------
@@ -333,5 +359,7 @@ db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_ingreso DATETIME`, (err)
 
   console.log('✅ Tablas de Marcas Aliadas creadas exitosamente');
 }
+
+
 
 module.exports = initDatabase;

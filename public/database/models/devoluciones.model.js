@@ -1,14 +1,15 @@
 // database/models/devoluciones.model.js
 // Modelo para gestión de devoluciones con intercambio de productos
+// v2: soporte multi-producto nuevo, regla mínima $5.000, marca venta con devolución
 
-const db = require('../index'); // ajusta la ruta según tu proyecto
+const db = require('../index');
+const DIFERENCIA_MINIMA = 5000;
 
-// ══════════════════════════════════════════════
-// INICIALIZAR TABLAS DE DEVOLUCIONES
-// ══════════════════════════════════════════════
 function inicializarTablas(callback) {
   db.db.serialize(() => {
-    // Tabla principal de devoluciones
+    db.db.run(`DROP TABLE IF EXISTS devolucion_items`);
+    db.db.run(`DROP TABLE IF EXISTS devoluciones`);
+
     db.db.run(`
       CREATE TABLE IF NOT EXISTS devoluciones (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,70 +17,58 @@ function inicializarTablas(callback) {
         venta_id INTEGER NOT NULL,
         cliente_id INTEGER,
         cliente_nombre TEXT NOT NULL,
-
-        -- Producto devuelto (el que trae el cliente)
         producto_devuelto_id INTEGER,
         variante_devuelta_id INTEGER,
         producto_devuelto_nombre TEXT NOT NULL,
         talla_devuelta TEXT,
         cantidad_devuelta INTEGER NOT NULL DEFAULT 1,
-        precio_original REAL NOT NULL,        -- precio al que se vendió
-        subtotal_devuelto REAL NOT NULL,      -- precio_original * cantidad
-
-        -- Producto de reemplazo (el que se lleva el cliente)
-        producto_nuevo_id INTEGER,
-        variante_nueva_id INTEGER,
-        producto_nuevo_nombre TEXT NOT NULL,
-        talla_nueva TEXT,
-        cantidad_nueva INTEGER NOT NULL DEFAULT 1,
-        precio_nuevo REAL NOT NULL,           -- precio actual del producto nuevo
-        subtotal_nuevo REAL NOT NULL,         -- precio_nuevo * cantidad
-
-        -- Diferencia económica
-        diferencia REAL NOT NULL DEFAULT 0,   -- subtotal_nuevo - subtotal_devuelto
-        -- positivo = cliente paga más
-        -- negativo = tienda devuelve dinero
-
-        tipo_diferencia TEXT NOT NULL,        -- 'cobro', 'devolucion', 'sin_diferencia'
-        monto_cobrado REAL DEFAULT 0,         -- lo que pagó el cliente adicional
-        monto_devuelto REAL DEFAULT 0,        -- lo que devolvió la tienda al cliente
-        aplicado_a_deuda REAL DEFAULT 0,      -- si había deuda, cuánto se descontó de la deuda
-
-        -- Deuda relacionada
-        deuda_afectada_id INTEGER,            -- ID de deuda_cliente si se afectó una deuda
-        deuda_reducida REAL DEFAULT 0,        -- cuánto se redujo la deuda (si aplica)
-
+        precio_original REAL NOT NULL,
+        subtotal_devuelto REAL NOT NULL,
+        subtotal_nuevos REAL NOT NULL DEFAULT 0,
+        diferencia REAL NOT NULL DEFAULT 0,
+        tipo_diferencia TEXT NOT NULL,
+        monto_cobrado REAL DEFAULT 0,
+        monto_devuelto REAL DEFAULT 0,
         notas TEXT,
         fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-
         FOREIGN KEY (venta_id) REFERENCES ventas(id),
         FOREIGN KEY (cliente_id) REFERENCES clientes(id)
       )
     `, (err) => {
-      if (err) {
-        console.error('❌ Error al crear tabla devoluciones:', err);
-        if (callback) callback(err);
-        return;
-      }
-      console.log('✅ Tabla devoluciones lista');
-      if (callback) callback(null);
+      if (err) { console.error('❌ Error tabla devoluciones:', err); if (callback) callback(err); return; }
+
+      db.db.run(`
+        CREATE TABLE IF NOT EXISTS devolucion_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          devolucion_id INTEGER NOT NULL,
+          producto_id INTEGER,
+          variante_id INTEGER,
+          producto_nombre TEXT NOT NULL,
+          talla TEXT,
+          cantidad INTEGER NOT NULL DEFAULT 1,
+          precio_unitario REAL NOT NULL,
+          subtotal REAL NOT NULL,
+          FOREIGN KEY (devolucion_id) REFERENCES devoluciones(id)
+        )
+      `, (err2) => {
+        if (err2) { console.error('❌ Error tabla devolucion_items:', err2); if (callback) callback(err2); return; }
+        db.db.run(`ALTER TABLE ventas ADD COLUMN tiene_devolucion INTEGER DEFAULT 0`, () => {
+          console.log('✅ Tablas de devoluciones listas');
+          if (callback) callback(null);
+        });
+      });
     });
   });
 }
 
-// ══════════════════════════════════════════════
-// GENERAR NÚMERO DE DEVOLUCIÓN
-// ══════════════════════════════════════════════
 function generarNumeroDevolucion(callback) {
   const hoy = new Date();
   const yy = String(hoy.getFullYear()).slice(2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
   const prefijo = `D${yy}${mm}${dd}`;
-
   db.db.get(
-    `SELECT COUNT(*) as total FROM devoluciones
-     WHERE numero_devolucion LIKE ?`,
+    `SELECT COUNT(*) as total FROM devoluciones WHERE numero_devolucion LIKE ?`,
     [`${prefijo}%`],
     (err, row) => {
       if (err) return callback(err);
@@ -89,44 +78,24 @@ function generarNumeroDevolucion(callback) {
   );
 }
 
-// ══════════════════════════════════════════════
-// REGISTRAR DEVOLUCIÓN
-// ══════════════════════════════════════════════
 function registrarDevolucion(datos, callback) {
   const {
-    venta_id,
-    cliente_id,
-    cliente_nombre,
-    // Producto devuelto
-    producto_devuelto_id,
-    variante_devuelta_id,
-    producto_devuelto_nombre,
-    talla_devuelta,
-    cantidad_devuelta,
-    precio_original,
-    // Producto nuevo
-    producto_nuevo_id,
-    variante_nueva_id,
-    producto_nuevo_nombre,
-    talla_nueva,
-    cantidad_nueva,
-    precio_nuevo,
-    // Diferencia
-    monto_cobrado,
-    monto_devuelto,
-    aplicado_a_deuda,
-    deuda_afectada_id,
-    deuda_reducida,
+    venta_id, cliente_id, cliente_nombre,
+    producto_devuelto_id, variante_devuelta_id,
+    producto_devuelto_nombre, talla_devuelta,
+    cantidad_devuelta, precio_original,
+    productosNuevos = [],
+    monto_cobrado, monto_devuelto,
     notas
   } = datos;
 
   const subtotal_devuelto = precio_original * cantidad_devuelta;
-  const subtotal_nuevo = precio_nuevo * cantidad_nueva;
-  const diferencia = subtotal_nuevo - subtotal_devuelto;
+  const subtotal_nuevos = productosNuevos.reduce((s, p) => s + p.precio_unitario * p.cantidad, 0);
+  const diferencia = subtotal_nuevos - subtotal_devuelto;
 
   let tipo_diferencia = 'sin_diferencia';
-  if (diferencia > 0) tipo_diferencia = 'cobro';
-  else if (diferencia < 0) tipo_diferencia = 'devolucion';
+  if (diferencia > 0.01) tipo_diferencia = 'cobro';
+  else if (diferencia < -0.01) tipo_diferencia = 'devolucion';
 
   generarNumeroDevolucion((err, numero) => {
     if (err) return callback(err);
@@ -134,150 +103,226 @@ function registrarDevolucion(datos, callback) {
     db.db.serialize(() => {
       db.db.run('BEGIN TRANSACTION');
 
-      // 1. Insertar la devolución
       db.db.run(`
         INSERT INTO devoluciones (
           numero_devolucion, venta_id, cliente_id, cliente_nombre,
           producto_devuelto_id, variante_devuelta_id, producto_devuelto_nombre,
           talla_devuelta, cantidad_devuelta, precio_original, subtotal_devuelto,
-          producto_nuevo_id, variante_nueva_id, producto_nuevo_nombre,
-          talla_nueva, cantidad_nueva, precio_nuevo, subtotal_nuevo,
-          diferencia, tipo_diferencia,
-          monto_cobrado, monto_devuelto, aplicado_a_deuda,
-          deuda_afectada_id, deuda_reducida, notas
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          subtotal_nuevos, diferencia, tipo_diferencia,
+          monto_cobrado, monto_devuelto, notas
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `, [
         numero, venta_id, cliente_id || null, cliente_nombre,
         producto_devuelto_id || null, variante_devuelta_id || null,
         producto_devuelto_nombre, talla_devuelta || null,
         cantidad_devuelta, precio_original, subtotal_devuelto,
-        producto_nuevo_id || null, variante_nueva_id || null,
-        producto_nuevo_nombre, talla_nueva || null,
-        cantidad_nueva, precio_nuevo, subtotal_nuevo,
-        diferencia, tipo_diferencia,
-        monto_cobrado || 0, monto_devuelto || 0, aplicado_a_deuda || 0,
-        deuda_afectada_id || null, deuda_reducida || 0,
+        subtotal_nuevos, diferencia, tipo_diferencia,
+        monto_cobrado || 0, monto_devuelto || 0,
         notas || null
-      ], function (err) {
-        if (err) {
-          db.db.run('ROLLBACK');
-          console.error('❌ Error al insertar devolución:', err);
-          return callback(err);
-        }
+      ], function(err) {
+        if (err) { db.db.run('ROLLBACK'); return callback(err); }
 
         const devolucionId = this.lastID;
+        const runSerial = (tasks) => tasks.reduce((p, task) => p.then(task), Promise.resolve());
 
-        // 2. Restaurar stock del producto devuelto
-        const restaurarStock = new Promise((resolve, reject) => {
-          if (!variante_devuelta_id) return resolve();
-          db.db.run(
-            'UPDATE variantes_producto SET cantidad = cantidad + ? WHERE id = ?',
-            [cantidad_devuelta, variante_devuelta_id],
-            (err) => {
-              if (err) reject(err);
-              else {
-                console.log(`✅ Stock restaurado: variante ${variante_devuelta_id} +${cantidad_devuelta}`);
-                resolve();
-              }
-            }
-          );
-        });
+        runSerial([
 
-        // 3. Descontar stock del producto nuevo que sale
-        const descontarStock = new Promise((resolve, reject) => {
-          if (!variante_nueva_id) return resolve();
-          db.db.run(
-            'UPDATE variantes_producto SET cantidad = cantidad - ? WHERE id = ?',
-            [cantidad_nueva, variante_nueva_id],
-            (err) => {
-              if (err) reject(err);
-              else {
-                console.log(`✅ Stock descontado: variante ${variante_nueva_id} -${cantidad_nueva}`);
-                resolve();
-              }
-            }
-          );
-        });
+          // PASO 1: Insertar items de devolución
+          () => Promise.all(productosNuevos.map(p => new Promise((res, rej) => {
+            db.db.run(`
+              INSERT INTO devolucion_items
+                (devolucion_id, producto_id, variante_id, producto_nombre, talla, cantidad, precio_unitario, subtotal)
+              VALUES (?,?,?,?,?,?,?,?)
+            `, [devolucionId, p.producto_id || null, p.variante_id || null,
+                p.producto_nombre, p.talla || null, p.cantidad,
+                p.precio_unitario, p.precio_unitario * p.cantidad],
+              err => err ? rej(err) : res());
+          }))),
 
-        // 4. Si hay deuda del cliente y se aplica a la deuda
-        const actualizarDeuda = new Promise((resolve, reject) => {
-          if (!deuda_afectada_id || !deuda_reducida || deuda_reducida <= 0) return resolve();
+          // PASO 2: Restaurar stock del producto DEVUELTO
+          () => new Promise((res, rej) => {
+            if (!variante_devuelta_id) return res();
+            db.db.run('UPDATE variantes_producto SET cantidad = cantidad + ? WHERE id = ?',
+              [cantidad_devuelta, variante_devuelta_id],
+              err => err ? rej(err) : res());
+          }),
 
-          db.db.run(`
-            UPDATE deudas_clientes
-            SET monto_pagado = monto_pagado + ?,
-                monto_pendiente = MAX(0, monto_pendiente - ?),
-                estado = CASE
-                  WHEN (monto_pendiente - ?) <= 0 THEN 'Pagado'
-                  ELSE estado
-                END,
-                fecha_actualizado = datetime('now', 'localtime')
-            WHERE id = ?
-          `, [deuda_reducida, deuda_reducida, deuda_reducida, deuda_afectada_id],
-            (err) => {
-              if (err) reject(err);
-              else {
-                console.log(`✅ Deuda ${deuda_afectada_id} reducida en $${deuda_reducida}`);
-                resolve();
-              }
-            }
-          );
-        });
-
-        Promise.all([restaurarStock, descontarStock, actualizarDeuda])
-          .then(() => {
-            db.db.run('COMMIT', (err) => {
-              if (err) {
-                console.error('❌ Error en COMMIT:', err);
-                return callback(err);
-              }
-              console.log(`✅ Devolución ${numero} registrada correctamente`);
-              callback(null, {
-                success: true,
-                id: devolucionId,
-                numero_devolucion: numero,
-                diferencia,
-                tipo_diferencia
-              });
+          // PASO 3: Eliminar el producto devuelto de venta_productos
+          () => new Promise((res, rej) => {
+            const sql = variante_devuelta_id
+              ? `SELECT id FROM venta_productos WHERE venta_id = ? AND variante_id = ? LIMIT 1`
+              : `SELECT id FROM venta_productos WHERE venta_id = ? AND producto_id = ? LIMIT 1`;
+            const params = variante_devuelta_id
+              ? [venta_id, variante_devuelta_id]
+              : [venta_id, producto_devuelto_id];
+            db.db.get(sql, params, (err, row) => {
+              if (err) return rej(err);
+              if (!row) { console.log('⚠️ Producto no encontrado en venta_productos'); return res(); }
+              db.db.run('DELETE FROM venta_productos WHERE id = ?', [row.id],
+                err => err ? rej(err) : res());
             });
-          })
-          .catch((err) => {
-            db.db.run('ROLLBACK');
-            console.error('❌ Error en operaciones de devolución:', err);
-            callback(err);
+          }),
+
+          // PASO 4: Insertar los productos NUEVOS en venta_productos
+          () => Promise.all(productosNuevos.filter(p => p.producto_id).map(p => new Promise((res, rej) => {
+            db.db.run(
+              `INSERT INTO venta_productos (venta_id, producto_id, variante_id, cantidad, precio_unitario, subtotal)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [venta_id, p.producto_id, p.variante_id || null, p.cantidad, p.precio_unitario, p.precio_unitario * p.cantidad],
+              err => err ? rej(err) : res());
+          }))),
+
+          // PASO 5: Descontar stock de productos NUEVOS
+          () => Promise.all(productosNuevos.filter(p => p.variante_id).map(p => new Promise((res, rej) => {
+            db.db.run('UPDATE variantes_producto SET cantidad = cantidad - ? WHERE id = ?',
+              [p.cantidad, p.variante_id],
+              err => err ? rej(err) : res());
+          }))),
+
+          // PASO 6: Recalcular total — SIN tocar monto_pagado
+          () => new Promise((res, rej) => {
+            db.db.get(
+              `SELECT COALESCE(SUM(precio_unitario * cantidad), 0) as nuevo_total FROM venta_productos WHERE venta_id = ?`,
+              [venta_id],
+              (err, row) => {
+                if (err) return rej(err);
+                const nuevoTotal = row.nuevo_total;
+                db.db.get(`SELECT monto_pagado, cambio FROM ventas WHERE id = ?`, [venta_id], (err2, ventaActual) => {
+                  if (err2) return rej(err2);
+                  const pagadoEfectivo = (ventaActual?.monto_pagado || 0) - (ventaActual?.cambio || 0);
+                  const nuevoEstado = pagadoEfectivo >= nuevoTotal ? 'Pagado' : 'Pendiente';
+                  db.db.run(
+                    `UPDATE ventas SET subtotal = ?, total = ?, estado = ?, fecha_actualizado = datetime('now', 'localtime') WHERE id = ?`,
+                    [nuevoTotal, nuevoTotal, nuevoEstado, venta_id],
+                    err3 => err3 ? rej(err3) : res());
+                });
+              }
+            );
+          }),
+
+          // PASO 7: Marcar venta con devolución
+          () => new Promise((res, rej) => {
+            db.db.run('UPDATE ventas SET tiene_devolucion = 1 WHERE id = ?', [venta_id],
+              err => err ? rej(err) : res());
+          }),
+
+          // PASO 8: Añadir nota a la venta
+          () => new Promise((res, rej) => {
+            const prodDevueltos = `${producto_devuelto_nombre}${talla_devuelta ? ' T:' + talla_devuelta : ''} ($${precio_original.toLocaleString('es-CO')})`;
+            const prodRecibidos = productosNuevos
+              .map(p => `${p.producto_nombre}${p.talla ? ' T:' + p.talla : ''} ($${p.precio_unitario.toLocaleString('es-CO')})`)
+              .join(', ');
+            const notaDevolucion = `🔄 Devolución ${numero}: devolvió ${prodDevueltos} → recibió ${prodRecibidos}`;
+            db.db.run(
+              `UPDATE ventas SET notas = CASE WHEN notas IS NULL OR notas = '' THEN ? ELSE notas || ' | ' || ? END WHERE id = ?`,
+              [notaDevolucion, notaDevolucion, venta_id],
+              err => err ? rej(err) : res());
+          }),
+
+          // PASO 9: Actualizar deuda y corregir monto_pagado en ventas
+          () => new Promise((res, rej) => {
+            db.db.get(
+              `SELECT id, monto_total, monto_pagado, monto_pendiente FROM deudas_clientes WHERE venta_id = ? AND estado = 'Pendiente' LIMIT 1`,
+              [venta_id],
+              (err, deudaExistente) => {
+                if (err) return rej(err);
+                if (!deudaExistente) return res();
+
+                const yaAbonado = deudaExistente.monto_pagado || 0;
+                const nuevoMontoTotal = subtotal_nuevos;
+                const nuevoMontoPendiente = Math.max(0, nuevoMontoTotal - yaAbonado);
+                const nuevoEstado = nuevoMontoPendiente <= 0 ? 'Pagado' : 'Pendiente';
+
+                db.db.run(
+                  `UPDATE deudas_clientes SET monto_total = ?, monto_pendiente = ?, estado = ?, fecha_actualizado = datetime('now', 'localtime') WHERE id = ?`,
+                  [nuevoMontoTotal, nuevoMontoPendiente, nuevoEstado, deudaExistente.id],
+                  err2 => {
+                    if (err2) return rej(err2);
+                    db.db.run(`UPDATE ventas SET monto_pagado = ? WHERE id = ?`,
+                      [yaAbonado, venta_id],
+                      err3 => err3 ? rej(err3) : res());
+                  }
+                );
+              }
+            );
+          }),
+
+          // PASO 9.5: Registrar en caja SOLO dinero físico que entra o sale
+          () => new Promise((res, rej) => {
+            const diferenciaCaja = subtotal_nuevos - subtotal_devuelto;
+
+            console.log('🔍 PASO 9.5:', { subtotal_nuevos, subtotal_devuelto, diferenciaCaja, aplicado_a_deuda: datos.aplicado_a_deuda });
+
+            if (Math.abs(diferenciaCaja) < 1) return res();
+
+            const aplicadoDeuda = datos.aplicado_a_deuda || 0;
+            const montoEfectivo = Math.abs(diferenciaCaja) - aplicadoDeuda;
+
+            console.log('🔍 montoEfectivo:', montoEfectivo, '| aplicadoDeuda:', aplicadoDeuda);
+
+            // Si toda la diferencia se aplicó a deuda, no hay movimiento físico
+            if (montoEfectivo < 1) return res();
+
+            db.db.get(
+              `SELECT COALESCE((SELECT saldo_resultante FROM caja_movimientos ORDER BY id DESC LIMIT 1), 0) as saldo_actual`,
+              [],
+              (err, row) => {
+                if (err) return rej(err);
+                const saldoActual = row ? row.saldo_actual : 0;
+                const esSalida = diferenciaCaja < 0;
+                const nuevoSaldo = esSalida ? saldoActual - montoEfectivo : saldoActual + montoEfectivo;
+
+                db.db.run(
+                  `INSERT INTO caja_movimientos (tipo, concepto, monto, saldo_resultante, origen, referencia_id)
+                   VALUES (?, ?, ?, ?, 'devolucion', ?)`,
+                  [
+                    esSalida ? 'salida' : 'entrada',
+                    `Devolución efectivo: ${producto_devuelto_nombre} → ${productosNuevos.map(p => p.producto_nombre).join(', ')}`,
+                    montoEfectivo,
+                    nuevoSaldo,
+                    venta_id
+                  ],
+                  err => err ? rej(err) : res());
+              }
+            );
+          }),
+
+        ])
+        .then(() => {
+          db.db.run('COMMIT', err => {
+            if (err) return callback(err);
+            console.log(`✅ Devolución ${numero} registrada correctamente`);
+            callback(null, { success: true, id: devolucionId, numero_devolucion: numero, diferencia, tipo_diferencia });
           });
+        })
+        .catch(err => {
+          db.db.run('ROLLBACK');
+          console.error('❌ Error en devolución:', err);
+          callback(err);
+        });
       });
     });
   });
 }
 
-// ══════════════════════════════════════════════
-// OBTENER DEVOLUCIONES
-// ══════════════════════════════════════════════
 function obtener(callback) {
   db.db.all(`
-    SELECT d.*, v.numero_venta
-    FROM devoluciones d
+    SELECT d.*, v.numero_venta FROM devoluciones d
     LEFT JOIN ventas v ON d.venta_id = v.id
     ORDER BY d.fecha DESC
   `, [], callback);
 }
 
-// ══════════════════════════════════════════════
-// OBTENER DEVOLUCIONES DE UNA VENTA
-// ══════════════════════════════════════════════
 function obtenerPorVenta(ventaId, callback) {
   db.db.all(`
-    SELECT * FROM devoluciones
-    WHERE venta_id = ?
-    ORDER BY fecha DESC
+    SELECT d.*, di.producto_nombre as item_nombre, di.talla as item_talla,
+           di.cantidad as item_cantidad, di.precio_unitario as item_precio,
+           di.subtotal as item_subtotal
+    FROM devoluciones d
+    LEFT JOIN devolucion_items di ON di.devolucion_id = d.id
+    WHERE d.venta_id = ?
+    ORDER BY d.fecha DESC
   `, [ventaId], callback);
 }
 
-module.exports = {
-  inicializarTablas,
-  generarNumeroDevolucion,
-  registrarDevolucion,
-  obtener,
-  obtenerPorVenta
-};
+module.exports = { inicializarTablas, generarNumeroDevolucion, registrarDevolucion, obtener, obtenerPorVenta, DIFERENCIA_MINIMA };

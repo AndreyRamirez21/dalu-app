@@ -207,59 +207,45 @@ export const useInventario = () => {
     return coincideBusqueda && coincideEstado;
   });
 
-  // Resumen estadístico de rotación
-  const resumenRotacion = (() => {
-    let sinMovimiento = 0;
-    let rotacionLenta = 0;
-    let rotacionNormal = 0;
-    let nuevos = 0;
-    let agotados = 0;
-    let promDiasHastaPrimeraVenta = [];
-    let promDiasSinVenta = [];
+const resumenRotacion = (() => {
+  let rotacionLenta = 0;
+  let rotacionNormal = 0;
+  let rotacionRapida = 0;
+  let promDiasHastaPrimeraVenta = [];
 
-    rotacionData.forEach(producto => {
-      producto.variantes.forEach(v => {
-        switch (v.estado_rotacion) {
-          case 'Sin movimiento': sinMovimiento++; break;
-          case 'Rotación lenta': rotacionLenta++; break;
-          case 'Rotación normal': rotacionNormal++; break;
-          case 'Nuevo': nuevos++; break;
-          case 'Agotado': agotados++; break;
-        }
-        if (v.dias_hasta_primera_venta != null) {
-          promDiasHastaPrimeraVenta.push(v.dias_hasta_primera_venta);
-        }
-        if (v.dias_desde_ultima_venta != null) {
-          promDiasSinVenta.push(v.dias_desde_ultima_venta);
-        }
-      });
+  rotacionData.forEach(producto => {
+    producto.variantes.forEach(v => {
+      switch (v.estado_rotacion) {
+        case 'Rotación lenta':  rotacionLenta++;  break;
+        case 'Rotación normal': rotacionNormal++; break;
+        case 'Rotación rápida': rotacionRapida++; break;
+      }
+      if (v.dias_hasta_primera_venta != null) {
+        promDiasHastaPrimeraVenta.push(v.dias_hasta_primera_venta);
+      }
     });
+  });
 
-    const promedio = arr =>
-      arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+  const promedio = arr =>
+    arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
 
-    return {
-      sinMovimiento,
-      rotacionLenta,
-      rotacionNormal,
-      nuevos,
-      agotados,
-      promedioDiasHastaPrimeraVenta: promedio(promDiasHastaPrimeraVenta),
-      promedioDiasSinVenta: promedio(promDiasSinVenta)
-    };
-  })();
+  return {
+    rotacionLenta,
+    rotacionNormal,
+    rotacionRapida,
+    promedioDiasHastaPrimeraVenta: promedio(promDiasHastaPrimeraVenta),
+  };
+})();
 
   // Helper: color del badge de estado
-  const getColorEstadoRotacion = (estado) => {
-    switch (estado) {
-      case 'Sin movimiento': return 'bg-red-100 text-red-700 border border-red-200';
-      case 'Rotación lenta': return 'bg-orange-100 text-orange-700 border border-orange-200';
-      case 'Rotación normal': return 'bg-green-100 text-green-700 border border-green-200';
-      case 'Nuevo': return 'bg-blue-100 text-blue-700 border border-blue-200';
-      case 'Agotado': return 'bg-gray-100 text-gray-600 border border-gray-200';
-      default: return 'bg-gray-100 text-gray-600';
-    }
-  };
+const getColorEstadoRotacion = (estado) => {
+  switch (estado) {
+    case 'Rotación lenta':  return 'bg-red-100 text-red-700 border border-red-200';
+    case 'Rotación normal': return 'bg-orange-100 text-orange-700 border border-orange-200';
+    case 'Rotación rápida': return 'bg-green-100 text-green-700 border border-green-200';
+    default: return 'bg-gray-100 text-gray-600';
+  }
+};
 
   // Helper: formatear fecha legible
   const formatearFechaRotacion = (fechaStr) => {
@@ -280,6 +266,11 @@ export const useInventario = () => {
   // Lógica existente (sin cambios)
   // ====================================================================
 
+  const calcularStockTotal = (variantes) => {
+    if (!variantes || variantes.length === 0) return 0;
+    return variantes.reduce((total, v) => total + v.cantidad, 0);
+  };
+
   const productosFiltrados = productos.filter(p => {
     const terminoBusqueda = searchTerm.toLowerCase();
     const coincideBusqueda =
@@ -299,18 +290,18 @@ export const useInventario = () => {
           return tallaNormalizada.includes(filtroNormalizado);
         }
       }));
-      const min = precioMin !== '' ? parseFloat(precioMin) : null;
-      const max = precioMax !== '' ? parseFloat(precioMax) : null;
-      const coincidePrecio =
-        (min === null || p.precio_venta_base >= min) &&
-        (max === null || p.precio_venta_base <= max);
-return coincideBusqueda && coincideCategoria && coincideTalla && coincidePrecio;
+const min = precioMin !== '' ? parseFloat(precioMin) : null;
+const max = precioMax !== '' ? parseFloat(precioMax) : null;
+const hayFiltroPrecio = min !== null || max !== null;
+const coincidePrecio =
+  (min === null || p.precio_venta_base >= min) &&
+  (max === null || p.precio_venta_base <= max);
+const tieneStock = calcularStockTotal(p.variantes) > 0;
+const pasaFiltroPrecio = coincidePrecio && (!hayFiltroPrecio || tieneStock);
+return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPrecio;
   });
 
-  const calcularStockTotal = (variantes) => {
-    if (!variantes || variantes.length === 0) return 0;
-    return variantes.reduce((total, v) => total + v.cantidad, 0);
-  };
+
 
   const productosAgrupados = productosFiltrados.reduce((grupos, producto) => {
     const clave = `${producto.nombre}-${producto.categoria}`;

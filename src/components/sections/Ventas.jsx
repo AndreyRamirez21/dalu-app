@@ -107,7 +107,9 @@ const [showModalDevolucion, setShowModalDevolucion] = useState(false);
     });
   };
 
-  const ventasFiltradas = [...ventas].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+const ventasFiltradas = [...ventas]
+  .filter((v) => v.estado !== 'Cancelado')
+  .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
   const calcularEstadisticasAnuales = () => {
     const ahora = new Date();
@@ -139,11 +141,6 @@ const [showModalDevolucion, setShowModalDevolucion] = useState(false);
         />
       )}
 
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-800 mb-2">Gestión de Ventas</h1>
-        <p className="text-gray-600">Registra y administra las ventas de tu negocio.</p>
-      </div>
 
       {/* Tarjetas de estadísticas */}
       <div className="mb-6">
@@ -236,80 +233,102 @@ const [showModalDevolucion, setShowModalDevolucion] = useState(false);
 
       {/* Tabla */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID Venta</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Cliente</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Productos</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Estado</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>
-              </tr>
-            </thead>
-          </table>
-        </div>
+        <div
+          className="overflow-x-auto"
+          style={{ transform: 'rotateX(180deg)' }}
+        >
+          <div style={{ transform: 'rotateX(180deg)' }}>
 
-        <div className="overflow-auto" style={{ maxHeight: '500px' }}>
-          <table className="w-full">
-            <tbody className="divide-y divide-gray-200">
-              {loading && ventasFiltradas.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">Cargando ventas...</td>
-                </tr>
-              ) : ventasFiltradas.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No hay ventas registradas</td>
-                </tr>
-              ) : (
-                ventasFiltradas.map((venta) => (
-                  <tr key={venta.id} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-teal-600 font-semibold">{venta.numero_venta}</span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700">{venta.cliente_nombre}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-600">{venta.total_productos} producto(s)</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-gray-900 font-semibold">${venta.total.toFixed(2)}</div>
-                      {venta.estado === 'Pendiente' && (
-                        <div className="text-xs text-red-600 mt-1">
-                          Debe: ${(venta.total - venta.monto_pagado).toFixed(2)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getEstadoColor(venta.estado)}`}>
-                        {venta.estado}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(venta.fecha)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleVerDetalle(venta)}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition"
-                          title="Ver detalle"
-                        >
-                          <Eye className="w-5 h-5 text-gray-600" />
-                        </button>
-                        {venta.estado !== 'Cancelado' && (
-                          <button
-                            onClick={() => handleCancelarVenta(venta)}
-                            className="p-2 hover:bg-red-50 rounded-lg transition"
-                            title="Cancelar venta"
-                          >
-                            <X className="w-5 h-5 text-red-600" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+            {/* Encabezado sticky */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">ID Venta</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Cliente</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Productos</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Total</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Estado</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Fecha</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Acciones</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+              </table>
+            </div>
+
+            {/* Cuerpo con scroll vertical */}
+            <div className="overflow-auto" style={{ maxHeight: '500px' }}>
+              <table className="w-full">
+                <tbody className="divide-y divide-gray-200">
+                  {loading && ventasFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-6 py-12 text-center text-gray-500">Cargando ventas...</td>
+                    </tr>
+                  ) : ventasFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No hay ventas registradas</td>
+                    </tr>
+                  ) : (
+                    ventasFiltradas.map((venta) => (
+                      <tr key={venta.id} className="hover:bg-gray-50 transition">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-teal-600 font-semibold">{venta.numero_venta}</span>
+                            {venta.tiene_devolucion ? (
+                              <span
+                                title="Esta venta tuvo una devolución"
+                                className="inline-flex items-center gap-1 bg-purple-100 text-purple-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-purple-200"
+                              >
+                                <RefreshCw size={10} />
+                                Dev.
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700">{venta.cliente_nombre}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-600">{venta.total_productos} producto(s)</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-gray-900 font-semibold">${venta.total.toFixed(2)}</div>
+                        {venta.estado === 'Pendiente' && (
+                          <div className="text-xs text-red-600 mt-1">
+                            Debe: ${Math.max(0, venta.total - (venta.monto_pagado - (venta.cambio || 0))).toFixed(2)}
+                          </div>
+                        )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${getEstadoColor(venta.estado)}`}>
+                            {venta.estado}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(venta.fecha)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => handleVerDetalle(venta)}
+                              className="p-2 hover:bg-gray-100 rounded-lg transition"
+                              title="Ver detalle"
+                            >
+                              <Eye className="w-5 h-5 text-gray-600" />
+                            </button>
+                            {venta.estado !== 'Cancelado' && (
+                              <button
+                                onClick={() => handleCancelarVenta(venta)}
+                                className="p-2 hover:bg-red-50 rounded-lg transition"
+                                title="Cancelar venta"
+                              >
+                                <X className="w-5 h-5 text-red-600" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
         </div>
       </div>
 
@@ -336,6 +355,17 @@ const [showModalDevolucion, setShowModalDevolucion] = useState(false);
           }}
         />
       )}
+
+  {showModalDevolucion && (
+    <ModalDevolucion
+      onClose={() => setShowModalDevolucion(false)}
+      onSuccess={() => {
+        setShowModalDevolucion(false);
+        cargarVentas();
+        mostrarToast('Devolución registrada exitosamente', 'exito');
+      }}
+    />
+  )}
 
       {/* Modal Detalle Venta */}
       {showModalDetalle && ventaSeleccionada && (

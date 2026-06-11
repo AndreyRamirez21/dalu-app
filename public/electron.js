@@ -4,6 +4,7 @@ const isDev = !app.isPackaged;
 const url = require('url');
 const sharp = require('sharp');
 const devolucionesModel = require('./database/models/devoluciones.model');
+const cajaModel = require('./database/models/caja.model');
 
 // Registrar protocolo personalizado para cargar imágenes locales
 app.setAppUserModelId('com.dalu.app'); // Identificador para agrupar ventanas y mostrar icono correcto
@@ -575,6 +576,18 @@ ipcMain.handle('agregar-gasto', async (event, gasto) => {
         reject(err);
       } else {
         console.log('✅ Gasto agregado:', resultado);
+
+        // ✅ Registrar en caja automáticamente
+        cajaModel.registrarMovimiento({
+          tipo: 'salida',
+          concepto: `Gasto: ${gasto.descripcion}`,
+          monto: gasto.monto,
+          origen: 'gasto',
+          referencia_id: resultado.id
+        }, (errCaja) => {
+          if (errCaja) console.error('⚠️ Error al registrar gasto en caja:', errCaja);
+        });
+
         resolve({ success: true, ...resultado });
       }
     });
@@ -833,7 +846,7 @@ ipcMain.handle('obtener-devoluciones-venta', async (event, ventaId) => {
 ipcMain.handle('obtener-deuda-pendiente-cliente', async (event, clienteId) => {
   return new Promise((resolve, reject) => {
     db.db.get(`
-      SELECT id, monto_pendiente, venta_id
+      SELECT id, monto_pendiente, venta_id, monto_pagado
       FROM deudas_clientes
       WHERE cliente_id = ? AND estado = 'Pendiente'
       ORDER BY fecha_creacion DESC
@@ -1474,7 +1487,21 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
           }
         }
 
-        // 7️⃣ RESPUESTA FINAL
+// 7️⃣ RESPUESTA FINAL
+
+        // ✅ Registrar en caja automáticamente
+        if (datosVenta.monto_pagado > 0) {
+          cajaModel.registrarMovimiento({
+            tipo: 'entrada',
+            concepto: `Venta #${resultado.numero_venta} - ${clienteNombre}`,
+            monto: datosVenta.monto_pagado - (datosVenta.cambio || 0),
+            origen: 'venta',
+            referencia_id: resultado.id
+          }, (err) => {
+            if (err) console.error('⚠️ Error al registrar venta en caja:', err);
+          });
+        }
+
         resolve({
           success: true,
           venta_id: resultado.id,
@@ -2063,49 +2090,70 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
               finalizarCancelacion();
             }
 
-        function finalizarCancelacion() {
-          // 5a. Cancelar la deuda asociada a esta venta (si existe)
-          db.db.run(
-            `UPDATE deudas_clientes
-             SET estado = 'Cancelado', fecha_actualizado = datetime('now', 'localtime')
-             WHERE venta_id = ? AND estado = 'Pendiente'`,
-            [ventaId],
-            (err) => {
-              if (err) {
-                console.error('❌ Error al cancelar deuda asociada:', err);
-                // Continuamos aunque falle esto
-              } else {
-                console.log(`✅ Deuda asociada a venta ${ventaId} cancelada`);
-              }
-            }
-          );
-
-          // 5b. Marcar la venta como cancelada
-          db.db.run(
-            "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
-            [ventaId],
-            (err) => {
-              if (err) {
-                db.db.run('ROLLBACK');
-                console.error('❌ Error al actualizar estado de venta:', err);
-                reject(err);
-              } else {
-                db.db.run('COMMIT', (err) => {
+            function finalizarCancelacion() {
+              // 5a. Cancelar la deuda asociada a esta venta (si existe)
+              db.db.run(
+                `UPDATE deudas_clientes
+                 SET estado = 'Cancelado', fecha_actualizado = datetime('now', 'localtime')
+                 WHERE venta_id = ? AND estado = 'Pendiente'`,
+                [ventaId],
+                (err) => {
                   if (err) {
-                    console.error('❌ Error al hacer commit:', err);
+                    console.error('❌ Error al cancelar deuda asociada:', err);
+                  } else {
+                    console.log(`✅ Deuda asociada a venta ${ventaId} cancelada`);
+                  }
+                }
+              );
+
+              // ✅ NUEVO: Revertir el movimiento de caja asociado a esta venta
+              db.db.get(
+                `SELECT id, monto FROM caja_movimientos
+                 WHERE origen = 'venta' AND referencia_id = ? LIMIT 1`,
+                [ventaId],
+                (err, movCaja) => {
+                  if (!err && movCaja) {
+                    // Registrar una salida que anule la entrada original
+                    cajaModel.registrarMovimiento({
+                      tipo: 'salida',
+                      concepto: `Venta cancelada #${ventaId} — reversión`,
+                      monto: movCaja.monto,
+                      origen: 'manual',
+                      referencia_id: ventaId
+                    }, (errCaja) => {
+                      if (errCaja) {
+                        console.error('⚠️ Error al revertir caja por cancelación:', errCaja);
+                      } else {
+                        console.log(`✅ Movimiento de caja revertido por cancelación de venta ${ventaId}`);
+                      }
+                    });
+                  }
+                }
+              );
+
+              // 5b. Marcar la venta como cancelada
+              db.db.run(
+                "UPDATE ventas SET estado = 'Cancelado' WHERE id = ?",
+                [ventaId],
+                (err) => {
+                  if (err) {
+                    db.db.run('ROLLBACK');
+                    console.error('❌ Error al actualizar estado de venta:', err);
                     reject(err);
                   } else {
-                    console.log(`✅ Venta ${ventaId} cancelada correctamente`);
-                    if (venta.cliente_id) {
-                      console.log(`✅ Estadísticas del cliente ${venta.cliente_id} actualizadas`);
-                    }
-                    resolve({ success: true });
+                    db.db.run('COMMIT', (err) => {
+                      if (err) {
+                        console.error('❌ Error al hacer commit:', err);
+                        reject(err);
+                      } else {
+                        console.log(`✅ Venta ${ventaId} cancelada correctamente`);
+                        resolve({ success: true });
+                      }
+                    });
                   }
-                });
-              }
+                }
+              );
             }
-          );
-        }
           }
         });
       });
@@ -2172,6 +2220,21 @@ ipcMain.handle('registrar-abono-deuda-cliente', async (event, deudaId, montoAbon
         reject(err);
       } else {
         console.log('✅ Abono registrado:', resultado);
+
+        // ✅ Registrar entrada en caja automáticamente
+        db.db.get('SELECT cliente_nombre FROM deudas_clientes WHERE id = ?', [deudaId], (errQ, deuda) => {
+          const nombreCliente = deuda?.cliente_nombre || 'Cliente';
+          cajaModel.registrarMovimiento({
+            tipo: 'entrada',
+            concepto: `Abono de deuda — ${nombreCliente}`,
+            monto: montoAbono,
+            origen: 'venta',
+            referencia_id: deudaId
+          }, (errCaja) => {
+            if (errCaja) console.error('⚠️ Error al registrar abono en caja:', errCaja);
+          });
+        });
+
         resolve(resultado);
       }
     });
@@ -3225,11 +3288,10 @@ ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
   return new Promise((resolve, reject) => {
     const { inicio: fechaInicio, fin: fechaFin } = periodo;
 
-    db.db.all(`
+db.db.all(`
       SELECT
-        p.id,
         p.nombre,
-        p.referencia as codigo,
+        p.nombre as codigo,
         SUM(vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as cantidad,
         SUM(vp.precio_unitario * vp.cantidad * ((v.monto_pagado - v.cambio) / v.total)) as total_ventas
       FROM venta_productos vp
@@ -3239,12 +3301,48 @@ ipcMain.handle('obtener-top-productos-periodo', async (event, periodo) => {
       AND v.monto_pagado > 0
       AND v.total > 0
       AND date(v.fecha) BETWEEN date(?) AND date(?)
-      GROUP BY p.id, p.nombre, p.referencia
+      GROUP BY p.nombre
       ORDER BY cantidad DESC
       LIMIT 5
     `, [fechaInicio, fechaFin], (err, rows) => {
       if (err) {
         console.error('Error al obtener top productos:', err);
+        reject(err);
+      } else {
+        resolve(rows || []);
+      }
+    });
+  });
+});
+
+ipcMain.handle('obtener-detalle-producto-top', async (event, nombreProducto, periodo) => {
+  return new Promise((resolve, reject) => {
+    const { inicio: fechaInicio, fin: fechaFin } = periodo;
+
+    db.db.all(`
+      SELECT
+        p.nombre,
+        p.referencia,
+        vp.cantidad,
+        vp.precio_unitario,
+        (vp.cantidad * vp.precio_unitario) as subtotal,
+        v.fecha,
+        v.numero_venta,
+        v.cliente_nombre,
+        COALESCE(vr.talla, 'Única') as talla
+      FROM venta_productos vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      INNER JOIN ventas v ON vp.venta_id = v.id
+      LEFT JOIN variantes_producto vr ON vp.variante_id = vr.id
+      WHERE v.estado != 'Cancelado'
+      AND v.monto_pagado > 0
+      AND v.total > 0
+      AND p.nombre = ?
+      AND date(v.fecha) BETWEEN date(?) AND date(?)
+      ORDER BY v.fecha DESC
+    `, [nombreProducto, fechaInicio, fechaFin], (err, rows) => {
+      if (err) {
+        console.error('Error al obtener detalle producto top:', err);
         reject(err);
       } else {
         resolve(rows || []);
@@ -3876,9 +3974,22 @@ ipcMain.handle('obtener-rotacion-inventario', async () => {
         vp.talla,
         vp.cantidad as stock_actual,
         COALESCE(vp.fecha_ingreso, p.fecha_creado) as fecha_ingreso_variante,
-        vp.fecha_primera_venta,
-        vp.fecha_ultima_venta,
-        COALESCE(vp.total_unidades_vendidas, 0) as total_unidades_vendidas,
+
+        -- Fecha primera venta: columna O subconsulta (lo que exista)
+        COALESCE(
+          vp.fecha_primera_venta,
+          (SELECT MIN(v.fecha) FROM venta_productos vp2
+           INNER JOIN ventas v ON vp2.venta_id = v.id
+           WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+        ) as fecha_primera_venta,
+
+        -- Fecha última venta: columna O subconsulta
+        COALESCE(
+          vp.fecha_ultima_venta,
+          (SELECT MAX(v.fecha) FROM venta_productos vp2
+           INNER JOIN ventas v ON vp2.venta_id = v.id
+           WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+        ) as fecha_ultima_venta,
 
         -- Días en inventario
         CAST(
@@ -3886,12 +3997,19 @@ ipcMain.handle('obtener-rotacion-inventario', async () => {
           AS INTEGER
         ) as dias_en_inventario,
 
-        -- Días hasta primera venta
+        -- Días hasta primera venta (usando fecha real)
         CASE
-          WHEN vp.fecha_primera_venta IS NOT NULL THEN
+          WHEN COALESCE(vp.fecha_primera_venta,
+            (SELECT MIN(v.fecha) FROM venta_productos vp2
+             INNER JOIN ventas v ON vp2.venta_id = v.id
+             WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+          ) IS NOT NULL THEN
             CAST(
-              (julianday(vp.fecha_primera_venta) -
-               julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado)))
+              julianday(COALESCE(vp.fecha_primera_venta,
+                (SELECT MIN(v.fecha) FROM venta_productos vp2
+                 INNER JOIN ventas v ON vp2.venta_id = v.id
+                 WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+              )) - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))
               AS INTEGER
             )
           ELSE NULL
@@ -3899,41 +4017,95 @@ ipcMain.handle('obtener-rotacion-inventario', async () => {
 
         -- Días desde última venta
         CASE
-          WHEN vp.fecha_ultima_venta IS NOT NULL THEN
-            CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER)
+          WHEN COALESCE(vp.fecha_ultima_venta,
+            (SELECT MAX(v.fecha) FROM venta_productos vp2
+             INNER JOIN ventas v ON vp2.venta_id = v.id
+             WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+          ) IS NOT NULL THEN
+            CAST((julianday('now') - julianday(COALESCE(vp.fecha_ultima_venta,
+              (SELECT MAX(v.fecha) FROM venta_productos vp2
+               INNER JOIN ventas v ON vp2.venta_id = v.id
+               WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+            ))) AS INTEGER)
           ELSE NULL
         END as dias_desde_ultima_venta,
 
+        -- Estado de rotación: combina velocidad de primera venta + actividad reciente
+        CASE
+          -- Nunca ha vendido: por tiempo en inventario
+          WHEN COALESCE(vp.fecha_primera_venta,
+            (SELECT MIN(v.fecha) FROM venta_productos vp2
+             INNER JOIN ventas v ON vp2.venta_id = v.id
+             WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+          ) IS NULL THEN
+            CASE
+              WHEN CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) >= 91
+                THEN 'Rotación lenta'
+              ELSE 'Rotación normal'
+            END
 
-    -- Estado de rotación calculado (agotado ya no bloquea la rotación)
-    CASE
-      WHEN vp.fecha_primera_venta IS NULL AND
-           CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
-           THEN 'Sin movimiento'
-      WHEN vp.fecha_primera_venta IS NULL THEN 'Nuevo'
-      WHEN CAST((julianday('now') - julianday(vp.fecha_ultima_venta)) AS INTEGER) > 30
-           THEN 'Rotación lenta'
-      ELSE 'Rotación normal'
-    END as estado_rotacion,
+          -- Ya vendió: tomar el PEOR entre días a 1ª venta y días desde última venta
+          ELSE
+            CASE
+              -- Si lleva 91+ días sin vender desde la última venta → lenta (sin importar qué tan rápido vendió antes)
+              WHEN CAST((julianday('now') - julianday(COALESCE(vp.fecha_ultima_venta,
+                (SELECT MAX(v.fecha) FROM venta_productos vp2
+                 INNER JOIN ventas v ON vp2.venta_id = v.id
+                 WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+              ))) AS INTEGER) >= 91
+                THEN 'Rotación lenta'
 
-        -- Ingresos totales de esta variante
+              -- Si lleva 46-90 días sin vender → normal
+              WHEN CAST((julianday('now') - julianday(COALESCE(vp.fecha_ultima_venta,
+                (SELECT MAX(v.fecha) FROM venta_productos vp2
+                 INNER JOIN ventas v ON vp2.venta_id = v.id
+                 WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+              ))) AS INTEGER) >= 46
+                THEN 'Rotación normal'
+
+              -- Si vendió recientemente (últimos 45 días) Y además tardó poco en la primera venta → rápida
+              WHEN CAST(
+                julianday(COALESCE(vp.fecha_primera_venta,
+                  (SELECT MIN(v.fecha) FROM venta_productos vp2
+                   INNER JOIN ventas v ON vp2.venta_id = v.id
+                   WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado')
+                )) - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))
+                AS INTEGER) <= 45
+                THEN 'Rotación rápida'
+
+              -- Vendió recientemente pero tardó mucho en la primera venta → normal
+              ELSE 'Rotación normal'
+            END
+        END as estado_rotacion,
+
+        -- Total unidades vendidas
         COALESCE((
-          SELECT SUM(hvv.cantidad_vendida * hvv.precio_venta)
-          FROM historial_ventas_variante hvv
-          WHERE hvv.variante_id = vp.id
+          SELECT SUM(vp2.cantidad)
+          FROM venta_productos vp2
+          INNER JOIN ventas v ON vp2.venta_id = v.id
+          WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado'
+        ), 0) as total_unidades_vendidas,
+
+        -- Ingresos totales
+        COALESCE((
+          SELECT SUM(vp2.cantidad * vp2.precio_unitario)
+          FROM venta_productos vp2
+          INNER JOIN ventas v ON vp2.venta_id = v.id
+          WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado'
         ), 0) as total_ingresos_variante,
 
-        -- Número de ventas distintas
+        -- Número de ventas
         COALESCE((
-          SELECT COUNT(DISTINCT hvv.venta_id)
-          FROM historial_ventas_variante hvv
-          WHERE hvv.variante_id = vp.id
+          SELECT COUNT(DISTINCT vp2.venta_id)
+          FROM venta_productos vp2
+          INNER JOIN ventas v ON vp2.venta_id = v.id
+          WHERE vp2.variante_id = vp.id AND v.estado != 'Cancelado'
         ), 0) as numero_ventas
 
       FROM productos p
       INNER JOIN variantes_producto vp ON vp.producto_id = p.id
-ORDER BY
-  COALESCE(vp.fecha_ingreso, p.fecha_creado) DESC,
+      ORDER BY
+        COALESCE(vp.fecha_ingreso, p.fecha_creado) DESC,
   CASE
     WHEN vp.fecha_primera_venta IS NULL AND
          CAST((julianday('now') - julianday(COALESCE(vp.fecha_ingreso, p.fecha_creado))) AS INTEGER) > 60
@@ -4019,9 +4191,593 @@ ipcMain.handle('obtener-historial-variante', async (event, varianteId) => {
   });
 });
 
+//Handler caja
+
+// Obtener saldo actual
+ipcMain.handle('caja-obtener-saldo', async () => {
+  return new Promise((resolve, reject) => {
+    cajaModel.obtenerSaldo((err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+});
+
+// Obtener todos los movimientos
+ipcMain.handle('caja-obtener-movimientos', async () => {
+  return new Promise((resolve, reject) => {
+    cajaModel.obtenerMovimientos((err, movimientos) => {
+      if (err) reject(err);
+      else resolve(movimientos);
+    });
+  });
+});
+
+// Obtener movimientos por período
+ipcMain.handle('caja-obtener-periodo', async (event, fechaInicio, fechaFin) => {
+  return new Promise((resolve, reject) => {
+    cajaModel.obtenerPorPeriodo(fechaInicio, fechaFin, (err, movimientos) => {
+      if (err) reject(err);
+      else resolve(movimientos);
+    });
+  });
+});
+
+// Registrar movimiento manual
+ipcMain.handle('caja-registrar-movimiento', async (event, datos) => {
+  return new Promise((resolve, reject) => {
+    cajaModel.registrarMovimiento(datos, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+// Configurar saldo inicial
+ipcMain.handle('caja-configurar-saldo-inicial', async (event, monto) => {
+  return new Promise((resolve, reject) => {
+    cajaModel.configurarSaldoInicial(monto, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+// Resumen del día
+ipcMain.handle('caja-resumen-dia', async () => {
+  return new Promise((resolve, reject) => {
+    cajaModel.obtenerResumenDia((err, resumen) => {
+      if (err) reject(err);
+      else resolve(resumen);
+    });
+  });
+});
+
+// Eliminar movimiento
+ipcMain.handle('caja-eliminar-movimiento', async (event, id) => {
+  return new Promise((resolve, reject) => {
+    cajaModel.eliminarMovimiento(id, (err, resultado) => {
+      if (err) reject(err);
+      else resolve(resultado);
+    });
+  });
+});
+
+
+// ==================== HANDLERS PARA IA ====================
+
+const IA_CONFIG_PATH = path.join(app.getPath('userData'), 'ia-config.json');
+
+ipcMain.handle('ia-guardar-apikey', async (event, apiKey) => {
+  try {
+    const config = fs.existsSync(IA_CONFIG_PATH)
+      ? JSON.parse(fs.readFileSync(IA_CONFIG_PATH, 'utf8'))
+      : {};
+    config.apiKey = apiKey;
+    fs.writeFileSync(IA_CONFIG_PATH, JSON.stringify(config));
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('ia-obtener-apikey', async () => {
+  try {
+    if (!fs.existsSync(IA_CONFIG_PATH)) return null;
+    const config = JSON.parse(fs.readFileSync(IA_CONFIG_PATH, 'utf8'));
+    return config.apiKey || null;
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('ia-analizar', async (event, { resumen, apiKey }) => {
+  return new Promise((resolve) => {
+    const https = require('https');
+
+    const prompt = `Eres un asesor experto en retail de moda y accesorios en Colombia.
+Analiza estos datos REALES del negocio Dalú y entrega recomendaciones accionables y concretas en español.
+
+═══════════════════════════════════════
+DATOS DEL NEGOCIO (${resumen.periodo})
+═══════════════════════════════════════
+
+📊 VENTAS DEL MES:
+- Transacciones: ${resumen.ventas.total_mes}
+- Ingresos cobrados: $${resumen.ventas.ingresos_mes.toLocaleString('es-CO')}
+- Pendiente por cobrar: $${resumen.ventas.pendiente_cobrar.toLocaleString('es-CO')}
+
+🏆 PRODUCTOS MÁS VENDIDOS (últimos 6 meses):
+${resumen.top_productos.length
+  ? resumen.top_productos.map((p, i) => `${i + 1}. ${p.nombre}: ${p.unidades} uds — $${p.ingresos.toLocaleString('es-CO')}`).join('\n')
+  : 'Sin datos suficientes'}
+
+📦 ESTADO DEL INVENTARIO:
+- Total referencias: ${resumen.inventario.total_productos}
+- Con stock bajo (≤2 uds): ${resumen.inventario.stock_bajo}
+- Agotados: ${resumen.inventario.agotados}
+${resumen.inventario.productos_agotados.length ? `\nPRODUCTOS AGOTADOS:\n${resumen.inventario.productos_agotados.map(p => `• ${p}`).join('\n')}` : ''}
+${resumen.inventario.productos_stock_bajo.length ? `\nSTOCK CRÍTICO:\n${resumen.inventario.productos_stock_bajo.map(p => `• ${p}`).join('\n')}` : ''}
+${resumen.inventario.rotacion_lenta.length ? `\nROTACIÓN LENTA:\n${resumen.inventario.rotacion_lenta.map(p => `• ${p}`).join('\n')}` : ''}
+${resumen.inventario.rotacion_rapida.length ? `\nROTACIÓN RÁPIDA:\n${resumen.inventario.rotacion_rapida.map(p => `• ${p}`).join('\n')}` : ''}
+
+💸 GASTOS POR CATEGORÍA (este mes):
+${resumen.gastos.length
+  ? resumen.gastos.map(g => `• ${g.categoria}: $${g.total.toLocaleString('es-CO')}`).join('\n')
+  : 'Sin gastos registrados este mes'}
+
+════════════════════════════════════════
+INSTRUCCIONES DE RESPUESTA
+════════════════════════════════════════
+Responde ÚNICAMENTE con JSON válido (sin markdown, sin backticks, sin texto adicional).
+Estructura exacta:
+{
+  "resumen_ejecutivo": "1-2 oraciones describiendo el estado actual del negocio.",
+  "alertas": [
+    { "titulo": "Título corto", "descripcion": "Qué está pasando y por qué importa", "accion": "Qué hacer exactamente" }
+  ],
+  "oportunidades": [
+    { "titulo": "Título corto", "descripcion": "Qué oportunidad existe", "accion": "Cómo aprovecharla" }
+  ],
+  "recomendaciones_compra": [
+    { "titulo": "Producto o categoría", "descripcion": "Por qué comprarlo", "cantidad_sugerida": "Cuánto pedir aprox." }
+  ]
+}
+Máximo 3 items por categoría. Sé específico con los nombres de productos cuando aparezcan en los datos.`;
+
+const body = JSON.stringify({
+  model: 'llama-3.3-70b-versatile',
+  max_tokens: 2000,
+  temperature: 0.3,
+  messages: [{ role: 'user', content: prompt }]
+});
+
+const options = {
+        hostname: 'api.groq.com',
+        path: '/openai/v1/chat/completions',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+    'Authorization': `Bearer ${apiKey}`
+  }
+};
 
 
 
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            resolve({ success: false, error: `API Error: ${parsed.error.message}` });
+            return;
+          }
+          const texto = parsed.choices?.[0]?.message?.content;
+          if (texto) {
+            resolve({ success: true, respuesta: texto.trim() });
+          } else {
+            resolve({ success: false, error: 'Respuesta vacía de Grok. Intenta de nuevo.' });
+          }
+        } catch (e) {
+          resolve({ success: false, error: 'Error al procesar respuesta: ' + e.message });
+        }
+      });
+    });
+
+    req.on('error', (err) => resolve({ success: false, error: err.message }));
+    req.write(body);
+    req.end();
+  });
+});
+
+
+const IA_HISTORY_PATH = path.join(app.getPath('userData'), 'ia-historial.json');
+
+ipcMain.handle('ia-guardar-en-historial', async (event, entrada) => {
+  try {
+    let historial = [];
+    if (fs.existsSync(IA_HISTORY_PATH)) {
+      historial = JSON.parse(fs.readFileSync(IA_HISTORY_PATH, 'utf8'));
+    }
+    historial.unshift(entrada);
+    historial = historial.slice(0, 10);
+    fs.writeFileSync(IA_HISTORY_PATH, JSON.stringify(historial, null, 2));
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('ia-obtener-historial', async () => {
+  try {
+    if (!fs.existsSync(IA_HISTORY_PATH)) return [];
+    return JSON.parse(fs.readFileSync(IA_HISTORY_PATH, 'utf8'));
+  } catch { return []; }
+});
+
+ipcMain.handle('ia-limpiar-historial', async () => {
+  try {
+    fs.writeFileSync(IA_HISTORY_PATH, '[]');
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('ia-chat', async (event, { mensajes, contexto, apiKey }) => {
+  return new Promise((resolve) => {
+    const https = require('https');
+
+    const systemPrompt = `Eres el asistente inteligente de Dalú, una tienda de moda y accesorios en Colombia.
+Tienes acceso a los datos actuales del negocio y respondes preguntas sobre ventas, inventario, clientes y gastos.
+Responde siempre en español, de forma concisa y útil. Usa el formato de pesos colombianos ($) con puntos para miles.
+
+DATOS ACTUALES DEL NEGOCIO:
+${contexto}`;
+
+    const body = JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1000,
+      temperature: 0.5,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...mensajes
+      ]
+    });
+
+    const options = {
+      hostname: 'api.groq.com',
+      path: '/openai/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Authorization': `Bearer ${apiKey}`
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            resolve({ success: false, error: parsed.error.message });
+            return;
+          }
+          const texto = parsed.choices?.[0]?.message?.content;
+          if (texto) resolve({ success: true, respuesta: texto.trim() });
+          else resolve({ success: false, error: 'Sin respuesta del modelo' });
+        } catch (e) {
+          resolve({ success: false, error: e.message });
+        }
+      });
+    });
+
+    req.on('error', (err) => resolve({ success: false, error: err.message }));
+    req.write(body);
+    req.end();
+  });
+});
+
+ipcMain.handle('ia-obtener-contexto-completo', async () => {
+  return new Promise((resolve) => {
+    const resultado = {};
+    let pendientes = 9;
+    const verificar = () => { if (--pendientes === 0) resolve(resultado); };
+
+    // Ventas por mes (TODOS LOS TIEMPOS)
+    db.db.all(`
+      SELECT strftime('%Y-%m', fecha) as mes,
+        COUNT(*) as num_ventas,
+        ROUND(SUM(monto_pagado - cambio), 0) as ingresos,
+        ROUND(SUM(CASE WHEN estado='Pendiente' THEN total - monto_pagado ELSE 0 END), 0) as pendiente
+      FROM ventas WHERE estado != 'Cancelado'
+      GROUP BY mes ORDER BY mes DESC
+    `, [], (err, rows) => { resultado.ventas_por_mes = err ? [] : rows; verificar(); });
+
+    // Top 10 productos histórico
+    db.db.all(`
+      SELECT p.nombre, p.categoria,
+        SUM(vp.cantidad) as unidades,
+        ROUND(SUM(vp.cantidad * vp.precio_unitario), 0) as ingresos
+      FROM venta_productos vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      INNER JOIN ventas v ON vp.venta_id = v.id
+      WHERE v.estado != 'Cancelado'
+      GROUP BY p.id ORDER BY unidades DESC LIMIT 10
+    `, [], (err, rows) => { resultado.top_productos = err ? [] : rows; verificar(); });
+
+    // Gastos por mes y categoría (TODOS)
+    db.db.all(`
+      SELECT strftime('%Y-%m', fecha) as mes, categoria,
+        ROUND(SUM(monto), 0) as total, COUNT(*) as num
+      FROM gastos GROUP BY mes, categoria ORDER BY mes DESC, total DESC
+    `, [], (err, rows) => { resultado.gastos = err ? [] : rows; verificar(); });
+
+    // Inventario con stock
+    db.db.all(`
+      SELECT p.nombre, p.categoria, p.precio_venta_base,
+        vp.talla, vp.cantidad as stock
+      FROM variantes_producto vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      WHERE vp.cantidad > 0 ORDER BY p.nombre, vp.talla
+    `, [], (err, rows) => { resultado.inventario = err ? [] : rows; verificar(); });
+
+    // Productos agotados
+    db.db.all(`
+      SELECT p.nombre, p.categoria, vp.talla, vp.fecha_ultima_venta
+      FROM variantes_producto vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      WHERE vp.cantidad = 0 ORDER BY vp.fecha_ultima_venta DESC
+    `, [], (err, rows) => { resultado.agotados = err ? [] : rows; verificar(); });
+
+    // Deudas clientes pendientes
+    db.db.all(`
+      SELECT cliente_nombre,
+        ROUND(monto_total, 0) as monto_total,
+        ROUND(monto_pendiente, 0) as monto_pendiente,
+        fecha_creacion
+      FROM deudas_clientes WHERE estado = 'Pendiente'
+      ORDER BY monto_pendiente DESC
+    `, [], (err, rows) => { resultado.deudas_clientes = err ? [] : rows; verificar(); });
+
+    // Top 10 clientes
+    db.db.all(`
+      SELECT nombre, numero_compras, ROUND(total_compras, 0) as total_compras, ultima_compra
+      FROM clientes WHERE numero_compras > 0
+      ORDER BY total_compras DESC LIMIT 50
+    `, [], (err, rows) => { resultado.top_clientes = err ? [] : rows; verificar(); });
+
+    // Saldo caja
+    db.db.get(`
+      SELECT COALESCE(
+        (SELECT saldo_resultante FROM caja_movimientos ORDER BY id DESC LIMIT 1), 0
+      ) as saldo_actual
+    `, [], (err, row) => { resultado.caja = err ? { saldo_actual: 0 } : row; verificar(); });
+
+    // Productos vendidos por mes (DETALLE HISTÓRICO)
+    db.db.all(`
+      SELECT
+        strftime('%Y-%m', v.fecha) as mes,
+        p.nombre as producto,
+        p.categoria,
+        SUM(vp.cantidad) as unidades,
+        ROUND(SUM(vp.cantidad * vp.precio_unitario), 0) as ingresos
+      FROM venta_productos vp
+      INNER JOIN productos p ON vp.producto_id = p.id
+      INNER JOIN ventas v ON vp.venta_id = v.id
+      WHERE v.estado != 'Cancelado'
+      GROUP BY mes, p.id
+      ORDER BY mes DESC, unidades DESC
+    `, [], (err, rows) => { resultado.productos_por_mes = err ? [] : rows; verificar(); });
+  });
+});
+
+const IA_CHAT_PATH = path.join(app.getPath('userData'), 'ia-chat-sesiones.json');
+
+ipcMain.handle('ia-guardar-sesion-chat', async (event, sesion) => {
+  try {
+    let sesiones = fs.existsSync(IA_CHAT_PATH)
+      ? JSON.parse(fs.readFileSync(IA_CHAT_PATH, 'utf8')) : [];
+    const idx = sesiones.findIndex(s => s.id === sesion.id);
+    if (idx >= 0) sesiones[idx] = sesion;
+    else sesiones.unshift(sesion);
+    sesiones = sesiones.slice(0, 10);
+    fs.writeFileSync(IA_CHAT_PATH, JSON.stringify(sesiones, null, 2));
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('ia-obtener-sesiones-chat', async () => {
+  try {
+    if (!fs.existsSync(IA_CHAT_PATH)) return [];
+    return JSON.parse(fs.readFileSync(IA_CHAT_PATH, 'utf8'));
+  } catch { return []; }
+});
+
+ipcMain.handle('ia-eliminar-sesion-chat', async (event, sesionId) => {
+  try {
+    if (!fs.existsSync(IA_CHAT_PATH)) return { success: true };
+    let sesiones = JSON.parse(fs.readFileSync(IA_CHAT_PATH, 'utf8'));
+    sesiones = sesiones.filter(s => s.id !== sesionId);
+    fs.writeFileSync(IA_CHAT_PATH, JSON.stringify(sesiones, null, 2));
+    return { success: true };
+  } catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('ia-chat-completo', async (event, { mensajes, apiKey }) => {
+  const https = require('https');
+
+// ✅ Después (compacto — solo tabla y columnas):
+const tablas = await new Promise((resolve) => {
+  db.db.all(
+    `SELECT m.name AS tabla, p.name AS col, p.type AS tipo
+     FROM sqlite_master m
+     JOIN pragma_table_info(m.name) p
+     WHERE m.type='table' AND m.name NOT LIKE 'sqlite_%'
+     ORDER BY m.name, p.cid`,
+    [], (err, rows) => resolve(err ? [] : rows)
+  );
+});
+
+// Agrupa por tabla para que sea más legible
+const schemaCompacto = Object.entries(
+  tablas.reduce((acc, r) => {
+    if (!acc[r.tabla]) acc[r.tabla] = [];
+    acc[r.tabla].push(`${r.col}(${r.tipo})`);
+    return acc;
+  }, {})
+).map(([tabla, cols]) => `${tabla}: ${cols.join(', ')}`).join('\n');
+
+const hoy = new Date();
+const fechaHoy = hoy.toISOString().split('T')[0];
+const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+const mesAnteriorDate = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+const mesAnterior = `${mesAnteriorDate.getFullYear()}-${String(mesAnteriorDate.getMonth() + 1).padStart(2, '0')}`;
+
+const systemPrompt = `Eres el asistente de Dalú, tienda de moda en Colombia.
+Usa ejecutar_sql para consultar datos REALES. Nunca inventes. Responde en español con pesos colombianos ($).
+
+FECHA DE HOY: ${fechaHoy}
+MES ACTUAL: ${mesActual}
+MES ANTERIOR: ${mesAnterior}
+
+TABLAS DISPONIBLES:
+${schemaCompacto}
+
+REGLAS DE CÁLCULO (CRÍTICAS — OBLIGATORIAS, nunca las ignores):
+- PROHIBIDO usar el campo 'total' en cualquier suma de dinero. Ese campo NO representa dinero recibido.
+- El ÚNICO campo válido para calcular ingresos es: (monto_pagado - cambio)
+- SIEMPRE incluir WHERE estado != 'Cancelado' en consultas de ventas
+- "Lo que se vendió / cobró / recaudó / entró": SUM(monto_pagado - cambio) WHERE estado = 'Pagado' AND strftime('%Y-%m', fecha) = 'YYYY-MM'
+- "Facturación / lo vendido incluyendo deudas": SUM(monto_pagado - cambio) WHERE estado IN ('Pagado','Pendiente') AND strftime('%Y-%m', fecha) = 'YYYY-MM'
+- "Pendiente por cobrar": SUM(total - monto_pagado) WHERE estado = 'Pendiente'
+- Si el usuario pregunta solo "cuánto se vendió" sin aclarar, usar solo estado = 'Pagado'
+
+REGLAS DE CONSULTA DE PRODUCTOS VENDIDOS (OBLIGATORIAS):
+- Para contar productos vendidos SIEMPRE hacer JOIN con ventas:
+  FROM venta_productos vp INNER JOIN ventas v ON vp.venta_id = v.id
+- NUNCA usar vp.fecha_creacion para filtrar fechas. SIEMPRE usar v.fecha
+- SIEMPRE incluir WHERE v.estado != 'Cancelado'
+- Cantidad de productos = SUM(vp.cantidad)
+- Ejemplo correcto:
+  SELECT strftime('%Y-%m', v.fecha) as mes, SUM(vp.cantidad) as unidades
+  FROM venta_productos vp
+  INNER JOIN ventas v ON vp.venta_id = v.id
+  WHERE v.estado != 'Cancelado'
+  GROUP BY mes ORDER BY unidades DESC
+
+COMPORTAMIENTO OBLIGATORIO:
+- NUNCA muestres código SQL al usuario. SIEMPRE ejecútalo con la herramienta ejecutar_sql y responde con los resultados reales.
+- Si necesitas datos para responder, úsala. Nunca digas "deberías ejecutar esta consulta".
+
+REGLA ANTI-ALUCINACIÓN (MUY IMPORTANTE):
+- NUNCA inventes, asumas ni completes datos que no hayas obtenido de ejecutar_sql
+- Si el usuario pregunta detalles de un cliente, producto o venta, SIEMPRE ejecuta un SELECT para obtener esos datos
+- Si un dato no aparece en los resultados del query, di "no tengo ese dato en la base de datos"
+- Está PROHIBIDO inventar cédulas, teléfonos, direcciones, montos o cualquier dato específico
+
+- Para CADA pregunta nueva, ejecuta SIEMPRE un query fresco.
+  NUNCA uses datos de respuestas anteriores en la conversación para responder.
+  Los datos pueden haber cambiado o el contexto puede ser diferente.
+
+
+REGLAS DE FECHA:
+- Para filtrar por mes usa: strftime('%Y-%m', fecha) = 'YYYY-MM'
+- "este mes" = '${mesActual}', "mes pasado" o "mayo" = '${mesAnterior}'
+
+REGLAS DE NEGOCIO:
+- "Top productos" últimos 6 meses, agrupar por p.id y p.nombre, ordenar por SUM(vp.cantidad) DESC
+- Gastos operativos excluyen categorías 'Inventario' y 'Proveedores'
+- Ganancia bruta = ingresos - costo_productos - costos_adicionales - comision_marcas
+- Ganancia neta = ganancia_bruta - gastos_operativos`;
+
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'ejecutar_sql',
+      description: 'Ejecuta un SELECT en la base de datos de Dalú y retorna los resultados reales.',
+      parameters: {
+        type: 'object',
+        properties: { sql: { type: 'string', description: 'Query SELECT válida para SQLite3' } },
+        required: ['sql']
+      }
+    }
+  }];
+
+  const llamarGroq = (messages) => new Promise((resolve) => {
+    const body = JSON.stringify({
+model: 'llama-3.3-70b-versatile',
+      max_tokens: 2000,
+      temperature: 0.1,
+      messages,
+      tools,
+      tool_choice: 'auto'
+    });
+    const options = {
+        hostname: 'api.groq.com',
+        path: '/openai/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'Authorization': `Bearer ${apiKey}`
+      }
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) resolve({ error: parsed.error.message });
+          else resolve({ ok: true, choice: parsed.choices?.[0] });
+        } catch (e) { resolve({ error: e.message }); }
+      });
+    });
+    req.on('error', err => resolve({ error: err.message }));
+    req.write(body);
+    req.end();
+  });
+
+  const ejecutarSQL = (sql) => new Promise((resolve) => {
+    const upper = sql.trim().toUpperCase();
+    if (!upper.startsWith('SELECT') && !upper.startsWith('WITH'))
+      return resolve({ error: 'Solo se permiten SELECT' });
+    db.db.all(sql, [], (err, rows) => {
+      if (err) resolve({ error: err.message });
+      else resolve({ filas: rows.slice(0, 300), total: rows.length });
+    });
+  });
+
+const conversacion = [
+  { role: 'system', content: systemPrompt },
+  ...mensajes.map(m => ({ role: m.role, content: m.content }))
+];
+  for (let i = 0; i < 6; i++) {
+    const res = await llamarGroq(conversacion);
+    if (res.error) return { success: false, error: res.error };
+
+    const { message, finish_reason } = res.choice;
+
+    if (finish_reason === 'tool_calls' && message.tool_calls?.length > 0) {
+      conversacion.push(message);
+      for (const tc of message.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments); } catch {}
+        const resultado = await ejecutarSQL(args.sql || '');
+        console.log('🔍 SQL:', args.sql, '→', resultado.total ?? 'error', 'filas');
+        conversacion.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(resultado) });
+      }
+      continue;
+    }
+
+    if (message.content) return { success: true, respuesta: message.content.trim() };
+    break;
+  }
+  return { success: false, error: 'El modelo no pudo generar respuesta.' };
+});
 // ==================== APP LIFECYCLE ====================
 
 app.on('ready', () => {

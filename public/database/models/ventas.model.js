@@ -316,6 +316,7 @@ function obtenerVentas(callback) {
                 items: todosProductos,
                 total_productos: todosProductos.reduce((sum, p) => sum + p.cantidad, 0)
               });
+console.log(`Venta ${venta.numero_venta}: total=${venta.total}, monto_pagado=${venta.monto_pagado}, cambio=${venta.cambio}, estado=${venta.estado}`);
 
               ventasProcesadas++;
               if (ventasProcesadas === ventas.length) {
