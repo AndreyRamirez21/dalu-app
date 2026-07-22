@@ -104,6 +104,7 @@ function crearMenuPersonalizado() {
   // CORREGIDO: Inicialización del Backup Service
   const dbPath = path.join(app.getPath('userData'), 'dalu.db');
   backupService = new BackupService(dbPath);
+  iniciarApiMovil();
 
   // CORREGIDO: Cargar la app correctamente
   if (isDev) {
@@ -4346,7 +4347,7 @@ Estructura exacta:
 Máximo 3 items por categoría. Sé específico con los nombres de productos cuando aparezcan en los datos.`;
 
 const body = JSON.stringify({
-  model: 'llama-3.3-70b-versatile',
+  model: 'meta-llama/llama-4-scout-17b-16e-instruct',
   max_tokens: 2000,
   temperature: 0.3,
   messages: [{ role: 'user', content: prompt }]
@@ -4435,7 +4436,7 @@ DATOS ACTUALES DEL NEGOCIO:
 ${contexto}`;
 
     const body = JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
       max_tokens: 1000,
       temperature: 0.5,
       messages: [
@@ -4708,7 +4709,7 @@ REGLAS DE NEGOCIO:
 
   const llamarGroq = (messages) => new Promise((resolve) => {
     const body = JSON.stringify({
-model: 'llama-3.3-70b-versatile',
+model: 'meta-llama/llama-4-scout-17b-16e-instruct',
       max_tokens: 2000,
       temperature: 0.1,
       messages,
@@ -4778,6 +4779,191 @@ const conversacion = [
   }
   return { success: false, error: 'El modelo no pudo generar respuesta.' };
 });
+
+// ==================== API MÓVIL ====================
+
+function iniciarApiMovil() {
+  const express = require('express');
+  const cors = require('cors');
+  const api = express();
+  api.use(cors());
+  api.use(express.json());
+
+  // ── Health check ──────────────────────────────────
+  api.get('/api/ping', (req, res) => {
+    res.json({ ok: true, app: 'Dalú' });
+  });
+
+  // ── INVENTARIO ────────────────────────────────────
+  api.get('/api/productos', (req, res) => {
+    const q = req.query.q || '';
+    const where = q ? 'AND (p.nombre LIKE ? OR p.referencia LIKE ?)' : '';
+    const params = q ? [`%${q}%`, `%${q}%`] : [];
+
+    db.db.all(`
+      SELECT
+        p.id, p.nombre, p.referencia, p.categoria, p.precio_venta_base as precio,
+        v.id as variante_id, v.talla, v.cantidad as stock
+      FROM productos p
+      JOIN variantes_producto v ON p.id = v.producto_id
+      WHERE v.cantidad >= 0
+      ${where}
+      ORDER BY p.nombre ASC, v.talla ASC
+    `, params, (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      // Agrupar variantes por producto
+      const mapa = {};
+      rows.forEach(r => {
+        if (!mapa[r.id]) {
+          mapa[r.id] = {
+            id: r.id,
+            nombre: r.nombre,
+            referencia: r.referencia,
+            categoria: r.categoria,
+            precio: r.precio,
+            variantes: []
+          };
+        }
+        mapa[r.id].variantes.push({
+          id: r.variante_id,
+          talla: r.talla,
+          stock: r.stock
+        });
+      });
+
+      res.json(Object.values(mapa));
+    });
+  });
+
+  // ── VENTAS ────────────────────────────────────────
+  api.get('/api/ventas', (req, res) => {
+    db.db.all(`
+      SELECT id, numero_venta, fecha, total, monto_pagado, cambio,
+             metodo_pago, estado, cliente_nombre
+      FROM ventas
+      WHERE estado != 'Cancelado'
+      ORDER BY fecha DESC
+      LIMIT 100
+    `, [], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    });
+  });
+
+  api.get('/api/ventas/:id', (req, res) => {
+    db.db.get('SELECT * FROM ventas WHERE id = ?', [req.params.id], (err, venta) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!venta) return res.status(404).json({ error: 'No encontrada' });
+
+      db.db.all(`
+        SELECT vp.cantidad, vp.precio_unitario,
+               p.nombre AS producto_nombre, var.talla
+        FROM venta_productos vp
+        LEFT JOIN productos p ON vp.producto_id = p.id
+        LEFT JOIN variantes_producto var ON vp.variante_id = var.id
+        WHERE vp.venta_id = ?
+      `, [venta.id], (err, productos) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ ...venta, productos });
+      });
+    });
+  });
+
+  api.post('/api/ventas', async (req, res) => {
+    try {
+      const datosVenta = req.body;
+
+      resolverCliente(datosVenta, async (err, clienteId, clienteNombre) => {
+        if (err) return res.status(500).json({ error: err.message });
+
+        const datosVentaDB = {
+          cliente_id: clienteId,
+          cliente_nombre: clienteNombre,
+          productos: datosVenta.productos,
+          productos_marca_aliada: [],
+          costos_adicionales: [],
+          subtotal: datosVenta.subtotal,
+          total_marcas: 0,
+          total: datosVenta.total,
+          monto_pagado: datosVenta.monto_pagado,
+          cambio: datosVenta.cambio || 0,
+          metodo_pago: datosVenta.metodo_pago,
+          notas: datosVenta.notas || 'Venta desde app móvil',
+          descuento_porcentaje: 0,
+          descuento_monto: 0
+        };
+
+        db.ventas.crear(datosVentaDB, async (err, resultado) => {
+          if (err) return res.status(500).json({ error: err.message });
+
+          // Historial de rotación
+          for (const p of (datosVentaDB.productos || [])) {
+            await actualizarStock(p, resultado.id).catch(console.error);
+          }
+
+          // Deuda si pago parcial
+          if (datosVenta.monto_pagado < datosVenta.total && clienteId) {
+            await crearDeudaCliente(
+              resultado.id, clienteId, clienteNombre,
+              datosVenta.total, datosVenta.monto_pagado
+            ).catch(console.error);
+          }
+
+          // Estadísticas del cliente
+          if (clienteId) {
+            db.db.run(
+              `UPDATE clientes SET
+                ultima_compra = datetime('now', 'localtime'),
+                total_compras = total_compras + ?,
+                numero_compras = numero_compras + 1
+               WHERE id = ?`,
+              [datosVenta.total, clienteId]
+            );
+          }
+
+          // Registrar en caja
+          if (datosVenta.monto_pagado > 0) {
+            cajaModel.registrarMovimiento({
+              tipo: 'entrada',
+              concepto: `Venta #${resultado.numero_venta} (móvil) — ${clienteNombre}`,
+              monto: datosVenta.monto_pagado - (datosVenta.cambio || 0),
+              origen: 'venta',
+              referencia_id: resultado.id
+            }, () => {});
+          }
+
+          res.json({
+            success: true,
+            venta_id: resultado.id,
+            numero_venta: resultado.numero_venta
+          });
+        });
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── CLIENTES ──────────────────────────────────────
+  api.get('/api/clientes', (req, res) => {
+    const q = req.query.q || '';
+    db.db.all(`
+      SELECT id, nombre, cedula, celular
+      FROM clientes
+      WHERE nombre LIKE ? OR cedula LIKE ? OR celular LIKE ?
+      ORDER BY nombre ASC LIMIT 10
+    `, [`%${q}%`, `%${q}%`, `%${q}%`], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    });
+  });
+
+  api.listen(3001, '0.0.0.0', () => {
+    console.log('📱 API móvil activa en puerto 3001');
+  });
+}
+
 // ==================== APP LIFECYCLE ====================
 
 app.on('ready', () => {
