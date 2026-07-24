@@ -598,32 +598,85 @@ ipcMain.handle('agregar-gasto', async (event, gasto) => {
 // Actualizar gasto
 ipcMain.handle('actualizar-gasto', async (event, id, datos) => {
   return new Promise((resolve, reject) => {
-    db.gastos.actualizar(id, datos, (err, resultado) => {
-      if (err) {
-        console.error('❌ Error al actualizar gasto:', err);
-        reject(err);
-      } else {
-        console.log('✅ Gasto actualizado:', resultado);
-        resolve({ success: true });
+    // 1️⃣ Obtener el monto ANTERIOR antes de sobreescribirlo
+    db.db.get('SELECT monto, descripcion FROM gastos WHERE id = ?', [id], (errGet, gastoAnterior) => {
+      if (errGet) {
+        console.error('❌ Error al obtener gasto anterior:', errGet);
+        reject(errGet);
+        return;
       }
+
+      const montoAnterior = gastoAnterior ? parseFloat(gastoAnterior.monto) : 0;
+
+      // 2️⃣ Actualizar el gasto
+      db.gastos.actualizar(id, datos, (err, resultado) => {
+        if (err) {
+          console.error('❌ Error al actualizar gasto:', err);
+          reject(err);
+          return;
+        }
+
+        console.log('✅ Gasto actualizado:', resultado);
+
+        // 3️⃣ Calcular diferencia y ajustar caja si cambió el monto
+        const montoNuevo = parseFloat(datos.monto);
+        const diferencia = montoNuevo - montoAnterior;
+
+        if (diferencia !== 0 && !isNaN(diferencia)) {
+          const esAumento = diferencia > 0;
+
+          cajaModel.registrarMovimiento({
+            // Si el gasto AUMENTÓ, sale más plata de caja → 'salida'
+            // Si el gasto DISMINUYÓ, esa plata "vuelve" → 'entrada'
+            tipo: esAumento ? 'salida' : 'entrada',
+            concepto: `Ajuste gasto: ${datos.descripcion} (${esAumento ? '+' : '-'}$${Math.abs(diferencia).toLocaleString('es-CO')})`,
+            monto: Math.abs(diferencia),
+            origen: 'gasto',
+            referencia_id: id,
+            notas: `Monto anterior: $${montoAnterior.toLocaleString('es-CO')} → Monto nuevo: $${montoNuevo.toLocaleString('es-CO')}`
+          }, (errCaja) => {
+            if (errCaja) console.error('⚠️ Error al ajustar caja por edición de gasto:', errCaja);
+            else console.log(`✅ Caja ajustada por edición de gasto: ${esAumento ? '+' : '-'}$${Math.abs(diferencia)}`);
+          });
+        }
+
+        resolve({ success: true });
+      });
     });
   });
 });
 
-// Eliminar gasto
 ipcMain.handle('eliminar-gasto', async (event, id) => {
   return new Promise((resolve, reject) => {
-    db.gastos.eliminar(id, (err, resultado) => {
-      if (err) {
-        console.error('❌ Error al eliminar gasto:', err);
-        reject(err);
-      } else {
+    // Obtener el gasto antes de eliminarlo, para revertir la caja
+    db.db.get('SELECT monto, descripcion FROM gastos WHERE id = ?', [id], (errGet, gasto) => {
+      db.gastos.eliminar(id, (err, resultado) => {
+        if (err) {
+          console.error('❌ Error al eliminar gasto:', err);
+          reject(err);
+          return;
+        }
+
         console.log('✅ Gasto eliminado:', resultado);
+
+        if (gasto) {
+          cajaModel.registrarMovimiento({
+            tipo: 'entrada',
+            concepto: `Reversión por eliminación de gasto: ${gasto.descripcion}`,
+            monto: gasto.monto,
+            origen: 'gasto',
+            referencia_id: id
+          }, (errCaja) => {
+            if (errCaja) console.error('⚠️ Error al revertir caja por eliminación de gasto:', errCaja);
+          });
+        }
+
         resolve({ success: true });
-      }
+      });
     });
   });
 });
+
 
 // Buscar gastos
 ipcMain.handle('buscar-gastos', async (event, termino) => {
@@ -4192,7 +4245,27 @@ ipcMain.handle('obtener-historial-variante', async (event, varianteId) => {
   });
 });
 
-//Handler caja
+//Handlers caja
+
+
+// Reiniciar caja (requiere contraseña)
+ipcMain.handle('caja-reiniciar', async (event, password) => {
+  return new Promise((resolve, reject) => {
+    if (password !== '0872') {
+      resolve({ success: false, error: 'Contraseña incorrecta' });
+      return;
+    }
+
+    cajaModel.reiniciarCaja((err, resultado) => {
+      if (err) {
+        console.error('❌ Error al reiniciar caja:', err);
+        reject(err);
+      } else {
+        resolve(resultado);
+      }
+    });
+  });
+});
 
 // Obtener saldo actual
 ipcMain.handle('caja-obtener-saldo', async () => {
@@ -4779,6 +4852,8 @@ const conversacion = [
   }
   return { success: false, error: 'El modelo no pudo generar respuesta.' };
 });
+
+
 
 // ==================== API MÓVIL ====================
 

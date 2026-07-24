@@ -428,6 +428,148 @@ const ModalSaldoInicial = ({ onClose, onSuccess }) => {
   );
 };
 
+
+// ─── Modal de reiniciar caja (con contraseña) ─────────────────────────────────
+
+const ModalReiniciarCaja = ({ onClose, onSuccess }) => {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmando, setConfirmando] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!password.trim()) return setError('Ingresa la contraseña.');
+    setError('');
+    setLoading(true);
+    try {
+      const resultado = await ipcRenderer.invoke('caja-reiniciar', password.trim());
+      if (!resultado.success) {
+        setError(resultado.error || 'No se pudo reiniciar la caja.');
+        setLoading(false);
+        return;
+      }
+      onSuccess();
+      onClose();
+    } catch (e) {
+      setError(e.message || 'Error al reiniciar la caja.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: '16px', padding: '36px', width: '420px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.2)', textAlign: 'center'
+      }}>
+        <div style={{
+          width: '60px', height: '60px', borderRadius: '50%',
+          background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 20px', fontSize: '28px'
+        }}>
+          ⚠️
+        </div>
+
+        {!confirmando ? (
+          <>
+            <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#111' }}>
+              Reiniciar caja
+            </h2>
+            <p style={{ margin: '0 0 24px', color: '#6b7280', fontSize: '14px', lineHeight: 1.5 }}>
+              Esto <b>borrará permanentemente</b> todo el historial de movimientos de caja
+              (saldo inicial, entradas, salidas y ajustes). Esta acción no se puede deshacer.
+            </p>
+
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600, color: '#374151', textAlign: 'left' }}>
+              Contraseña de administrador
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && setConfirmando(true)}
+              style={{
+                width: '100%', padding: '12px 16px', borderRadius: '10px',
+                border: '1.5px solid #e5e7eb', fontSize: '16px', letterSpacing: '4px',
+                boxSizing: 'border-box', outline: 'none', textAlign: 'center',
+                transition: 'border .15s', marginBottom: '16px',
+              }}
+              onFocus={e => e.target.style.borderColor = '#dc2626'}
+              onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+            />
+
+            {error && (
+              <div style={{ marginBottom: '16px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={onClose} style={{
+                flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
+                background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer',
+              }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!password.trim()) return setError('Ingresa la contraseña.');
+                  setError('');
+                  setConfirmando(true);
+                }}
+                style={{
+                  flex: 2, padding: '12px', borderRadius: '10px', border: 'none',
+                  background: '#dc2626', color: '#fff',
+                  fontWeight: 700, cursor: 'pointer', fontSize: '14px',
+                }}>
+                Continuar
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#dc2626' }}>
+              ¿Estás completamente seguro?
+            </h2>
+            <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: '14px', lineHeight: 1.5 }}>
+              Vas a eliminar <b>todos</b> los movimientos de caja registrados hasta hoy.
+              Después de esto tendrás que configurar un nuevo saldo inicial.
+            </p>
+
+            {error && (
+              <div style={{ marginBottom: '16px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+                {error}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setConfirmando(false)} style={{
+                flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
+                background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer',
+              }}>
+                Volver
+              </button>
+              <button onClick={handleSubmit} disabled={loading} style={{
+                flex: 2, padding: '12px', borderRadius: '10px', border: 'none',
+                background: '#dc2626', color: '#fff',
+                fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px',
+                opacity: loading ? 0.7 : 1,
+              }}>
+                {loading ? 'Reiniciando...' : 'Sí, reiniciar caja'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 const Caja = () => {
@@ -441,7 +583,7 @@ const Caja = () => {
   const [busqueda, setBusqueda] = useState('');
   const [toast, setToast] = useState(null);
   const [paginaActual, setPaginaActual] = useState(1);
-
+  const [modalReiniciar, setModalReiniciar] = useState(false);
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
@@ -679,7 +821,14 @@ const Caja = () => {
               <IconFilter />
               {movimientos.length === 0 ? 'Saldo inicial' : 'Ajuste'}
             </button>
-
+            {/* Botón reiniciar caja */}
+            <button onClick={() => setModalReiniciar(true)} style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+              borderRadius: '10px', border: '1.5px solid #fecaca', background: '#fff',
+              color: '#dc2626', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
+            }}>
+              <IconTrash /> Reiniciar caja
+            </button>
             {/* Refresh */}
             <button onClick={cargarDatos} style={{
               display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px',
@@ -815,6 +964,13 @@ const Caja = () => {
           onSuccess={() => { mostrarToast('Saldo inicial configurado ✓'); cargarDatos(); }}
         />
       )}
+
+  {modalReiniciar && (
+          <ModalReiniciarCaja
+            onClose={() => setModalReiniciar(false)}
+            onSuccess={() => { mostrarToast('Caja reiniciada. Configura el saldo inicial.'); cargarDatos(); }}
+          />
+        )}
 
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }

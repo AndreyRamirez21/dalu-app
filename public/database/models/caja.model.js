@@ -2,6 +2,21 @@ const db = require('../index');
 
 const cajaModel = {
 
+// Reiniciar caja por completo (borra todos los movimientos y config)
+  reiniciarCaja: (callback) => {
+    db.db.serialize(() => {
+      db.db.run('DELETE FROM caja_movimientos', [], (err) => {
+        if (err) return callback(err);
+
+        db.db.run('DELETE FROM caja_config', [], (err2) => {
+          if (err2) return callback(err2);
+          console.log('🔄 Caja reiniciada por completo');
+          callback(null, { success: true });
+        });
+      });
+    });
+  },
+
   // Obtener saldo actual (suma de todos los movimientos)
   obtenerSaldo: (callback) => {
     db.db.get(`

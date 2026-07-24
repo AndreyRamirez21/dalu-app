@@ -345,7 +345,7 @@ const Ventas = () => {
                             >
                               {venta.numero_venta}
                             </span>
-                            {venta.tiene_devolucion && (
+                            {!!venta.tiene_devolucion && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-600 border border-purple-100">
                                 <RefreshCw size={9} />
                                 Dev.

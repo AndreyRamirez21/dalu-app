@@ -153,7 +153,7 @@ function obtenerDeudasPorCliente(clienteId, callback) {
 function buscarDeudasClientes(termino, callback) {
   const t = `%${termino}%`;
   db.all(
-    `SELECT * FROM deudas_clientes WHERE cliente_nombre LIKE ? ORDER BY fecha_creacion DESC`,
+    `SELECT * FROM deudas_clientes WHERE cliente_nombre LIKE ? AND estado != 'Cancelado' ORDER BY fecha_creacion DESC`,
     [t],
     (err, rows) => {
       if (err) {
