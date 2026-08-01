@@ -3,49 +3,104 @@ import { Cloud, Download, Upload, AlertCircle, CheckCircle, Clock, HardDrive, X,
 
 const { ipcRenderer } = window.require('electron');
 
+const BRAND = '#82bbbd';
+
+/* ─── Info card con figurita ─────────────────────────────────── */
+const InfoCard = ({ icon: Icon, accentColor, title, sub, children }) => (
+  <div
+    className="bg-white rounded-xl p-6"
+    style={{ borderTop: `2px solid ${accentColor}`, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+  >
+    <div className="flex items-center gap-3 mb-4">
+      <div className="p-3 rounded-lg" style={{ backgroundColor: `${accentColor}1A` }}>
+        <Icon size={22} style={{ color: accentColor }} />
+      </div>
+      <div>
+        <h3 className="font-bold text-gray-900 text-sm">{title}</h3>
+        <p className="text-xs text-gray-400">{sub}</p>
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
+/* ─── Botones ────────────────────────────────────────────────── */
+const BtnSolid = ({ onClick, disabled, icon: Icon, color = BRAND, children, className = '' }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    style={{ backgroundColor: color }}
+    onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.opacity = '0.88'; }}
+    onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+  >
+    {Icon && <Icon size={16} />}
+    {children}
+  </button>
+);
+
+const BtnOutline = ({ onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className="px-6 py-2.5 text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm disabled:opacity-50"
+  >
+    {children}
+  </button>
+);
+
+/* ─── Chip de filtro ─────────────────────────────────────────── */
+const Chip = ({ active, onClick, icon: Icon, children }) => (
+  <button
+    onClick={onClick}
+    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors border"
+    style={active
+      ? { backgroundColor: `${BRAND}1A`, borderColor: BRAND, color: BRAND }
+      : { backgroundColor: '#fff', borderColor: '#e5e7eb', color: '#6b7280' }
+    }
+  >
+    {Icon && <Icon size={14} />}
+    {children}
+  </button>
+);
+
+const MENSAJE_STYLE = {
+  success: { color: '#059669', bg: '#f0fdf4', border: '#86efac', Icon: CheckCircle },
+  error:   { color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', Icon: AlertCircle },
+  info:    { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', Icon: Clock },
+};
+
 const Modal = ({ isOpen, onClose, onConfirm, titulo, mensaje, loading }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-md w-full animate-fadeIn">
-        <div className="flex items-center justify-between p-6 border-b">
-          <h3 className="text-xl font-bold text-gray-800">{titulo}</h3>
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <h3 className="text-lg font-bold text-gray-900">{titulo}</h3>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
             disabled={loading}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
           >
-            <X size={24} />
+            <X size={18} className="text-gray-400" />
           </button>
         </div>
 
         <div className="p-6">
-          <div className="flex items-start space-x-4">
-            <div className="p-3 bg-yellow-100 rounded-lg flex-shrink-0">
-              <AlertCircle className="text-yellow-600" size={24} />
+          <div className="flex items-start gap-4">
+            <div className="p-2.5 rounded-lg flex-shrink-0" style={{ backgroundColor: '#fffbeb' }}>
+              <AlertCircle style={{ color: '#d97706' }} size={20} />
             </div>
-            <div>
-              <p className="text-gray-700 leading-relaxed">{mensaje}</p>
-            </div>
+            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{mensaje}</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-end space-x-3 p-6 bg-gray-50 rounded-b-xl">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition font-medium disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="px-6 py-2.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Restaurando...' : 'Confirmar Restauración'}
-          </button>
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl">
+          <BtnOutline onClick={onClose} disabled={loading}>Cancelar</BtnOutline>
+          <BtnSolid onClick={onConfirm} disabled={loading}>
+            {loading ? 'Restaurando…' : 'Confirmar Restauración'}
+          </BtnSolid>
         </div>
       </div>
     </div>
@@ -215,195 +270,120 @@ const GestionBackups = () => {
   };
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="p-8 min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Gestión de Backups</h1>
-        <p className="text-gray-500 mt-2">Copia de seguridad automática en la nube</p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Gestión de Backups</h1>
+        <p className="text-sm text-gray-400 mt-1">Copia de seguridad automática en la nube</p>
       </div>
 
       {/* Mensaje */}
-      {mensaje && (
-        <div className={`mb-6 p-4 rounded-lg flex items-center space-x-3 ${
-          mensaje.tipo === 'success' ? 'bg-green-100 text-green-700' :
-          mensaje.tipo === 'error' ? 'bg-red-100 text-red-700' :
-          'bg-blue-100 text-blue-700'
-        }`}>
-          {mensaje.tipo === 'success' && <CheckCircle size={20} />}
-          {mensaje.tipo === 'error' && <AlertCircle size={20} />}
-          {mensaje.tipo === 'info' && <Clock size={20} />}
-          <span className="font-medium">{mensaje.texto}</span>
-        </div>
-      )}
+      {mensaje && (() => {
+        const s = MENSAJE_STYLE[mensaje.tipo] ?? MENSAJE_STYLE.info;
+        const MsgIcon = s.Icon;
+        return (
+          <div
+            className="mb-6 px-4 py-3.5 rounded-lg flex items-center gap-3"
+            style={{ backgroundColor: s.bg, border: `1px solid ${s.border}` }}
+          >
+            <MsgIcon size={18} style={{ color: s.color }} />
+            <span className="text-sm font-medium" style={{ color: s.color }}>{mensaje.texto}</span>
+          </div>
+        );
+      })()}
 
       {/* Acciones */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-3 bg-teal-100 rounded-lg">
-              <Cloud className="text-teal-600" size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Backup Automático</h3>
-              <p className="text-sm text-gray-500">Cada 24 horas</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <InfoCard icon={Cloud} accentColor={BRAND} title="Backup Automático" sub="Cada 24 horas">
+          <p className="text-xs text-gray-500 leading-relaxed">
             Los backups se crean automáticamente y se guardan en la nube de forma segura.
           </p>
-        </div>
+        </InfoCard>
 
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Upload className="text-blue-600" size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Crear Backup Manual</h3>
-              <p className="text-sm text-gray-500">Bajo demanda</p>
-            </div>
-          </div>
-          <button
-            onClick={crearBackup}
-            disabled={loading}
-            className="w-full mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Creando...' : 'Crear Backup Ahora'}
-          </button>
-        </div>
+        <InfoCard icon={Upload} accentColor="#6366f1" title="Crear Backup Manual" sub="Bajo demanda">
+          <BtnSolid onClick={crearBackup} disabled={loading} color="#6366f1" className="w-full mt-1">
+            {loading ? 'Creando…' : 'Crear Backup Ahora'}
+          </BtnSolid>
+        </InfoCard>
 
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <HardDrive className="text-purple-600" size={24} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">Backups Disponibles</h3>
-              <p className="text-sm text-gray-500">{backups.length} copias</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">
+        <InfoCard icon={HardDrive} accentColor="#d97706" title="Backups Disponibles" sub={`${backups.length} copias`}>
+          <p className="text-xs text-gray-500 leading-relaxed">
             Puedes restaurar cualquier backup anterior desde la lista.
           </p>
-        </div>
+        </InfoCard>
       </div>
 
       {/* Lista de Backups */}
-      <div className="bg-white rounded-xl shadow-sm border">
-        <div className="p-6 border-b space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-gray-800">Historial de Backups</h3>
-          </div>
+      <div
+        className="bg-white rounded-xl overflow-hidden"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}
+      >
+        <div className="p-6 border-b border-gray-100 space-y-4">
+          <h3 className="text-lg font-bold text-gray-900">Historial de Backups</h3>
 
           {/* Filtros */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-600 mr-2">Filtrar:</span>
-            <button
-              onClick={() => cambiarFiltro('todos')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                filtroFecha === 'todos'
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => cambiarFiltro('hoy')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                filtroFecha === 'hoy'
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Hoy
-            </button>
-            <button
-              onClick={() => cambiarFiltro('semana')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                filtroFecha === 'semana'
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Última semana
-            </button>
-            <button
-              onClick={() => cambiarFiltro('mes')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                filtroFecha === 'mes'
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Último mes
-            </button>
-            <button
-              onClick={() => cambiarFiltro('personalizado')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                filtroFecha === 'personalizado'
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Calendar size={16} />
+            <span className="text-xs font-medium text-gray-400 mr-1">Filtrar:</span>
+            <Chip active={filtroFecha === 'todos'} onClick={() => cambiarFiltro('todos')}>Todos</Chip>
+            <Chip active={filtroFecha === 'hoy'} onClick={() => cambiarFiltro('hoy')}>Hoy</Chip>
+            <Chip active={filtroFecha === 'semana'} onClick={() => cambiarFiltro('semana')}>Última semana</Chip>
+            <Chip active={filtroFecha === 'mes'} onClick={() => cambiarFiltro('mes')}>Último mes</Chip>
+            <Chip active={filtroFecha === 'personalizado'} onClick={() => cambiarFiltro('personalizado')} icon={Calendar}>
               Rango personalizado
-            </button>
+            </Chip>
           </div>
 
           {/* Selector de fechas personalizado */}
           {filtroFecha === 'personalizado' && (
-            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+            <div className="flex items-center gap-4 p-4 rounded-lg" style={{ backgroundColor: `${BRAND}0D`, border: `1px solid ${BRAND}33` }}>
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Fecha inicio
                 </label>
                 <input
                   type="date"
                   value={fechaInicio}
                   onChange={(e) => setFechaInicio(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 transition"
+                  style={{ '--tw-ring-color': BRAND }}
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Fecha fin
                 </label>
                 <input
                   type="date"
                   value={fechaFin}
                   onChange={(e) => setFechaFin(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 transition"
+                  style={{ '--tw-ring-color': BRAND }}
                 />
               </div>
             </div>
           )}
 
           {/* Contador de resultados */}
-          <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center justify-between text-xs text-gray-400">
             <span>
               Mostrando {backupsFiltrados.length > 0 ? indiceInicio + 1 : 0} - {Math.min(indiceFin, backupsFiltrados.length)} de {backupsFiltrados.length} backups
               {filtroFecha !== 'todos' && ` (${backups.length} en total)`}
             </span>
             {totalPaginas > 1 && (
-              <span>
-                Página {paginaActual} de {totalPaginas}
-              </span>
+              <span>Página {paginaActual} de {totalPaginas}</span>
             )}
           </div>
         </div>
 
         {loading && backups.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="text-gray-500">Cargando backups...</div>
-          </div>
+          <div className="p-14 text-center text-sm text-gray-400">Cargando backups…</div>
         ) : backupsFiltrados.length === 0 ? (
-          <div className="p-12 text-center">
-            <Cloud size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">
+          <div className="p-14 text-center">
+            <Cloud size={40} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-sm text-gray-500 font-medium">
               {backups.length === 0 ? 'No hay backups disponibles' : 'No hay backups en este período'}
             </p>
-            <p className="text-gray-400 text-sm mt-2">
+            <p className="text-gray-400 text-xs mt-1.5">
               {backups.length === 0
                 ? 'Crea tu primer backup usando el botón de arriba'
                 : 'Intenta con otro filtro de fecha'}
@@ -413,37 +393,40 @@ const GestionBackups = () => {
           <>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b">
+                <thead style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Fecha</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nombre</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Tamaño</th>
-                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Acciones</th>
+                    <th className="px-6 py-3.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Fecha</th>
+                    <th className="px-6 py-3.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Nombre</th>
+                    <th className="px-6 py-3.5 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Tamaño</th>
+                    <th className="px-6 py-3.5 text-center text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-50">
                   {backupsPaginados.map((backup, index) => (
-                    <tr key={index} className="hover:bg-gray-50 transition">
+                    <tr key={index} className="transition-colors hover:bg-gray-50/70">
                       <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          <Clock size={16} className="text-gray-400" />
-                          <span className="text-sm text-gray-700">{formatearFecha(backup.lastModified)}</span>
+                        <div className="flex items-center gap-2">
+                          <Clock size={15} className="text-gray-300" />
+                          <span className="text-sm text-gray-600">{formatearFecha(backup.lastModified)}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-mono text-gray-600">{backup.fileName}</div>
+                        <div className="text-sm font-mono text-gray-500">{backup.fileName}</div>
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className="text-sm text-gray-700">{backup.sizeFormatted}</span>
+                        <span className="text-sm text-gray-600">{backup.sizeFormatted}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-center space-x-2">
+                        <div className="flex items-center justify-center">
                           <button
                             onClick={() => abrirModalRestaurar(backup)}
                             disabled={loading}
-                            className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition text-sm disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-xs font-semibold transition-opacity disabled:opacity-50"
+                            style={{ backgroundColor: BRAND }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
                           >
-                            <Download size={16} className="inline mr-1" />
+                            <Download size={14} />
                             Restaurar
                           </button>
                         </div>
@@ -456,17 +439,17 @@ const GestionBackups = () => {
 
             {/* Paginación */}
             {totalPaginas > 1 && (
-              <div className="p-6 border-t flex items-center justify-between">
+              <div className="p-6 border-t border-gray-100 flex items-center justify-between">
                 <button
                   onClick={() => cambiarPagina(paginaActual - 1)}
                   disabled={paginaActual === 1}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
                 >
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={17} />
                   <span>Anterior</span>
                 </button>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-1.5">
                   {[...Array(totalPaginas)].map((_, i) => {
                     const pagina = i + 1;
                     if (
@@ -474,15 +457,16 @@ const GestionBackups = () => {
                       pagina === totalPaginas ||
                       (pagina >= paginaActual - 2 && pagina <= paginaActual + 2)
                     ) {
+                      const active = paginaActual === pagina;
                       return (
                         <button
                           key={pagina}
                           onClick={() => cambiarPagina(pagina)}
-                          className={`px-4 py-2 rounded-lg font-medium transition ${
-                            paginaActual === pagina
-                              ? 'bg-teal-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
+                          className="px-3.5 py-2 rounded-lg text-sm font-medium transition-colors"
+                          style={active
+                            ? { backgroundColor: BRAND, color: '#fff' }
+                            : { backgroundColor: '#fff', color: '#6b7280', border: '1px solid #e5e7eb' }
+                          }
                         >
                           {pagina}
                         </button>
@@ -491,7 +475,7 @@ const GestionBackups = () => {
                       pagina === paginaActual - 3 ||
                       pagina === paginaActual + 3
                     ) {
-                      return <span key={pagina} className="text-gray-400">...</span>;
+                      return <span key={pagina} className="text-gray-300 px-1">…</span>;
                     }
                     return null;
                   })}
@@ -500,10 +484,10 @@ const GestionBackups = () => {
                 <button
                   onClick={() => cambiarPagina(paginaActual + 1)}
                   disabled={paginaActual === totalPaginas}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium"
                 >
                   <span>Siguiente</span>
-                  <ChevronRight size={20} />
+                  <ChevronRight size={17} />
                 </button>
               </div>
             )}

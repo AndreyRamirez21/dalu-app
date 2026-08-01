@@ -6,18 +6,13 @@ import {
   ShoppingBag,
   Mail,
   Phone,
-  Award,
   TrendingUp,
-  UserCheck,
   Gift,
-  Edit,
   Trash2,
   CreditCard,
   CheckCircle,
   X,
-  Eye,
   Calendar,
-  DollarSign,
   Shield,
   AlertTriangle,
   Lock
@@ -25,8 +20,69 @@ import {
 
 const { ipcRenderer } = window.require('electron');
 
+const BRAND = '#82bbbd';
+
 // ==================== PIN ADMIN ====================
 const PIN_ADMIN = '0872'; // ← CAMBIA ESTE PIN POR EL QUE QUIERAS
+
+/* ─── Toast (idéntico a Ventas) ─────────────────────────────────── */
+const Toast = ({ mensaje, tipo = 'exito', onDone }) => {
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => {
+      setVisible(false);
+      setTimeout(onDone, 300);
+    }, 4000);
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  return (
+    <div
+      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-xl transition-all duration-300 ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+      style={{ backgroundColor: tipo === 'exito' ? BRAND : '#dc2626' }}
+    >
+      {tipo === 'exito'
+        ? <CheckCircle size={18} className="text-white flex-shrink-0" />
+        : <AlertTriangle size={18} className="text-white flex-shrink-0" />}
+      <span className="text-white font-medium text-sm">{mensaje}</span>
+    </div>
+  );
+};
+
+/* ─── Stat card (idéntica a Ventas) ─────────────────────────────── */
+const StatCard = ({ label, value, sub, accentColor, icon: Icon }) => (
+  <div
+    className="bg-white rounded-xl p-5"
+    style={{
+      borderTop: `2px solid ${accentColor}`,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    }}
+  >
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
+        {label}
+      </p>
+      {Icon && <Icon size={16} style={{ color: accentColor }} />}
+    </div>
+    <p className="text-2xl font-bold text-gray-900 tracking-tight">{value}</p>
+    <p className="mt-1.5 text-xs text-gray-400">{sub}</p>
+  </div>
+);
+
+/* ─── Badge genérico con borde suave (mismo lenguaje que Ventas) ── */
+const SoftBadge = ({ texto, icon, color, bg, border }) => (
+  <span
+    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
+    style={{ color, backgroundColor: bg, border: `1px solid ${border}` }}
+  >
+    {icon && <span>{icon}</span>}
+    {texto}
+  </span>
+);
 
 // ==================== MODAL PIN DE SEGURIDAD ====================
 const ModalPin = ({ clienteAEliminar, onConfirm, onClose }) => {
@@ -121,13 +177,14 @@ const ModalPin = ({ clienteAEliminar, onConfirm, onClose }) => {
                 value={digit}
                 onChange={(e) => handleChange(e.target.value, index)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
-                className={`w-14 h-14 text-center text-2xl font-bold border-2 rounded-xl outline-none transition-all
-                  ${error
-                    ? 'border-red-400 bg-red-50 text-red-600'
+                className="w-14 h-14 text-center text-2xl font-bold border-2 rounded-xl outline-none transition-all"
+                style={
+                  error
+                    ? { borderColor: '#f87171', backgroundColor: '#fef2f2', color: '#dc2626' }
                     : digit
-                      ? 'border-teal-400 bg-teal-50 text-teal-700'
-                      : 'border-gray-300 bg-gray-50 text-gray-800 focus:border-teal-400 focus:bg-teal-50'
-                  }`}
+                      ? { borderColor: BRAND, backgroundColor: '#f0fdfa', color: BRAND }
+                      : { borderColor: '#d1d5db', backgroundColor: '#f9fafb', color: '#1f2937' }
+                }
               />
             ))}
           </div>
@@ -173,6 +230,11 @@ const ModalPin = ({ clienteAEliminar, onConfirm, onClose }) => {
 };
 
 // ==================== MODAL HISTORIAL ====================
+const HISTORIAL_BADGE = {
+  Pagado:    { color: '#059669', bg: '#f0fdf4', border: '#86efac' },
+  Pendiente: { color: '#d97706', bg: '#fffbeb', border: '#fcd34d' },
+};
+
 const ModalHistorialCliente = ({ cliente, onClose }) => {
   const [ventas, setVentas] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -197,30 +259,30 @@ const ModalHistorialCliente = ({ cliente, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b bg-gradient-to-r from-teal-50 to-blue-50">
+        <div className="p-6" style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#F8FAFC' }}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-2xl font-bold text-gray-800">Historial de Compras</h3>
-              <p className="text-sm text-gray-600 mt-1">
-                Cliente: <span className="font-medium">{cliente.nombre}</span>
+              <h3 className="text-xl font-bold text-gray-900">Historial de Compras</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Cliente: <span className="font-medium text-gray-700">{cliente.nombre}</span>
               </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition">
-              <X size={24} />
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-500">
+              <X size={22} />
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-4 mt-4">
-            <div className="bg-white rounded-lg p-3 border">
-              <div className="text-xs text-gray-500 uppercase">Total Compras</div>
-              <div className="text-2xl font-bold text-gray-800">{cliente.numero_compras}</div>
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            <div className="bg-white rounded-xl p-3" style={{ border: '1px solid #f1f5f9' }}>
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">Total Compras</div>
+              <div className="text-2xl font-bold text-gray-900">{cliente.numero_compras}</div>
             </div>
-            <div className="bg-white rounded-lg p-3 border">
-              <div className="text-xs text-gray-500 uppercase">Total Gastado</div>
-              <div className="text-2xl font-bold text-teal-600">${(cliente.total_compras || 0).toFixed(2)}</div>
+            <div className="bg-white rounded-xl p-3" style={{ border: '1px solid #f1f5f9' }}>
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">Total Gastado</div>
+              <div className="text-2xl font-bold" style={{ color: BRAND }}>${(cliente.total_compras || 0).toFixed(2)}</div>
             </div>
-            <div className="bg-white rounded-lg p-3 border">
-              <div className="text-xs text-gray-500 uppercase">Compras con Tarjeta</div>
-              <div className="text-2xl font-bold text-purple-600">{cliente.compras_con_tarjeta || 0}</div>
+            <div className="bg-white rounded-xl p-3" style={{ border: '1px solid #f1f5f9' }}>
+              <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">Compras con Tarjeta</div>
+              <div className="text-2xl font-bold" style={{ color: '#6366f1' }}>{cliente.compras_con_tarjeta || 0}</div>
             </div>
           </div>
         </div>
@@ -228,69 +290,70 @@ const ModalHistorialCliente = ({ cliente, onClose }) => {
         <div className="flex-1 overflow-auto p-6">
           {cargando ? (
             <div className="flex items-center justify-center h-64">
-              <div className="text-gray-500">Cargando ventas...</div>
+              <div className="text-gray-400 text-sm">Cargando ventas…</div>
             </div>
           ) : ventas.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64">
-              <ShoppingBag size={48} className="text-gray-300 mb-4" />
-              <p className="text-gray-500">Este cliente no tiene compras registradas</p>
+              <ShoppingBag size={40} className="text-gray-300 mb-4" />
+              <p className="text-gray-400 text-sm">Este cliente no tiene compras registradas</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {ventas.map((venta) => (
-                <div key={venta.id} className="bg-gray-50 rounded-lg border hover:shadow-md transition p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <span className="text-lg font-bold text-teal-600">{venta.numero_venta}</span>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          venta.estado === 'Pagado' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {venta.estado}
-                        </span>
-                        {venta.descuento_porcentaje > 0 && (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-purple-100 text-purple-700">
-                            -{venta.descuento_porcentaje}% Descuento
-                          </span>
+              {ventas.map((venta) => {
+                const badge = HISTORIAL_BADGE[venta.estado] ?? { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' };
+                return (
+                  <div
+                    key={venta.id}
+                    className="bg-white rounded-xl p-4 transition-colors hover:bg-gray-50/70"
+                    style={{ border: '1px solid #f1f5f9' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-semibold" style={{ color: BRAND }}>{venta.numero_venta}</span>
+                          <SoftBadge texto={venta.estado} color={badge.color} bg={badge.bg} border={badge.border} />
+                          {venta.descuento_porcentaje > 0 && (
+                            <SoftBadge texto={`-${venta.descuento_porcentaje}% Descuento`} color="#7c3aed" bg="#faf5ff" border="#e9d5ff" />
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                          <div className="flex items-center">
+                            <Calendar size={13} className="mr-1.5" />
+                            {new Date(venta.fecha).toLocaleString('es-ES', {
+                              year: 'numeric', month: 'long', day: 'numeric',
+                              hour: '2-digit', minute: '2-digit'
+                            })}
+                          </div>
+                          <div className="flex items-center">
+                            <CreditCard size={13} className="mr-1.5" />
+                            {venta.metodo_pago}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-400">Total</div>
+                        <div className="text-lg font-bold text-gray-900">${venta.total.toFixed(2)}</div>
+                        {venta.descuento_monto > 0 && (
+                          <div className="text-xs" style={{ color: '#059669' }}>Ahorro: ${venta.descuento_monto.toFixed(2)}</div>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div className="flex items-center text-gray-600">
-                          <Calendar size={14} className="mr-2" />
-                          {new Date(venta.fecha).toLocaleString('es-ES', {
-                            year: 'numeric', month: 'long', day: 'numeric',
-                            hour: '2-digit', minute: '2-digit'
-                          })}
-                        </div>
-                        <div className="flex items-center text-gray-600">
-                          <CreditCard size={14} className="mr-2" />
-                          {venta.metodo_pago}
-                        </div>
+                    </div>
+                    {venta.notas && (
+                      <div className="mt-3 pt-3 text-xs text-gray-500" style={{ borderTop: '1px solid #f1f5f9' }}>
+                        <span className="font-medium text-gray-600">Notas:</span> {venta.notas}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-500">Total</div>
-                      <div className="text-2xl font-bold text-gray-800">${venta.total.toFixed(2)}</div>
-                      {venta.descuento_monto > 0 && (
-                        <div className="text-xs text-green-600">Ahorro: ${venta.descuento_monto.toFixed(2)}</div>
-                      )}
-                    </div>
+                    )}
                   </div>
-                  {venta.notas && (
-                    <div className="mt-3 pt-3 border-t text-sm text-gray-600">
-                      <span className="font-medium">Notas:</span> {venta.notas}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
 
-        <div className="p-4 border-t bg-gray-50 flex justify-end">
+        <div className="p-4 flex justify-end" style={{ borderTop: '1px solid #f1f5f9', backgroundColor: '#F8FAFC' }}>
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium"
+            className="px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
           >
             Cerrar
           </button>
@@ -307,14 +370,15 @@ const Clientes = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [clienteAEliminar, setClienteAEliminar] = useState(null);
   const [mostrarPin, setMostrarPin] = useState(false);
-  const [mensajeExito, setMensajeExito] = useState('');
-  const [mensajeError, setMensajeError] = useState('');
+  const [toast, setToast] = useState(null);
   const [stats, setStats] = useState({
     totalClientes: 0,
     clientesVIP: 0,
     totalGastado: 0,
     comprasPromedio: 0
   });
+
+  const mostrarToast = (mensaje, tipo = 'exito') => setToast({ mensaje, tipo });
 
   useEffect(() => {
     cargarClientes();
@@ -351,16 +415,13 @@ const Clientes = () => {
     try {
       const resultado = await ipcRenderer.invoke('eliminar-cliente', clienteAEliminar.id);
       if (resultado.success) {
-        setMensajeExito(`✅ Cliente "${clienteAEliminar.nombre}" eliminado correctamente`);
-        setTimeout(() => setMensajeExito(''), 4000);
+        mostrarToast(`Cliente "${clienteAEliminar.nombre}" eliminado correctamente`, 'exito');
         await cargarClientes();
       } else {
-        setMensajeError(resultado.error || 'No se pudo eliminar el cliente');
-        setTimeout(() => setMensajeError(''), 5000);
+        mostrarToast(resultado.error || 'No se pudo eliminar el cliente', 'error');
       }
     } catch (error) {
-      setMensajeError('Error al eliminar el cliente');
-      setTimeout(() => setMensajeError(''), 5000);
+      mostrarToast('Error al eliminar el cliente', 'error');
     } finally {
       setClienteAEliminar(null);
     }
@@ -368,23 +429,24 @@ const Clientes = () => {
 
   const getNivelFidelidad = (cliente) => {
     const { descuento_aplicado_3, descuento_aplicado_6 } = cliente;
-    if (descuento_aplicado_6 === 1) return { nivel: 'Premium', color: 'bg-blue-100 text-blue-700', icon: '💎' };
-    if (descuento_aplicado_3 === 1) return { nivel: 'Gold', color: 'bg-yellow-100 text-yellow-700', icon: '🥇' };
-    if (cliente.numero_compras >= 1) return { nivel: 'Activo', color: 'bg-green-100 text-green-700', icon: '⭐' };
-    return { nivel: 'Nuevo', color: 'bg-gray-100 text-gray-700', icon: '👤' };
+    if (descuento_aplicado_6 === 1) return { nivel: 'Premium', icon: '💎', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' };
+    if (descuento_aplicado_3 === 1) return { nivel: 'Gold', icon: '🥇', color: '#d97706', bg: '#fffbeb', border: '#fcd34d' };
+    if (cliente.numero_compras >= 1) return { nivel: 'Activo', icon: '⭐', color: '#059669', bg: '#f0fdf4', border: '#86efac' };
+    return { nivel: 'Nuevo', icon: '👤', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' };
   };
 
   const getEstadoFidelidad = (cliente) => {
     const { compras_con_tarjeta, tarjeta_fidelidad_entregada } = cliente;
     if (!tarjeta_fidelidad_entregada) {
-      return { icono: '—', mensaje: 'Sin tarjeta', color: 'text-gray-500 bg-gray-50', border: 'border-gray-200' };
+      return { icono: '—', mensaje: 'Sin tarjeta', color: '#9ca3af', bg: '#f9fafb', border: '#e5e7eb' };
     }
     const numCompras = compras_con_tarjeta || 0;
     return {
       icono: '✅',
       mensaje: `${numCompras} compra${numCompras !== 1 ? 's' : ''} con tarjeta`,
-      color: 'text-teal-600 bg-teal-50',
-      border: 'border-teal-200'
+      color: BRAND,
+      bg: '#f0fdfa',
+      border: '#99d6d8'
     };
   };
 
@@ -395,94 +457,81 @@ const Clientes = () => {
   );
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="p-8 min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
 
-      {/* Toast éxito */}
-      {mensajeExito && (
-        <div className="fixed top-6 right-6 z-50 bg-green-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center space-x-3 animate-fade-in">
-          <CheckCircle size={20} />
-          <span className="font-medium">{mensajeExito}</span>
-        </div>
+      {toast && (
+        <Toast mensaje={toast.mensaje} tipo={toast.tipo} onDone={() => setToast(null)} />
       )}
 
-      {/* Toast error */}
-      {mensajeError && (
-        <div className="fixed top-6 right-6 z-50 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center space-x-3">
-          <AlertTriangle size={20} />
-          <span className="font-medium">{mensajeError}</span>
-        </div>
-      )}
-
-      {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-gray-500 uppercase">Total Clientes</div>
-            <Users className="text-teal-500" size={24} />
-          </div>
-          <div className="text-3xl font-bold text-gray-800">{stats.totalClientes}</div>
-          <div className="text-sm text-gray-500 mt-1">Registrados</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-gray-500 uppercase">Clientes VIP</div>
-            <Trophy className="text-yellow-500" size={24} />
-          </div>
-          <div className="text-3xl font-bold text-yellow-600">{stats.clientesVIP}</div>
-          <div className="text-sm text-gray-500 mt-1">3+ compras</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-gray-500 uppercase">Total Gastado</div>
-            <TrendingUp className="text-green-500" size={24} />
-          </div>
-          <div className="text-3xl font-bold text-green-600">${stats.totalGastado.toFixed(2)}</div>
-          <div className="text-sm text-gray-500 mt-1">Ingresos por clientes</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-medium text-gray-500 uppercase">Ticket Promedio</div>
-            <ShoppingBag className="text-blue-500" size={24} />
-          </div>
-          <div className="text-3xl font-bold text-blue-600">${stats.comprasPromedio.toFixed(2)}</div>
-          <div className="text-sm text-gray-500 mt-1">Por cliente</div>
-        </div>
+      {/* ── Tarjetas de estadísticas ── */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          label="Total Clientes"
+          value={stats.totalClientes}
+          sub="registrados"
+          accentColor={BRAND}
+          icon={Users}
+        />
+        <StatCard
+          label="Clientes VIP"
+          value={stats.clientesVIP}
+          sub="3+ compras"
+          accentColor="#d97706"
+          icon={Trophy}
+        />
+        <StatCard
+          label="Total Gastado"
+          value={`$${stats.totalGastado.toFixed(2)}`}
+          sub="ingresos por clientes"
+          accentColor="#059669"
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Ticket Promedio"
+          value={`$${stats.comprasPromedio.toFixed(2)}`}
+          sub="por cliente"
+          accentColor="#6366f1"
+          icon={ShoppingBag}
+        />
       </div>
 
       {/* Programa de Fidelidad */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6 mb-8">
-        <div className="flex items-center space-x-3 mb-4">
-          <Gift className="text-purple-600" size={28} />
-          <h3 className="text-xl font-bold text-gray-800">Programa de Fidelidad</h3>
+      <div
+        className="bg-white rounded-xl p-6 mb-6"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <Gift size={22} style={{ color: BRAND }} />
+          <h3 className="text-lg font-bold text-gray-900">Programa de Fidelidad</h3>
         </div>
-        <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
-          <div className="flex items-center space-x-2 mb-2">
-            <CreditCard className="text-purple-600" size={20} />
-            <h4 className="font-bold text-gray-800">¿Cómo funciona?</h4>
+        <div className="rounded-xl p-4 mb-4" style={{ backgroundColor: '#f0fdfa', border: '1px solid #99d6d8' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <CreditCard size={18} style={{ color: BRAND }} />
+            <h4 className="font-semibold text-gray-800 text-sm">¿Cómo funciona?</h4>
           </div>
-          <ol className="text-sm text-gray-700 space-y-1 ml-6 list-decimal">
+          <ol className="text-sm text-gray-600 space-y-1 ml-6 list-decimal">
             <li>La tarjeta se entrega en la <strong>primera compra mayor a $30,000</strong></li>
             <li>El cliente debe presentar la tarjeta en cada compra para acumular beneficios</li>
             <li>Los descuentos se aplican automáticamente al cumplir los requisitos</li>
           </ol>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white rounded-lg p-4 border border-yellow-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <span className="text-2xl">🥇</span>
-              <div className="font-bold text-gray-800">Nivel Gold - 10% OFF</div>
+          <div className="rounded-xl p-4" style={{ border: '1px solid #fcd34d', backgroundColor: '#fffbeb' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">🥇</span>
+              <div className="font-semibold text-gray-800 text-sm">Nivel Gold — 10% OFF</div>
             </div>
-            <div className="text-sm text-gray-600 space-y-1">
+            <div className="text-xs text-gray-600 space-y-1">
               <div>✓ En la <strong>3ra compra con tarjeta</strong></div>
               <div>✓ Compra mayor a <strong>$30,000</strong></div>
             </div>
           </div>
-          <div className="bg-white rounded-lg p-4 border border-blue-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <span className="text-2xl">💎</span>
-              <div className="font-bold text-gray-800">Nivel Premium - 15% OFF</div>
+          <div className="rounded-xl p-4" style={{ border: '1px solid #bfdbfe', backgroundColor: '#eff6ff' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">💎</span>
+              <div className="font-semibold text-gray-800 text-sm">Nivel Premium — 15% OFF</div>
             </div>
-            <div className="text-sm text-gray-600 space-y-1">
+            <div className="text-xs text-gray-600 space-y-1">
               <div>✓ En la <strong>6ta compra con tarjeta</strong></div>
               <div>✓ Compra mayor a <strong>$30,000</strong></div>
               <div>✓ Dentro de <strong>10 meses</strong> desde recibir tarjeta</div>
@@ -492,48 +541,54 @@ const Clientes = () => {
       </div>
 
       {/* Tabla de Clientes */}
-      <div className="bg-white rounded-xl shadow-sm border">
-        <div className="p-6 border-b">
+      <div
+        className="bg-white rounded-xl overflow-hidden"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}
+      >
+        <div className="p-6" style={{ borderBottom: '1px solid #f1f5f9' }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-gray-800">Lista de Clientes ({clientesFiltrados.length})</h3>
-            <div className="flex items-center space-x-2 text-xs text-gray-400 bg-gray-50 px-3 py-2 rounded-lg border">
-              <Shield size={14} className="text-red-400" />
+            <h3 className="text-lg font-bold text-gray-900">Lista de Clientes ({clientesFiltrados.length})</h3>
+            <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+              <Shield size={13} className="text-red-400" />
               <span>Eliminar requiere PIN de administrador</span>
             </div>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <div className="relative max-w-sm">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por nombre, cédula o celular..."
+              placeholder="Buscar por nombre, cédula o celular…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg bg-white placeholder-gray-400 text-gray-800 focus:outline-none focus:ring-2 transition"
+              style={{ '--tw-ring-color': BRAND }}
+              onFocus={(e) => { e.target.style.borderColor = BRAND; }}
+              onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; }}
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           {clientesFiltrados.length === 0 ? (
-            <div className="p-12 text-center">
-              <Users size={48} className="mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500 text-lg">No hay clientes registrados</p>
+            <div className="p-14 text-center">
+              <Users size={40} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500 text-sm">No hay clientes registrados</p>
             </div>
           ) : (
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Cliente</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Contacto</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Compras</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Total Gastado</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Nivel</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Estado Fidelidad</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Última Compra</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Acciones</th>
+                  {['Cliente', 'Contacto', 'Compras', 'Total Gastado', 'Nivel', 'Estado Fidelidad', 'Última Compra', 'Acciones'].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`px-5 py-3.5 text-[10px] font-semibold text-gray-400 uppercase tracking-widest ${i >= 2 ? 'text-center' : 'text-left'}`}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-50">
                 {clientesFiltrados.map((cliente) => {
                   const fidelidad = getNivelFidelidad(cliente);
                   const estadoFidelidad = getEstadoFidelidad(cliente);
@@ -542,61 +597,64 @@ const Clientes = () => {
                     <tr
                       key={cliente.id}
                       onClick={() => setClienteSeleccionado(cliente)}
-                      className="hover:bg-teal-50 transition cursor-pointer"
+                      className="transition-colors hover:bg-gray-50/70 cursor-pointer"
                     >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
-                            <span className="text-teal-600 font-bold text-sm">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                            style={{ backgroundColor: '#f0fdfa' }}
+                          >
+                            <span className="font-bold text-sm" style={{ color: BRAND }}>
                               {cliente.nombre.charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div>
-                            <div className="font-medium text-gray-800">{cliente.nombre}</div>
+                            <div className="text-sm font-semibold text-gray-900">{cliente.nombre}</div>
                             {cliente.cedula && (
-                              <div className="text-xs text-gray-500">CC: {cliente.cedula}</div>
+                              <div className="text-xs text-gray-400">CC: {cliente.cedula}</div>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-4">
                         <div className="space-y-1">
                           {cliente.celular && (
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Phone size={14} className="mr-2" />
+                            <div className="flex items-center text-xs text-gray-500">
+                              <Phone size={12} className="mr-1.5" />
                               {cliente.celular}
                             </div>
                           )}
                           {cliente.correo && (
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Mail size={14} className="mr-2" />
+                            <div className="flex items-center text-xs text-gray-500">
+                              <Mail size={12} className="mr-1.5" />
                               {cliente.correo}
                             </div>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="font-bold text-lg text-gray-800">{cliente.numero_compras}</div>
+                      <td className="px-5 py-4 text-center">
+                        <div className="text-sm font-semibold text-gray-900">{cliente.numero_compras}</div>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="font-bold text-teal-600">${(cliente.total_compras || 0).toFixed(2)}</div>
+                      <td className="px-5 py-4 text-center">
+                        <div className="text-sm font-semibold" style={{ color: BRAND }}>${(cliente.total_compras || 0).toFixed(2)}</div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-4">
                         <div className="flex justify-center">
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${fidelidad.color} flex items-center space-x-1`}>
-                            <span>{fidelidad.icon}</span>
-                            <span>{fidelidad.nivel}</span>
-                          </span>
+                          <SoftBadge texto={fidelidad.nivel} icon={fidelidad.icon} color={fidelidad.color} bg={fidelidad.bg} border={fidelidad.border} />
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className={`inline-flex flex-col items-center px-3 py-2 rounded-lg border ${estadoFidelidad.color} ${estadoFidelidad.border}`}>
-                          <span className="text-xl mb-1">{estadoFidelidad.icono}</span>
-                          <span className="text-xs font-medium whitespace-nowrap">{estadoFidelidad.mensaje}</span>
+                      <td className="px-5 py-4 text-center">
+                        <div
+                          className="inline-flex flex-col items-center px-3 py-1.5 rounded-lg"
+                          style={{ color: estadoFidelidad.color, backgroundColor: estadoFidelidad.bg, border: `1px solid ${estadoFidelidad.border}` }}
+                        >
+                          <span className="text-base leading-none mb-1">{estadoFidelidad.icono}</span>
+                          <span className="text-[11px] font-medium whitespace-nowrap">{estadoFidelidad.mensaje}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="text-sm text-gray-600">
+                      <td className="px-5 py-4 text-center">
+                        <div className="text-xs text-gray-500">
                           {cliente.ultima_compra
                             ? new Date(cliente.ultima_compra).toLocaleDateString('es-ES')
                             : 'N/A'}
@@ -604,13 +662,13 @@ const Clientes = () => {
                       </td>
 
                       {/* ── COLUMNA ACCIONES ── */}
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-5 py-4 text-center">
                         <button
                           onClick={(e) => iniciarEliminacion(e, cliente)}
                           title="Eliminar cliente (requiere PIN)"
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200 group"
+                          className="p-1.5 rounded-lg transition-colors hover:bg-red-50 text-gray-400 hover:text-red-500"
                         >
-                          <Trash2 size={18} className="group-hover:scale-110 transition-transform" />
+                          <Trash2 size={16} />
                         </button>
                       </td>
                     </tr>

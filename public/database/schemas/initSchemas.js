@@ -74,6 +74,16 @@ db.run(`ALTER TABLE productos ADD COLUMN fecha_ingreso DATETIME`, (err) => {
       UNIQUE(producto_id, talla)
     )`);
 
+    // ✅ NUEVO: fecha_actualizado para sincronización con la web
+    db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_actualizado DATETIME`, (err) => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Error al agregar fecha_actualizado a variantes:', err);
+      } else {
+        // Backfill: para las filas ya existentes, ponemos la fecha actual como punto de partida
+        db.run(`UPDATE variantes_producto SET fecha_actualizado = datetime('now', 'localtime') WHERE fecha_actualizado IS NULL`);
+      }
+    });
+
     // ✅ NUEVO: Agregar columnas de rotación a variantes si no existen (para BDs ya creadas)
 db.run(`ALTER TABLE variantes_producto ADD COLUMN fecha_ingreso DATETIME`, (err) => {
   if (err && !err.message.includes('duplicate column')) {

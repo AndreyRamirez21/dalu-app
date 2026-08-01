@@ -4,13 +4,53 @@ import {
   TrendingDown,
   DollarSign,
   AlertCircle,
-  Package,
-  ShoppingBag,
-  CreditCard,
-  Receipt
+  Package
 } from 'lucide-react';
 
 const { ipcRenderer } = window.require('electron');
+
+const BRAND = '#82bbbd';
+
+/* ─── Stat card con figurita (icono en badge de color) ─────────── */
+const StatCard = ({ label, value, icon: Icon, accentColor, footer }) => (
+  <div
+    className="bg-white rounded-xl p-6"
+    style={{ borderTop: `2px solid ${accentColor}`, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+  >
+    <div className="flex items-center justify-between mb-4">
+      <div>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+          {label}
+        </p>
+        <p className="text-2xl font-bold text-gray-900 tracking-tight">{value}</p>
+      </div>
+      <div className="p-3 rounded-lg" style={{ backgroundColor: `${accentColor}1A` }}>
+        <Icon size={22} style={{ color: accentColor }} />
+      </div>
+    </div>
+    {footer}
+  </div>
+);
+
+/* ─── Badge de tipo de actividad ────────────────────────────────── */
+const TIPO_STYLE = {
+  Venta:      { color: '#059669', bg: '#f0fdf4', border: '#86efac' },
+  Gasto:      { color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+  Inventario: { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+  Deuda:      { color: '#d97706', bg: '#fffbeb', border: '#fcd34d' },
+};
+
+const TipoBadge = ({ tipo }) => {
+  const s = TIPO_STYLE[tipo] ?? { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' };
+  return (
+    <span
+      className="text-xs font-semibold px-2.5 py-1 rounded-full"
+      style={{ color: s.color, backgroundColor: s.bg, border: `1px solid ${s.border}` }}
+    >
+      {tipo}
+    </span>
+  );
+};
 
 const Dashboard = () => {
   const [estadisticas, setEstadisticas] = useState({
@@ -52,16 +92,6 @@ const Dashboard = () => {
   const cambioVentas = calcularCambio(estadisticas.ventasTotales, estadisticas.ventasMesAnterior);
   const cambioGastos = calcularCambio(estadisticas.gastosTotales, estadisticas.gastosMesAnterior);
 
-  const getTipoColor = (tipo) => {
-    const colors = {
-      'Venta': 'bg-green-100 text-green-700',
-      'Gasto': 'bg-red-100 text-red-700',
-      'Inventario': 'bg-blue-100 text-blue-700',
-      'Deuda': 'bg-yellow-100 text-yellow-700'
-    };
-    return colors[tipo] || 'bg-gray-100 text-gray-700';
-  };
-
   const formatearFecha = (fecha) => {
     const ahora = new Date();
     const fechaActividad = new Date(fecha);
@@ -83,154 +113,132 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-gray-500">Cargando dashboard...</div>
+      <div className="p-8 flex items-center justify-center min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
+        <div className="text-sm text-gray-400">Cargando dashboard…</div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
+    <div className="p-8 min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
       {/* Tarjetas de Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         {/* Ventas Totales */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Ventas Totales
-              </div>
-              <div className="text-3xl font-bold text-gray-800">
-                ${estadisticas.ventasTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+        <StatCard
+          label="Ventas Totales"
+          value={`$${estadisticas.ventasTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}`}
+          icon={TrendingUp}
+          accentColor="#059669"
+          footer={
+            <div
+              className="text-xs font-semibold flex items-center"
+              style={{ color: cambioVentas >= 0 ? '#059669' : '#dc2626' }}
+            >
+              {cambioVentas >= 0 ? '+' : ''}{cambioVentas}% vs mes anterior
             </div>
-            <div className="p-3 bg-green-100 rounded-lg">
-              <TrendingUp className="text-green-600" size={24} />
-            </div>
-          </div>
-          <div className={`text-sm font-medium flex items-center ${
-            cambioVentas >= 0 ? 'text-green-600' : 'text-red-600'
-          }`}>
-            {cambioVentas >= 0 ? '+' : ''}{cambioVentas}% vs mes anterior
-          </div>
-        </div>
+          }
+        />
 
         {/* Gastos Totales */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Gastos Totales
-              </div>
-              <div className="text-3xl font-bold text-gray-800">
-                ${estadisticas.gastosTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+        <StatCard
+          label="Gastos Totales"
+          value={`$${estadisticas.gastosTotales.toLocaleString('es-CO', { minimumFractionDigits: 2 })}`}
+          icon={TrendingDown}
+          accentColor="#dc2626"
+          footer={
+            <div
+              className="text-xs font-semibold flex items-center"
+              style={{ color: cambioGastos >= 0 ? '#dc2626' : '#059669' }}
+            >
+              {cambioGastos >= 0 ? '+' : ''}{cambioGastos}% vs mes anterior
             </div>
-            <div className="p-3 bg-red-100 rounded-lg">
-              <TrendingDown className="text-red-600" size={24} />
-            </div>
-          </div>
-          <div className={`text-sm font-medium flex items-center ${
-            cambioGastos >= 0 ? 'text-red-600' : 'text-green-600'
-          }`}>
-            {cambioGastos >= 0 ? '+' : ''}{cambioGastos}% vs mes anterior
-          </div>
-        </div>
+          }
+        />
 
         {/* Deudas por Cobrar */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Deudas por Cobrar
-              </div>
-              <div className="text-3xl font-bold text-gray-800">
-                ${estadisticas.deudasPendientes.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </div>
+        <StatCard
+          label="Deudas por Cobrar"
+          value={`$${estadisticas.deudasPendientes.toLocaleString('es-CO', { minimumFractionDigits: 2 })}`}
+          icon={DollarSign}
+          accentColor="#d97706"
+          footer={
+            <div className="text-xs text-gray-400">
+              {estadisticas.clientesConDeuda} cliente{estadisticas.clientesConDeuda !== 1 ? 's' : ''} con saldo pendiente
             </div>
-            <div className="p-3 bg-yellow-100 rounded-lg">
-              <DollarSign className="text-yellow-600" size={24} />
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">
-            {estadisticas.clientesConDeuda} cliente{estadisticas.clientesConDeuda !== 1 ? 's' : ''} con saldo pendiente
-          </div>
-        </div>
+          }
+        />
 
         {/* Items en Inventario */}
-        <div className="bg-white rounded-xl shadow-sm border p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <div className="text-sm font-medium text-gray-500 uppercase mb-1">
-                Items en Inventario
-              </div>
-              <div className="text-3xl font-bold text-gray-800">
-                {estadisticas.itemsInventario}
-              </div>
+        <StatCard
+          label="Items en Inventario"
+          value={estadisticas.itemsInventario}
+          icon={Package}
+          accentColor={BRAND}
+          footer={
+            <div className="text-xs text-gray-400">
+              {estadisticas.productosStockBajo} producto{estadisticas.productosStockBajo !== 1 ? 's' : ''} bajos en stock
             </div>
-            <div className="p-3 bg-orange-100 rounded-lg">
-              <Package className="text-orange-600" size={24} />
-            </div>
-          </div>
-          <div className="text-sm text-gray-500">
-            {estadisticas.productosStockBajo} producto{estadisticas.productosStockBajo !== 1 ? 's' : ''} bajos en stock
-          </div>
-        </div>
+          }
+        />
       </div>
 
       {/* Actividad Reciente */}
-      <div className="bg-white rounded-xl shadow-sm border">
-        <div className="p-6 border-b">
-          <h3 className="text-xl font-bold text-gray-800">Actividad Reciente</h3>
+      <div
+        className="bg-white rounded-xl overflow-hidden"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}
+      >
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-bold text-gray-900">Actividad Reciente</h3>
         </div>
         <div className="overflow-x-auto">
           {actividadReciente.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <AlertCircle size={48} className="mx-auto mb-4 text-gray-300" />
-              <p>No hay actividad reciente</p>
+            <div className="text-center py-14">
+              <AlertCircle size={40} className="mx-auto mb-4 text-gray-300" />
+              <p className="text-sm text-gray-400">No hay actividad reciente</p>
             </div>
           ) : (
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead style={{ borderBottom: '1px solid #f1f5f9' }}>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-6 py-3.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
                     Tipo
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-6 py-3.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
                     Descripción
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-6 py-3.5 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
                     Monto
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-6 py-3.5 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
                     Fecha
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-50">
                 {actividadReciente.map((actividad, index) => (
-                  <tr key={index} className="hover:bg-gray-50 transition">
+                  <tr key={index} className="transition-colors hover:bg-gray-50/70">
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getTipoColor(actividad.tipo)}`}>
-                        {actividad.tipo}
-                      </span>
+                      <TipoBadge tipo={actividad.tipo} />
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-800">{actividad.descripcion}</div>
+                      <div className="text-sm font-medium text-gray-800">{actividad.descripcion}</div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className={`font-bold text-lg ${
-                        actividad.tipo === 'Venta' || actividad.tipo === 'Deuda'
-                          ? 'text-green-600'
-                          : actividad.tipo === 'Gasto'
-                            ? 'text-red-600'
-                            : 'text-blue-600'
-                      }`}>
+                      <div
+                        className="font-bold text-sm"
+                        style={{
+                          color: actividad.tipo === 'Venta' || actividad.tipo === 'Deuda'
+                            ? '#059669'
+                            : actividad.tipo === 'Gasto'
+                              ? '#dc2626'
+                              : '#6366f1'
+                        }}
+                      >
                         {actividad.monto}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="text-sm text-gray-500">
+                      <div className="text-xs text-gray-400">
                         {formatearFecha(actividad.fecha)}
                       </div>
                     </td>

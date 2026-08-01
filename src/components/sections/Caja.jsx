@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 const { ipcRenderer } = window.require('electron');
 
+const BRAND = '#82bbbd';
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const fmt = (n) =>
@@ -32,7 +34,7 @@ const IconArrowDown = () => (
   </svg>
 );
 const IconWallet = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
     <path d="M16 12h2"/><path d="M6 1v4M10 1v4"/>
   </svg>
@@ -72,22 +74,67 @@ const IconChevronRight = () => (
     <polyline points="9 18 15 12 9 6"/>
   </svg>
 );
+const IconCheck = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+);
+const IconAlert = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+);
+
+/* ─── Toast (mismo lenguaje que Ventas) ─────────────────────────────────── */
+const Toast = ({ mensaje, tipo = 'exito', onDone }) => {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => { setVisible(false); setTimeout(onDone, 300); }, 3000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div
+      className={`fixed bottom-8 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-xl transition-all duration-300 ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+      style={{ backgroundColor: tipo === 'exito' ? BRAND : '#dc2626' }}
+    >
+      {tipo === 'exito' ? <IconCheck /> : <IconAlert />}
+      <span className="text-white font-medium text-sm">{mensaje}</span>
+    </div>
+  );
+};
+
+/* ─── Stat card (idéntica a Ventas) ─────────────────────────────────────── */
+const StatCard = ({ label, value, sub, accentColor, icon }) => (
+  <div
+    className="bg-white rounded-xl p-5"
+    style={{ borderTop: `2px solid ${accentColor}`, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+  >
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">{label}</p>
+      {icon && <div style={{ color: accentColor }}>{icon}</div>}
+    </div>
+    <p className="text-2xl font-bold text-gray-900 tracking-tight">{value}</p>
+    <p className="mt-1.5 text-xs text-gray-400">{sub}</p>
+  </div>
+);
 
 // ─── Badge de tipo ────────────────────────────────────────────────────────────
 
 const TipoBadge = ({ tipo, origen }) => {
   const config = {
-    apertura: { label: 'Apertura', bg: '#e0f2fe', color: '#0369a1' },
-    entrada:  { label: origen === 'venta' ? 'Venta' : 'Entrada',  bg: '#dcfce7', color: '#15803d' },
-    salida:   { label: origen === 'gasto' ? 'Gasto' : 'Salida',   bg: '#fee2e2', color: '#dc2626' },
-    ajuste:   { label: 'Ajuste',  bg: '#fef9c3', color: '#a16207' },
+    apertura: { label: 'Apertura', color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' },
+    entrada:  { label: origen === 'venta' ? 'Venta' : 'Entrada', color: '#059669', bg: '#f0fdf4', border: '#86efac' },
+    salida:   { label: origen === 'gasto' ? 'Gasto' : 'Salida', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+    ajuste:   { label: 'Ajuste', color: '#d97706', bg: '#fffbeb', border: '#fcd34d' },
   };
   const c = config[tipo] || config.ajuste;
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: '999px',
-      fontSize: '12px', fontWeight: 600, background: c.bg, color: c.color
-    }}>
+    <span
+      className="text-xs font-semibold px-2.5 py-1 rounded-full"
+      style={{ color: c.color, backgroundColor: c.bg, border: `1px solid ${c.border}` }}
+    >
       {c.label}
     </span>
   );
@@ -100,7 +147,6 @@ const ITEMS_POR_PAGINA = 10;
 const Paginacion = ({ paginaActual, totalPaginas, onChange, totalItems, itemsEnPagina }) => {
   if (totalPaginas <= 1) return null;
 
-  // Genera los números de página visibles (máx 5 botones)
   const getPages = () => {
     const pages = [];
     let start = Math.max(1, paginaActual - 2);
@@ -110,63 +156,42 @@ const Paginacion = ({ paginaActual, totalPaginas, onChange, totalItems, itemsEnP
     return pages;
   };
 
-  const btnBase = {
-    minWidth: '36px', height: '36px', borderRadius: '8px', border: '1.5px solid #e5e7eb',
-    background: '#fff', color: '#374151', fontWeight: 600, fontSize: '13px',
-    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'all .15s', lineHeight: 0,
-  };
-  const btnActivo = {
-    ...btnBase,
-    border: '1.5px solid #6366f1', background: '#ede9fe', color: '#6366f1',
-  };
-  const btnDisabled = {
-    ...btnBase, opacity: 0.4, cursor: 'not-allowed',
-  };
-
   const desde = (paginaActual - 1) * ITEMS_POR_PAGINA + 1;
   const hasta = desde + itemsEnPagina - 1;
 
   return (
-    <div style={{
-      padding: '14px 24px',
-      borderTop: '1px solid #f3f4f6',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      flexWrap: 'wrap', gap: '12px',
-    }}>
-      {/* Info */}
-      <span style={{ fontSize: '13px', color: '#9ca3af' }}>
-        Mostrando <b style={{ color: '#374151' }}>{desde}–{hasta}</b> de{' '}
-        <b style={{ color: '#374151' }}>{totalItems}</b> movimientos
+    <div className="px-6 py-3.5 flex items-center justify-between flex-wrap gap-3" style={{ borderTop: '1px solid #f1f5f9' }}>
+      <span className="text-xs text-gray-400">
+        Mostrando <b className="text-gray-600">{desde}–{hasta}</b> de <b className="text-gray-600">{totalItems}</b> movimientos
       </span>
 
-      {/* Controles */}
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-        {/* Anterior */}
+      <div className="flex gap-1.5 items-center">
         <button
           onClick={() => onChange(paginaActual - 1)}
           disabled={paginaActual === 1}
-          style={paginaActual === 1 ? btnDisabled : btnBase}
+          className="min-w-[36px] h-9 rounded-lg border border-gray-200 bg-white text-gray-600 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
         >
           <IconChevronLeft />
         </button>
 
-        {/* Páginas */}
         {getPages().map(p => (
           <button
             key={p}
             onClick={() => onChange(p)}
-            style={p === paginaActual ? btnActivo : btnBase}
+            className="min-w-[36px] h-9 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors"
+            style={p === paginaActual
+              ? { border: `1.5px solid ${BRAND}`, backgroundColor: '#f0fdfa', color: BRAND }
+              : { border: '1.5px solid #e5e7eb', backgroundColor: '#fff', color: '#374151' }
+            }
           >
             {p}
           </button>
         ))}
 
-        {/* Siguiente */}
         <button
           onClick={() => onChange(paginaActual + 1)}
           disabled={paginaActual === totalPaginas}
-          style={paginaActual === totalPaginas ? btnDisabled : btnBase}
+          className="min-w-[36px] h-9 rounded-lg border border-gray-200 bg-white text-gray-600 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
         >
           <IconChevronRight />
         </button>
@@ -210,63 +235,58 @@ const ModalMovimiento = ({ tipo: tipoInicial, onClose, onSuccess }) => {
     }
   };
 
+  const tipoColores = {
+    entrada: { color: '#059669', bg: '#f0fdf4', border: '#86efac', solid: '#059669' },
+    salida:  { color: '#dc2626', bg: '#fef2f2', border: '#fecaca', solid: '#dc2626' },
+    ajuste:  { color: '#d97706', bg: '#fffbeb', border: '#fcd34d', solid: '#d97706' },
+  };
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center'
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px', padding: '32px', width: '460px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
-      }}>
-        <h2 style={{ margin: '0 0 24px', fontSize: '18px', fontWeight: 700, color: '#111' }}>
-          Registrar movimiento
-        </h2>
+    <div className="fixed inset-0 bg-black bg-opacity-40 z-[1000] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-8 w-full max-w-md" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <h2 className="text-lg font-bold text-gray-900 mb-6">Registrar movimiento</h2>
 
         {/* Tipo */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+        <div className="flex gap-2 mb-5">
           {[
-            { v: 'entrada', label: '↑ Entrada', color: '#15803d', bg: '#dcfce7', border: '#86efac' },
-            { v: 'salida',  label: '↓ Salida',  color: '#dc2626', bg: '#fee2e2', border: '#fca5a5' },
-            { v: 'ajuste',  label: '⟳ Ajuste',  color: '#a16207', bg: '#fef9c3', border: '#fde047' },
-          ].map(opt => (
-            <button key={opt.v} onClick={() => setTipo(opt.v)} style={{
-              flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer',
-              fontWeight: 600, fontSize: '13px', transition: 'all .15s',
-              border: tipo === opt.v ? `2px solid ${opt.border}` : '2px solid #e5e7eb',
-              background: tipo === opt.v ? opt.bg : '#f9fafb',
-              color: tipo === opt.v ? opt.color : '#6b7280',
-            }}>
-              {opt.label}
-            </button>
-          ))}
+            { v: 'entrada', label: '↑ Entrada' },
+            { v: 'salida',  label: '↓ Salida' },
+            { v: 'ajuste',  label: '⟳ Ajuste' },
+          ].map(opt => {
+            const c = tipoColores[opt.v];
+            const active = tipo === opt.v;
+            return (
+              <button
+                key={opt.v}
+                onClick={() => setTipo(opt.v)}
+                className="flex-1 py-2.5 rounded-lg text-xs font-semibold transition-all"
+                style={active
+                  ? { border: `2px solid ${c.border}`, backgroundColor: c.bg, color: c.color }
+                  : { border: '2px solid #e5e7eb', backgroundColor: '#f9fafb', color: '#6b7280' }
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Concepto */}
-        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600, color: '#374151' }}>
-          Concepto *
-        </label>
+        <label className="block mb-1.5 text-xs font-semibold text-gray-600">Concepto *</label>
         <input
           value={concepto} onChange={e => setConcepto(e.target.value)}
-          placeholder="Describe el movimiento..."
-          style={{
-            width: '100%', padding: '10px 14px', borderRadius: '10px', marginBottom: '8px',
-            border: '1.5px solid #e5e7eb', fontSize: '14px', boxSizing: 'border-box',
-            outline: 'none', transition: 'border .15s',
-          }}
-          onFocus={e => e.target.style.borderColor = '#6366f1'}
-          onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+          placeholder="Describe el movimiento…"
+          className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 text-sm mb-2 outline-none focus:ring-2 transition"
+          style={{ '--tw-ring-color': BRAND }}
+          onFocus={e => { e.target.style.borderColor = BRAND; }}
+          onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
         />
-        {/* Sugerencias */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }}>
+        <div className="flex gap-1.5 flex-wrap mb-4">
           {(conceptosSugeridos[tipo] || []).map(s => (
-            <button key={s} onClick={() => setConcepto(s)} style={{
-              padding: '4px 10px', borderRadius: '999px', fontSize: '11px', cursor: 'pointer',
-              border: '1px solid #e5e7eb', background: '#f3f4f6', color: '#6b7280',
-              transition: 'all .1s',
-            }}
-            onMouseEnter={e => { e.target.style.background='#e5e7eb'; e.target.style.color='#111'; }}
-            onMouseLeave={e => { e.target.style.background='#f3f4f6'; e.target.style.color='#6b7280'; }}
+            <button
+              key={s}
+              onClick={() => setConcepto(s)}
+              className="px-2.5 py-1 rounded-full text-[11px] border border-gray-200 bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors"
             >
               {s}
             </button>
@@ -274,64 +294,51 @@ const ModalMovimiento = ({ tipo: tipoInicial, onClose, onSuccess }) => {
         </div>
 
         {/* Monto */}
-        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600, color: '#374151' }}>
-          Monto *
-        </label>
-        <div style={{ position: 'relative', marginBottom: '16px' }}>
-          <span style={{
-            position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
-            color: '#9ca3af', fontWeight: 700, fontSize: '14px'
-          }}>$</span>
+        <label className="block mb-1.5 text-xs font-semibold text-gray-600">Monto *</label>
+        <div className="relative mb-4">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">$</span>
           <input
             type="number" min="0" value={monto} onChange={e => setMonto(e.target.value)}
             placeholder="0"
-            style={{
-              width: '100%', padding: '10px 14px 10px 28px', borderRadius: '10px',
-              border: '1.5px solid #e5e7eb', fontSize: '14px', boxSizing: 'border-box',
-              outline: 'none', transition: 'border .15s',
-            }}
-            onFocus={e => e.target.style.borderColor = '#6366f1'}
-            onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+            className="w-full pl-7 pr-3.5 py-2.5 rounded-lg border border-gray-200 text-sm outline-none focus:ring-2 transition"
+            style={{ '--tw-ring-color': BRAND }}
+            onFocus={e => { e.target.style.borderColor = BRAND; }}
+            onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
           />
         </div>
 
         {/* Notas */}
-        <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600, color: '#374151' }}>
-          Notas (opcional)
-        </label>
+        <label className="block mb-1.5 text-xs font-semibold text-gray-600">Notas (opcional)</label>
         <textarea
           value={notas} onChange={e => setNotas(e.target.value)}
-          placeholder="Información adicional..."
+          placeholder="Información adicional…"
           rows={2}
-          style={{
-            width: '100%', padding: '10px 14px', borderRadius: '10px', marginBottom: '20px',
-            border: '1.5px solid #e5e7eb', fontSize: '14px', boxSizing: 'border-box',
-            resize: 'none', outline: 'none', transition: 'border .15s', fontFamily: 'inherit',
-          }}
-          onFocus={e => e.target.style.borderColor = '#6366f1'}
-          onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+          className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 text-sm mb-5 outline-none resize-none focus:ring-2 transition"
+          style={{ '--tw-ring-color': BRAND, fontFamily: 'inherit' }}
+          onFocus={e => { e.target.style.borderColor = BRAND; }}
+          onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
         />
 
         {error && (
-          <div style={{ marginBottom: '16px', padding: '10px 14px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+          <div className="mb-4 px-3.5 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
             {error}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onClose} style={{
-            flex: 1, padding: '11px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
-            background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer', fontSize: '14px',
-          }}>
+        <div className="flex gap-2.5">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-lg border border-gray-200 text-gray-600 font-semibold text-sm hover:bg-gray-50 transition-colors"
+          >
             Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={loading} style={{
-            flex: 2, padding: '11px', borderRadius: '10px', border: 'none',
-            background: tipo === 'entrada' ? '#16a34a' : tipo === 'salida' ? '#dc2626' : '#d97706',
-            color: '#fff', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-            fontSize: '14px', opacity: loading ? 0.7 : 1,
-          }}>
-            {loading ? 'Guardando...' : 'Registrar'}
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-[2] py-2.5 rounded-lg text-white font-semibold text-sm transition-opacity disabled:opacity-60"
+            style={{ backgroundColor: tipoColores[tipo].solid }}
+          >
+            {loading ? 'Guardando…' : 'Registrar'}
           </button>
         </div>
       </div>
@@ -362,72 +369,54 @@ const ModalSaldoInicial = ({ onClose, onSuccess }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center'
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px', padding: '36px', width: '420px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.2)', textAlign: 'center'
-      }}>
-        <div style={{
-          width: '60px', height: '60px', borderRadius: '50%',
-          background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 20px', fontSize: '28px'
-        }}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[1000] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-9 w-full max-w-sm text-center" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5 text-2xl"
+          style={{ backgroundColor: '#f0fdfa' }}
+        >
           💰
         </div>
-        <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#111' }}>
-          Configurar saldo inicial
-        </h2>
-        <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: '14px', lineHeight: 1.5 }}>
+        <h2 className="text-lg font-bold text-gray-900 mb-2">Configurar saldo inicial</h2>
+        <p className="text-gray-500 text-sm leading-relaxed mb-6">
           Ingresa el dinero que tienes actualmente en caja. Este será el punto de partida de tu registro.
         </p>
-        <div style={{ position: 'relative', marginBottom: '20px' }}>
-          <span style={{
-            position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)',
-            color: '#9ca3af', fontWeight: 700, fontSize: '16px'
-          }}>$</span>
+        <div className="relative mb-5">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">$</span>
           <input
             type="number" min="0" value={monto} onChange={e => setMonto(e.target.value)}
             placeholder="0"
             autoFocus
-            style={{
-              width: '100%', padding: '14px 16px 14px 32px', borderRadius: '12px',
-              border: '2px solid #e5e7eb', fontSize: '20px', fontWeight: 700,
-              boxSizing: 'border-box', outline: 'none', textAlign: 'center',
-              transition: 'border .15s',
-            }}
-            onFocus={e => e.target.style.borderColor = '#7c3aed'}
-            onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+            className="w-full pl-8 pr-4 py-3.5 rounded-xl border-2 border-gray-200 text-xl font-bold text-center outline-none transition"
+            onFocus={e => { e.target.style.borderColor = BRAND; }}
+            onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
           />
         </div>
         {error && (
-          <div style={{ marginBottom: '16px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+          <div className="mb-4 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
             {error}
           </div>
         )}
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={onClose} style={{
-            flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
-            background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer',
-          }}>
+        <div className="flex gap-2.5">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 rounded-lg border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+          >
             Cancelar
           </button>
-          <button onClick={handleSubmit} disabled={loading} style={{
-            flex: 2, padding: '12px', borderRadius: '10px', border: 'none',
-            background: 'linear-gradient(135deg, #7c3aed, #6366f1)', color: '#fff',
-            fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '15px',
-            opacity: loading ? 0.7 : 1,
-          }}>
-            {loading ? 'Guardando...' : 'Confirmar saldo inicial'}
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-[2] py-3 rounded-lg text-white font-semibold text-sm transition-opacity disabled:opacity-60"
+            style={{ backgroundColor: BRAND }}
+          >
+            {loading ? 'Guardando…' : 'Confirmar saldo inicial'}
           </button>
         </div>
       </div>
     </div>
   );
 };
-
 
 // ─── Modal de reiniciar caja (con contraseña) ─────────────────────────────────
 
@@ -457,33 +446,24 @@ const ModalReiniciarCaja = ({ onClose, onSuccess }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center'
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '16px', padding: '36px', width: '420px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.2)', textAlign: 'center'
-      }}>
-        <div style={{
-          width: '60px', height: '60px', borderRadius: '50%',
-          background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 20px', fontSize: '28px'
-        }}>
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[1000] flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-9 w-full max-w-sm text-center" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5 text-2xl"
+          style={{ backgroundColor: '#fef2f2' }}
+        >
           ⚠️
         </div>
 
         {!confirmando ? (
           <>
-            <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#111' }}>
-              Reiniciar caja
-            </h2>
-            <p style={{ margin: '0 0 24px', color: '#6b7280', fontSize: '14px', lineHeight: 1.5 }}>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Reiniciar caja</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
               Esto <b>borrará permanentemente</b> todo el historial de movimientos de caja
               (saldo inicial, entradas, salidas y ajustes). Esta acción no se puede deshacer.
             </p>
 
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 600, color: '#374151', textAlign: 'left' }}>
+            <label className="block mb-1.5 text-xs font-semibold text-gray-600 text-left">
               Contraseña de administrador
             </label>
             <input
@@ -493,27 +473,22 @@ const ModalReiniciarCaja = ({ onClose, onSuccess }) => {
               placeholder="••••"
               autoFocus
               onKeyDown={e => e.key === 'Enter' && setConfirmando(true)}
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: '10px',
-                border: '1.5px solid #e5e7eb', fontSize: '16px', letterSpacing: '4px',
-                boxSizing: 'border-box', outline: 'none', textAlign: 'center',
-                transition: 'border .15s', marginBottom: '16px',
-              }}
-              onFocus={e => e.target.style.borderColor = '#dc2626'}
-              onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+              className="w-full px-4 py-3 rounded-lg border border-gray-200 text-base text-center tracking-[4px] outline-none mb-4 transition"
+              onFocus={e => { e.target.style.borderColor = '#dc2626'; }}
+              onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
             />
 
             {error && (
-              <div style={{ marginBottom: '16px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+              <div className="mb-4 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
                 {error}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={onClose} style={{
-                flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
-                background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer',
-              }}>
+            <div className="flex gap-2.5">
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-lg border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+              >
                 Cancelar
               </button>
               <button
@@ -522,45 +497,39 @@ const ModalReiniciarCaja = ({ onClose, onSuccess }) => {
                   setError('');
                   setConfirmando(true);
                 }}
-                style={{
-                  flex: 2, padding: '12px', borderRadius: '10px', border: 'none',
-                  background: '#dc2626', color: '#fff',
-                  fontWeight: 700, cursor: 'pointer', fontSize: '14px',
-                }}>
+                className="flex-[2] py-3 rounded-lg bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-colors"
+              >
                 Continuar
               </button>
             </div>
           </>
         ) : (
           <>
-            <h2 style={{ margin: '0 0 8px', fontSize: '20px', fontWeight: 700, color: '#dc2626' }}>
-              ¿Estás completamente seguro?
-            </h2>
-            <p style={{ margin: '0 0 28px', color: '#6b7280', fontSize: '14px', lineHeight: 1.5 }}>
+            <h2 className="text-lg font-bold text-red-600 mb-2">¿Estás completamente seguro?</h2>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
               Vas a eliminar <b>todos</b> los movimientos de caja registrados hasta hoy.
               Después de esto tendrás que configurar un nuevo saldo inicial.
             </p>
 
             {error && (
-              <div style={{ marginBottom: '16px', padding: '10px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
+              <div className="mb-4 px-3 py-2.5 rounded-lg text-sm" style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}>
                 {error}
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setConfirmando(false)} style={{
-                flex: 1, padding: '12px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
-                background: '#fff', color: '#374151', fontWeight: 600, cursor: 'pointer',
-              }}>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setConfirmando(false)}
+                className="flex-1 py-3 rounded-lg border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+              >
                 Volver
               </button>
-              <button onClick={handleSubmit} disabled={loading} style={{
-                flex: 2, padding: '12px', borderRadius: '10px', border: 'none',
-                background: '#dc2626', color: '#fff',
-                fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px',
-                opacity: loading ? 0.7 : 1,
-              }}>
-                {loading ? 'Reiniciando...' : 'Sí, reiniciar caja'}
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className="flex-[2] py-3 rounded-lg bg-red-600 text-white font-semibold text-sm hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {loading ? 'Reiniciando…' : 'Sí, reiniciar caja'}
               </button>
             </div>
           </>
@@ -584,6 +553,7 @@ const Caja = () => {
   const [toast, setToast] = useState(null);
   const [paginaActual, setPaginaActual] = useState(1);
   const [modalReiniciar, setModalReiniciar] = useState(false);
+
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
@@ -604,13 +574,9 @@ const Caja = () => {
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // Resetear página al cambiar filtros o búsqueda
   useEffect(() => { setPaginaActual(1); }, [filtro, busqueda]);
 
-  const mostrarToast = (msg, tipo = 'success') => {
-    setToast({ msg, tipo });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const mostrarToast = (msg, tipo = 'exito') => setToast({ mensaje: msg, tipo });
 
   const handleEliminar = async (id) => {
     if (!window.confirm('¿Eliminar este movimiento? Solo se puede si es el último registrado.')) return;
@@ -623,14 +589,12 @@ const Caja = () => {
     }
   };
 
-  // ── Filtrado ──
   const movsFiltrados = movimientos.filter(m => {
     const matchFiltro = filtro === 'todos' || m.tipo === filtro;
     const matchBusqueda = !busqueda || m.concepto.toLowerCase().includes(busqueda.toLowerCase());
     return matchFiltro && matchBusqueda;
   });
 
-  // ── Paginación ──
   const totalPaginas = Math.max(1, Math.ceil(movsFiltrados.length / ITEMS_POR_PAGINA));
   const paginaSegura = Math.min(paginaActual, totalPaginas);
   const inicio = (paginaSegura - 1) * ITEMS_POR_PAGINA;
@@ -638,117 +602,75 @@ const Caja = () => {
 
   const esSaldoBajo = saldo < 50000;
   const esSaldoMedio = saldo >= 50000 && saldo < 200000;
-  const saldoColor = esSaldoBajo ? '#dc2626' : esSaldoMedio ? '#d97706' : '#16a34a';
-  const saldoBg = esSaldoBajo ? '#fee2e2' : esSaldoMedio ? '#fef3c7' : '#dcfce7';
+  const saldoColor = esSaldoBajo ? '#dc2626' : esSaldoMedio ? '#d97706' : '#059669';
+  const saldoBg = esSaldoBajo ? '#fef2f2' : esSaldoMedio ? '#fffbeb' : '#f0fdf4';
 
   return (
-    <div style={{ padding: '28px', maxWidth: '1600px', fontFamily: 'system-ui, sans-serif' }}>
+    <div className="p-8 min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
 
-      {/* Toast */}
       {toast && (
-        <div style={{
-          position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
-          padding: '12px 20px', borderRadius: '12px', fontWeight: 600, fontSize: '14px',
-          background: toast.tipo === 'error' ? '#fee2e2' : '#dcfce7',
-          color: toast.tipo === 'error' ? '#dc2626' : '#15803d',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          animation: 'fadeIn .2s ease',
-        }}>
-          {toast.msg}
-        </div>
+        <Toast mensaje={toast.mensaje} tipo={toast.tipo} onDone={() => setToast(null)} />
       )}
 
       {/* ── Tarjetas superiores ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px', marginBottom: '28px' }}>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
 
         {/* Saldo actual */}
-        <div style={{
-          gridColumn: '1 / 2',
-          background: saldoBg, borderRadius: '16px', padding: '20px 24px',
-          border: `1.5px solid ${saldoColor}22`,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: saldoColor, textTransform: 'uppercase' }}>
-              SALDO EN CAJA
-            </span>
-            <div style={{ background: saldoColor + '22', borderRadius: '8px', padding: '6px', color: saldoColor }}>
+        <div
+          className="rounded-xl p-5"
+          style={{ backgroundColor: saldoBg, border: `1.5px solid ${saldoColor}33`, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: saldoColor }}>Saldo en Caja</span>
+            <div className="rounded-lg p-1.5" style={{ backgroundColor: saldoColor + '22', color: saldoColor }}>
               <IconWallet />
             </div>
           </div>
-          <div style={{ fontSize: '28px', fontWeight: 800, color: saldoColor, lineHeight: 1.1 }}>
-            {loading ? '...' : fmt(saldo)}
+          <div className="text-2xl font-bold tracking-tight" style={{ color: saldoColor }}>
+            {loading ? '…' : fmt(saldo)}
           </div>
-          <div style={{ marginTop: '6px', fontSize: '12px', color: saldoColor + 'aa' }}>
+          <div className="mt-1.5 text-xs" style={{ color: saldoColor + 'aa' }}>
             {esSaldoBajo ? '⚠ Saldo bajo' : esSaldoMedio ? '• Saldo moderado' : '✓ Saldo saludable'}
           </div>
         </div>
 
         {/* Entradas hoy */}
-        <div style={{
-          background: '#fff', borderRadius: '16px', padding: '20px 24px',
-          border: '1.5px solid #e5e7eb', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: '#6b7280', textTransform: 'uppercase' }}>
-              ENTRADAS HOY
-            </span>
-            <div style={{ background: '#dcfce7', borderRadius: '8px', padding: '6px', color: '#16a34a' }}>
-              <IconArrowDown />
-            </div>
-          </div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: '#111' }}>
-            {loading ? '...' : fmt(resumenDia.total_entradas)}
-          </div>
-          <div style={{ marginTop: '4px', fontSize: '12px', color: '#9ca3af' }}>
-            {resumenDia.total_movimientos} movimiento{resumenDia.total_movimientos !== 1 ? 's' : ''} hoy
-          </div>
-        </div>
+        <StatCard
+          label="Entradas Hoy"
+          value={loading ? '…' : fmt(resumenDia.total_entradas)}
+          sub={`${resumenDia.total_movimientos} movimiento${resumenDia.total_movimientos !== 1 ? 's' : ''} hoy`}
+          accentColor="#059669"
+          icon={<IconArrowDown />}
+        />
 
         {/* Salidas hoy */}
-        <div style={{
-          background: '#fff', borderRadius: '16px', padding: '20px 24px',
-          border: '1.5px solid #e5e7eb', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: '#6b7280', textTransform: 'uppercase' }}>
-              SALIDAS HOY
-            </span>
-            <div style={{ background: '#fee2e2', borderRadius: '8px', padding: '6px', color: '#dc2626' }}>
-              <IconArrowUp />
-            </div>
-          </div>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: '#111' }}>
-            {loading ? '...' : fmt(resumenDia.total_salidas)}
-          </div>
-          <div style={{ marginTop: '4px', fontSize: '12px', color: '#9ca3af' }}>
-            Balance: {fmt(resumenDia.total_entradas - resumenDia.total_salidas)}
-          </div>
-        </div>
+        <StatCard
+          label="Salidas Hoy"
+          value={loading ? '…' : fmt(resumenDia.total_salidas)}
+          sub={`Balance: ${fmt(resumenDia.total_entradas - resumenDia.total_salidas)}`}
+          accentColor="#dc2626"
+          icon={<IconArrowUp />}
+        />
 
         {/* Acciones rápidas */}
-        <div style={{
-          background: '#fff', borderRadius: '16px', padding: '20px 24px',
-          border: '1.5px solid #e5e7eb', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-        }}>
-          <div style={{ marginBottom: '16px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: '#6b7280', textTransform: 'uppercase' }}>
-              ACCIONES RÁPIDAS
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button onClick={() => setModalTipo('entrada')} style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px',
-              borderRadius: '8px', border: 'none', background: '#dcfce7', color: '#15803d',
-              fontWeight: 700, fontSize: '12px', cursor: 'pointer', width: '100%',
-            }}>
+        <div
+          className="bg-white rounded-xl p-5"
+          style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}
+        >
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Acciones Rápidas</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setModalTipo('entrada')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs w-full transition-colors"
+              style={{ backgroundColor: '#f0fdf4', color: '#059669' }}
+            >
               <IconPlus /> Registrar entrada
             </button>
-            <button onClick={() => setModalTipo('salida')} style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px',
-              borderRadius: '8px', border: 'none', background: '#fee2e2', color: '#dc2626',
-              fontWeight: 700, fontSize: '12px', cursor: 'pointer', width: '100%',
-            }}>
+            <button
+              onClick={() => setModalTipo('salida')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs w-full transition-colors"
+              style={{ backgroundColor: '#fef2f2', color: '#dc2626' }}
+            >
               <IconMinus /> Registrar salida
             </button>
           </div>
@@ -756,85 +678,81 @@ const Caja = () => {
       </div>
 
       {/* ── Tabla de movimientos ── */}
-      <div style={{
-        background: '#fff', borderRadius: '16px',
-        border: '1.5px solid #e5e7eb', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-        overflow: 'hidden',
-      }}>
+      <div
+        className="bg-white rounded-xl overflow-hidden"
+        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', border: '1px solid #f1f5f9' }}
+      >
         {/* Cabecera de tabla */}
-        <div style={{
-          padding: '20px 24px', borderBottom: '1px solid #f3f4f6',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#111' }}>
-              Movimientos de caja
-            </h3>
-            <span style={{
-              background: '#f3f4f6', color: '#6b7280', borderRadius: '999px',
-              padding: '2px 10px', fontSize: '12px', fontWeight: 600,
-            }}>
+        <div className="p-6 flex items-center justify-between flex-wrap gap-3" style={{ borderBottom: '1px solid #f1f5f9' }}>
+          <div className="flex items-center gap-3">
+            <h3 className="text-base font-bold text-gray-900">Movimientos de caja</h3>
+            <span className="bg-gray-100 text-gray-500 rounded-full px-2.5 py-0.5 text-xs font-semibold">
               {movsFiltrados.length}
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="flex gap-2.5 items-center flex-wrap">
             {/* Búsqueda */}
-            <input
-              value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              placeholder="Buscar concepto..."
-              style={{
-                padding: '8px 14px', borderRadius: '10px', border: '1.5px solid #e5e7eb',
-                fontSize: '13px', outline: 'none', width: '180px',
-              }}
-            />
+            <div className="relative">
+              <input
+                value={busqueda} onChange={e => setBusqueda(e.target.value)}
+                placeholder="Buscar concepto…"
+                className="pl-3.5 pr-3.5 py-2 rounded-lg border border-gray-200 text-sm outline-none w-44 focus:ring-2 transition"
+                style={{ '--tw-ring-color': BRAND }}
+                onFocus={e => { e.target.style.borderColor = BRAND; }}
+                onBlur={e => { e.target.style.borderColor = '#e5e7eb'; }}
+              />
+            </div>
 
             {/* Filtro tipo */}
-            <div style={{ display: 'flex', gap: '4px' }}>
+            <div className="flex gap-1">
               {[
                 { v: 'todos',   label: 'Todos' },
                 { v: 'entrada', label: 'Entradas' },
                 { v: 'salida',  label: 'Salidas' },
                 { v: 'ajuste',  label: 'Ajustes' },
-              ].map(opt => (
-                <button key={opt.v} onClick={() => setFiltro(opt.v)} style={{
-                  padding: '7px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
-                  cursor: 'pointer', transition: 'all .1s',
-                  border: filtro === opt.v ? '1.5px solid #6366f1' : '1.5px solid #e5e7eb',
-                  background: filtro === opt.v ? '#ede9fe' : '#fff',
-                  color: filtro === opt.v ? '#6366f1' : '#6b7280',
-                }}>
-                  {opt.label}
-                </button>
-              ))}
+              ].map(opt => {
+                const active = filtro === opt.v;
+                return (
+                  <button
+                    key={opt.v}
+                    onClick={() => setFiltro(opt.v)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150"
+                    style={active
+                      ? { backgroundColor: BRAND, color: '#fff' }
+                      : { backgroundColor: '#f3f4f6', color: '#6b7280' }
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Botón ajuste / saldo inicial */}
-            <button onClick={() => {
-              if (movimientos.length === 0) setModalSaldoInicial(true);
-              else setModalTipo('ajuste');
-            }} style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-              borderRadius: '10px', border: '1.5px solid #e5e7eb', background: '#fff',
-              color: '#6b7280', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
-            }}>
+            <button
+              onClick={() => {
+                if (movimientos.length === 0) setModalSaldoInicial(true);
+                else setModalTipo('ajuste');
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-gray-200 text-gray-600 font-medium text-xs hover:bg-gray-50 transition-colors"
+            >
               <IconFilter />
               {movimientos.length === 0 ? 'Saldo inicial' : 'Ajuste'}
             </button>
             {/* Botón reiniciar caja */}
-            <button onClick={() => setModalReiniciar(true)} style={{
-              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
-              borderRadius: '10px', border: '1.5px solid #fecaca', background: '#fff',
-              color: '#dc2626', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
-            }}>
+            <button
+              onClick={() => setModalReiniciar(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-red-600 font-medium text-xs hover:bg-red-50 transition-colors"
+              style={{ borderColor: '#fecaca' }}
+            >
               <IconTrash /> Reiniciar caja
             </button>
             {/* Refresh */}
-            <button onClick={cargarDatos} style={{
-              display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 12px',
-              borderRadius: '10px', border: '1.5px solid #e5e7eb', background: '#fff',
-              color: '#6b7280', cursor: 'pointer', fontWeight: 600, fontSize: '13px',
-            }}>
+            <button
+              onClick={cargarDatos}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 font-medium text-xs hover:bg-gray-50 transition-colors"
+            >
               <IconRefresh /> Actualizar
             </button>
           </div>
@@ -842,19 +760,17 @@ const Caja = () => {
 
         {/* Sin movimientos */}
         {!loading && movimientos.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>💼</div>
-            <p style={{ color: '#6b7280', fontSize: '15px', fontWeight: 600 }}>
-              No hay movimientos registrados
-            </p>
-            <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '20px' }}>
+          <div className="text-center py-16 px-5">
+            <div className="text-5xl mb-3">💼</div>
+            <p className="text-gray-600 text-sm font-semibold">No hay movimientos registrados</p>
+            <p className="text-gray-400 text-xs mb-5 mt-1">
               Comienza configurando el saldo que tienes actualmente en caja.
             </p>
-            <button onClick={() => setModalSaldoInicial(true)} style={{
-              padding: '10px 24px', borderRadius: '10px', border: 'none',
-              background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
-              color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '14px',
-            }}>
+            <button
+              onClick={() => setModalSaldoInicial(true)}
+              className="px-6 py-2.5 rounded-lg text-white font-semibold text-sm transition-opacity hover:opacity-90"
+              style={{ backgroundColor: BRAND }}
+            >
               Configurar saldo inicial
             </button>
           </div>
@@ -863,69 +779,53 @@ const Caja = () => {
         {/* Tabla */}
         {movimientos.length > 0 && (
           <>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f9fafb' }}>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <tr>
                     {['Tipo', 'Concepto', 'Monto', 'Saldo resultante', 'Fecha', ''].map(h => (
-                      <th key={h} style={{
-                        padding: '11px 16px', textAlign: 'left',
-                        fontSize: '11px', fontWeight: 700, color: '#6b7280',
-                        letterSpacing: '0.07em', textTransform: 'uppercase',
-                        borderBottom: '1px solid #f3f4f6',
-                      }}>
+                      <th key={h} className="px-5 py-3.5 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-50">
                   {loading ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>Cargando...</td></tr>
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">Cargando…</td></tr>
                   ) : movsPagina.length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>Sin resultados</td></tr>
+                    <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">Sin resultados</td></tr>
                   ) : movsPagina.map((m, idx) => {
                     const esSalida = m.tipo === 'salida';
-                    // El botón de eliminar solo aparece en el movimiento #1 global (idx===0 en pág 1)
                     const esElUltimo = paginaSegura === 1 && idx === 0;
                     return (
-                      <tr key={m.id} style={{
-                        borderBottom: '1px solid #f9fafb',
-                        background: idx % 2 === 0 ? '#fff' : '#fafafa',
-                        transition: 'background .1s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-                      onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#fafafa'}
-                      >
-                        <td style={{ padding: '12px 16px' }}>
+                      <tr key={m.id} className="transition-colors hover:bg-gray-50/70">
+                        <td className="px-5 py-4">
                           <TipoBadge tipo={m.tipo} origen={m.origen} />
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontWeight: 600, fontSize: '13px', color: '#111' }}>{m.concepto}</div>
-                          {m.notas && <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>{m.notas}</div>}
+                        <td className="px-5 py-4">
+                          <div className="text-sm font-semibold text-gray-900">{m.concepto}</div>
+                          {m.notas && <div className="text-xs text-gray-400 mt-0.5">{m.notas}</div>}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{
-                            fontWeight: 700, fontSize: '14px',
-                            color: esSalida ? '#dc2626' : '#16a34a',
-                          }}>
+                        <td className="px-5 py-4">
+                          <span className="font-semibold text-sm" style={{ color: esSalida ? '#dc2626' : '#059669' }}>
                             {esSalida ? '−' : '+'}{fmt(m.monto)}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: '13px', color: '#374151' }}>
+                        <td className="px-5 py-4 text-sm font-semibold text-gray-700">
                           {fmt(m.saldo_resultante)}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ fontSize: '13px', color: '#374151' }}>{fmtFecha(m.fecha)}</div>
-                          <div style={{ fontSize: '11px', color: '#9ca3af' }}>{fmtHora(m.fecha)}</div>
+                        <td className="px-5 py-4">
+                          <div className="text-sm text-gray-700">{fmtFecha(m.fecha)}</div>
+                          <div className="text-xs text-gray-400">{fmtHora(m.fecha)}</div>
                         </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        <td className="px-5 py-4 text-right">
                           {esElUltimo && (
-                            <button onClick={() => handleEliminar(m.id)} style={{
-                              padding: '5px 8px', borderRadius: '7px', border: '1px solid #fee2e2',
-                              background: '#fff', color: '#dc2626', cursor: 'pointer', lineHeight: 0,
-                            }}
-                            title="Eliminar (solo si es el último)"
+                            <button
+                              onClick={() => handleEliminar(m.id)}
+                              title="Eliminar (solo si es el último)"
+                              className="p-1.5 rounded-lg border transition-colors hover:bg-red-50 text-red-500"
+                              style={{ borderColor: '#fecaca' }}
                             >
                               <IconTrash />
                             </button>
@@ -965,16 +865,12 @@ const Caja = () => {
         />
       )}
 
-  {modalReiniciar && (
-          <ModalReiniciarCaja
-            onClose={() => setModalReiniciar(false)}
-            onSuccess={() => { mostrarToast('Caja reiniciada. Configura el saldo inicial.'); cargarDatos(); }}
-          />
-        )}
-
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
+      {modalReiniciar && (
+        <ModalReiniciarCaja
+          onClose={() => setModalReiniciar(false)}
+          onSuccess={() => { mostrarToast('Caja reiniciada. Configura el saldo inicial.'); cargarDatos(); }}
+        />
+      )}
     </div>
   );
 };
