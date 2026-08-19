@@ -116,6 +116,7 @@ function obtenerProductos(callback) {
                 FROM costos_adicionales_producto ca
                 WHERE ca.producto_id = p.id) as costos_adicionales_data
                FROM productos p
+               WHERE p.activo = 1
                ORDER BY p.fecha_creado DESC`;
 
   db.all(sql, [], (err, rows) => {
@@ -172,7 +173,7 @@ function obtenerProductosPorCategoria(categoria, callback) {
                 FROM costos_adicionales_producto ca
                 WHERE ca.producto_id = p.id) as costos_adicionales_data
                FROM productos p
-               WHERE p.categoria = ?
+               WHERE p.categoria = ? AND p.activo = 1
                ORDER BY p.fecha_creado DESC`;
 
   db.all(sql, [categoria], (err, rows) => {
@@ -228,9 +229,9 @@ function buscarProductos(termino, callback) {
                (SELECT GROUP_CONCAT(ca.id || ':' || ca.concepto || ':' || ca.monto, '|')
                 FROM costos_adicionales_producto ca
                 WHERE ca.producto_id = p.id) as costos_adicionales_data
-               FROM productos p
-               WHERE p.nombre LIKE ? OR p.referencia LIKE ? OR p.categoria LIKE ?
-               ORDER BY p.fecha_creado DESC`;
+                FROM productos p
+                WHERE (p.nombre LIKE ? OR p.referencia LIKE ? OR p.categoria LIKE ?) AND p.activo = 1
+                ORDER BY p.fecha_creado DESC`;
 
   const searchTerm = `%${termino}%`;
 
@@ -437,9 +438,6 @@ function actualizarProducto(id, datos, callback) {
 
 // ✅ NUEVA: Registrar venta en historial de variante y actualizar fechas de rotación
 function registrarVentaVariante(varianteId, productoId, ventaId, cantidadVendida, precioVenta, callback) {
-  const ahora = `datetime('now', 'localtime')`;
-
-  // 1. Insertar en historial
   db.run(
     `INSERT INTO historial_ventas_variante
      (variante_id, producto_id, venta_id, cantidad_vendida, precio_venta, fecha_venta)
@@ -451,18 +449,25 @@ function registrarVentaVariante(varianteId, productoId, ventaId, cantidadVendida
         return callback && callback(err);
       }
 
-      // 2. Actualizar fechas en la variante
       db.run(
         `UPDATE variantes_producto SET
            fecha_primera_venta = COALESCE(fecha_primera_venta, datetime('now', 'localtime')),
            fecha_ultima_venta  = datetime('now', 'localtime'),
-           total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?
+           total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?,
+           fecha_actualizado = datetime('now', 'localtime')
          WHERE id = ?`,
         [cantidadVendida, varianteId],
         (err) => {
           if (err) {
             console.error('Error al actualizar fechas de variante:', err);
           }
+
+          // ✅ NUEVO: marcar también el producto padre
+          db.run(
+            `UPDATE productos SET fecha_actualizado = datetime('now', 'localtime') WHERE id = ?`,
+            [productoId]
+          );
+
           callback && callback(null);
         }
       );
@@ -624,13 +629,20 @@ function obtenerHistorialVariante(varianteId, callback) {
 }
 
 function eliminarProducto(id, callback) {
-  db.run('DELETE FROM productos WHERE id = ?', [id], function (err) {
-    if (err) {
-      callback(err, null);
-    } else {
-      callback(null, { deleted: this.changes });
+  db.run(
+    `UPDATE productos SET
+       activo = 0,
+       fecha_actualizado = datetime('now', 'localtime')
+     WHERE id = ?`,
+    [id],
+    function (err) {
+      if (err) {
+        callback(err, null);
+      } else {
+        callback(null, { deleted: this.changes });
+      }
     }
-  });
+  );
 }
 
 function obtenerEstadisticasInventario(callback) {
@@ -664,12 +676,21 @@ function obtenerEstadisticasInventario(callback) {
 }
 
 function actualizarStockVariante(varianteId, nuevaCantidad, callback) {
-  const sql = `UPDATE variantes_producto SET cantidad = ? WHERE id = ?`;
+  const sql = `UPDATE variantes_producto SET
+                 cantidad = ?,
+                 fecha_actualizado = datetime('now', 'localtime')
+               WHERE id = ?`;
 
   db.run(sql, [nuevaCantidad, varianteId], function (err) {
     if (err) {
       callback(err, null);
     } else {
+      // ✅ NUEVO: marcar también el producto padre
+      db.run(
+        `UPDATE productos SET fecha_actualizado = datetime('now', 'localtime')
+         WHERE id = (SELECT producto_id FROM variantes_producto WHERE id = ?)`,
+        [varianteId]
+      );
       callback(null, { updated: this.changes });
     }
   });

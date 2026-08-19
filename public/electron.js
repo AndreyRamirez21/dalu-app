@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { app, BrowserWindow, ipcMain, protocol, Menu } = require('electron');const path = require('path');
 const fs = require('fs');
 const isDev = !app.isPackaged;
@@ -5,6 +7,7 @@ const url = require('url');
 const sharp = require('sharp');
 const devolucionesModel = require('./database/models/devoluciones.model');
 const cajaModel = require('./database/models/caja.model');
+const { sincronizarCatalogoWeb } = require('./database/syncWeb');
 
 // Registrar protocolo personalizado para cargar imágenes locales
 app.setAppUserModelId('com.dalu.app'); // Identificador para agrupar ventanas y mostrar icono correcto
@@ -379,6 +382,7 @@ ipcMain.handle('agregar-producto', async (event, producto) => {
       }
 
       console.log('✅ Producto agregado con imágenes optimizadas');
+      programarSincronizacion();
       resolve({ success: true, id: resultado.id });
     });
   });
@@ -426,6 +430,16 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
           return;
         }
 
+          // ✅ NUEVO: marcar producto Y todas sus variantes como modificados
+          db.db.run(
+            `UPDATE productos SET fecha_actualizado = datetime('now', 'localtime') WHERE id = ?`,
+            [id]
+          );
+          db.db.run(
+            `UPDATE variantes_producto SET fecha_actualizado = datetime('now', 'localtime') WHERE producto_id = ?`,
+            [id]
+          );
+
         // ✅ Actualizar rutas de imagen
         if (rutasImagen.completa) {
           db.db.run(
@@ -440,6 +454,7 @@ ipcMain.handle('actualizar-producto', async (event, id, datosActualizados) => {
         }
 
         console.log('✅ Producto actualizado con imágenes optimizadas');
+        programarSincronizacion();
         resolve({ success: true });
       });
     });
@@ -474,6 +489,7 @@ ipcMain.handle('eliminar-producto', async (event, id) => {
         }
 
         console.log('✅ Producto eliminado:', resultado);
+        programarSincronizacion();
         resolve({ success: true });
       });
     });
@@ -501,6 +517,7 @@ ipcMain.handle('actualizar-stock-variante', async (event, varianteId, nuevaCanti
         reject(err);
       } else {
         console.log('✅ Stock de variante actualizado:', result);
+        programarSincronizacion();
         resolve(result);
       }
     });
@@ -870,6 +887,7 @@ ipcMain.handle('registrar-devolucion', async (event, datos) => {
         reject(err);
       } else {
         console.log('✅ Devolución registrada:', resultado);
+        programarSincronizacion();
         resolve(resultado);
       }
     });
@@ -1556,6 +1574,8 @@ ipcMain.handle('crear-venta', async (event, datosVenta) => {
           });
         }
 
+        programarSincronizacion();
+
         resolve({
           success: true,
           venta_id: resultado.id,
@@ -1757,11 +1777,19 @@ async function actualizarStock(producto, ventaId) {
           `UPDATE variantes_producto SET
              fecha_primera_venta = COALESCE(fecha_primera_venta, datetime('now', 'localtime')),
              fecha_ultima_venta  = datetime('now', 'localtime'),
-             total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?
+             total_unidades_vendidas = COALESCE(total_unidades_vendidas, 0) + ?,
+             fecha_actualizado = datetime('now', 'localtime')
            WHERE id = ?`,
           [producto.cantidad, producto.variante_id],
           (errF) => {
             if (errF) console.error('⚠️ Error fechas variante:', errF);
+
+            // ✅ NUEVO: marcar también el producto padre
+            db.db.run(
+              `UPDATE productos SET fecha_actualizado = datetime('now', 'localtime') WHERE id = ?`,
+              [producto.producto_id]
+            );
+
             resolve();
           }
         );
@@ -2017,7 +2045,10 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
             productos.forEach((item) => {
               if (item.variante_id) {
                 db.db.run(
-                  'UPDATE variantes_producto SET cantidad = cantidad + ? WHERE id = ?',
+                  `UPDATE variantes_producto SET
+                     cantidad = cantidad + ?,
+                     fecha_actualizado = datetime('now', 'localtime')
+                   WHERE id = ?`,
                   [item.cantidad, item.variante_id],
                   (err) => {
                     if (err) {
@@ -2025,6 +2056,13 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
                       erroresStock.push(err);
                     } else {
                       console.log(`✅ Stock restaurado: Variante ${item.variante_id} +${item.cantidad}`);
+
+                      // ✅ NUEVO: marcar también el producto padre
+                      db.db.run(
+                        `UPDATE productos SET fecha_actualizado = datetime('now', 'localtime')
+                         WHERE id = (SELECT producto_id FROM variantes_producto WHERE id = ?)`,
+                        [item.variante_id]
+                      );
                     }
                     procesadosPropios++;
                     if (procesadosPropios === productos.length) resolve();
@@ -2201,6 +2239,7 @@ ipcMain.handle('cancelar-venta', async (event, ventaId) => {
                         reject(err);
                       } else {
                         console.log(`✅ Venta ${ventaId} cancelada correctamente`);
+                        programarSincronizacion();
                         resolve({ success: true });
                       }
                     });
@@ -4854,6 +4893,35 @@ const conversacion = [
 });
 
 
+// Sincronización de catalogo web
+
+ipcMain.handle('sincronizar-catalogo-web', async () => {
+  const userDataPath = app.getPath('userData');
+  return await sincronizarCatalogoWeb(db, userDataPath);
+});
+
+ipcMain.handle('toggle-publicado-web', async (event, productoId, nuevoValor) => {
+  return new Promise((resolve, reject) => {
+    db.db.run(
+      `UPDATE productos SET
+         publicado_web = ?,
+         fecha_actualizado = datetime('now', 'localtime')
+       WHERE id = ?`,
+      [nuevoValor ? 1 : 0, productoId],
+      function (err) {
+        if (err) {
+          console.error('❌ Error al cambiar publicación web:', err);
+          reject(err);
+        } else {
+          programarSincronizacion();
+          resolve({ success: true });
+
+        }
+      }
+    );
+  });
+});
+
 
 // ==================== API MÓVIL ====================
 
@@ -5095,3 +5163,36 @@ app.on('activate', () => {
 process.on('uncaughtException', (error) => {
   console.error('❌ Error no capturado:', error);
 });
+
+function sincronizacionAutomaticaWeb() {
+  console.log('🔄 Ejecutando sincronización automática con la web...');
+  const userDataPath = app.getPath('userData');
+  sincronizarCatalogoWeb(db, userDataPath).catch((err) => {
+    console.error('❌ Error en sincronización automática:', err);
+  });
+}
+
+// Primera sincronización 30 segundos después de abrir la app
+setTimeout(() => {
+  sincronizacionAutomaticaWeb();
+}, 30000);
+
+// Repetir cada 15 minutos
+setInterval(sincronizacionAutomaticaWeb, 15 * 60 * 1000);
+
+
+let syncTimeoutId = null;
+
+function programarSincronizacion() {
+  if (syncTimeoutId) {
+    clearTimeout(syncTimeoutId);
+  }
+
+  syncTimeoutId = setTimeout(() => {
+    console.log('🔄 Sincronización disparada por cambio de inventario...');
+    const userDataPath = app.getPath('userData');
+    sincronizarCatalogoWeb(db, userDataPath).catch((err) => {
+      console.error('❌ Error en sincronización por evento:', err);
+    });
+  }, 5000);
+}

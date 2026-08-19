@@ -57,6 +57,19 @@ db.run(`ALTER TABLE productos ADD COLUMN fecha_ingreso DATETIME`, (err) => {
   }
 });
 
+// ✅ NUEVO: activo para soft-delete (permite ocultar productos sin perder historial)
+db.run(`ALTER TABLE productos ADD COLUMN activo INTEGER DEFAULT 1`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar columna activo:', err);
+  }
+});
+
+db.run(`ALTER TABLE productos ADD COLUMN publicado_web INTEGER DEFAULT 1`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar columna publicado_web:', err);
+  }
+});
+
     // ==================== TABLA DE VARIANTES DE PRODUCTO ====================
     db.run(`CREATE TABLE IF NOT EXISTS variantes_producto (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

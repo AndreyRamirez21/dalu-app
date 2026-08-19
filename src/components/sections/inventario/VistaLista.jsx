@@ -1,6 +1,6 @@
 // src/components/sections/inventario/VistaLista.jsx
 import React, { useState } from 'react';
-import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X, RefreshCw } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, AlertCircle, Package, ChevronDown, ChevronUp, X, RefreshCw, Cloud, Eye, EyeOff } from 'lucide-react';
 import { exportarInventarioExcel } from "../../../utils/exportExcel";
 import { ImagenProducto } from './ImagenProducto';
 import PanelRotacion from './PanelRotacion'; // ✅ NUEVO
@@ -58,10 +58,11 @@ const BtnPrimary = ({ onClick, disabled, icon: Icon, children }) => (
   </button>
 );
 
-const BtnOutline = ({ onClick, icon: Icon, children }) => (
+const BtnOutline = ({ onClick, icon: Icon, children, disabled }) => (
   <button
     onClick={onClick}
-    className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-200 text-gray-600 hover:bg-gray-50"
+    disabled={disabled}
+    className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
   >
     {Icon && <Icon size={16} />}
     {children}
@@ -103,6 +104,8 @@ const ModalImagen = ({ imagenBase64, nombreProducto, onCerrar }) => {
 export const VistaLista = ({ inventario }) => {
   const [imagenAmpliada, setImagenAmpliada] = useState(null);
   const [nombreProductoAmpliado, setNombreProductoAmpliado] = useState('');
+  const [sincronizando, setSincronizando] = useState(false); // ✅ NUEVO
+  const { ipcRenderer } = window.require('electron');
 
   const getStockIcon = (stock) => {
     if (stock === 0) return <AlertCircle size={16} className="text-red-600" />;
@@ -119,6 +122,33 @@ export const VistaLista = ({ inventario }) => {
     setImagenAmpliada(null);
     setNombreProductoAmpliado('');
   };
+
+  const handleSincronizarWeb = async () => {
+    setSincronizando(true);
+    try {
+      const resultado = await ipcRenderer.invoke('sincronizar-catalogo-web');
+      if (resultado.success) {
+        alert(`✅ Sincronización completa: ${resultado.migrados} producto(s) actualizado(s)${resultado.errores > 0 ? `, ${resultado.errores} error(es)` : ''}`);
+      } else {
+        alert(`⚠️ No se pudo sincronizar: ${resultado.motivo === 'sin_internet' ? 'sin conexión a internet' : 'revisa la consola'}`);
+      }
+    } catch (error) {
+      console.error('Error al sincronizar:', error);
+      alert('❌ Error al sincronizar con la web');
+    } finally {
+      setSincronizando(false);
+    }
+  };
+
+const handleTogglePublicadoWeb = async (productoId, nuevoValor) => {
+  try {
+    await ipcRenderer.invoke('toggle-publicado-web', productoId, nuevoValor);
+    await inventario.cargarProductos(); // ✅ nombre real del hook
+  } catch (error) {
+    console.error('Error al cambiar publicación web:', error);
+    alert('❌ No se pudo actualizar el estado de publicación');
+  }
+};
 
   return (
     <div className="p-8 min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
@@ -155,27 +185,30 @@ export const VistaLista = ({ inventario }) => {
         formatearFechaRotacion={inventario.formatearFechaRotacion}
       />
 
-      {/* ── Barra de botones superior ── */}
-      <div className="flex items-center justify-end gap-2 mb-6">
-        <BtnOutline onClick={inventario.abrirPanelRotacion} icon={RefreshCw}>
-          Rotación
-        </BtnOutline>
-        <BtnOutline
-          onClick={() => exportarInventarioExcel(inventario.productos)}
-          icon={Package}
-        >
-          Exportar Excel
-        </BtnOutline>
-        <BtnPrimary
-          onClick={() => {
-            inventario.resetFormulario();
-            inventario.setVista('agregar');
-          }}
-          icon={Plus}
-        >
-          Nuevo Producto
-        </BtnPrimary>
-      </div>
+            {/* ── Barra de botones superior ── */}
+            <div className="flex items-center justify-end gap-2 mb-6">
+            <BtnOutline onClick={handleSincronizarWeb} icon={Cloud} disabled={sincronizando}>
+              {sincronizando ? 'Sincronizando...' : 'Sincronizar Web'}
+            </BtnOutline>
+              <BtnOutline onClick={inventario.abrirPanelRotacion} icon={RefreshCw}>
+                Rotación
+              </BtnOutline>
+              <BtnOutline
+                onClick={() => exportarInventarioExcel(inventario.productos)}
+                icon={Package}
+              >
+                Exportar Excel
+              </BtnOutline>
+              <BtnPrimary
+                onClick={() => {
+                  inventario.resetFormulario();
+                  inventario.setVista('agregar');
+                }}
+                icon={Plus}
+              >
+                Nuevo Producto
+              </BtnPrimary>
+            </div>
 
       {/* ── Tarjetas de estadísticas ── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -490,25 +523,36 @@ export const VistaLista = ({ inventario }) => {
                                         {stockReferencia}
                                       </div>
                                     </div>
-                                    <div className="col-span-2">
-                                      <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest mb-1">Acciones</div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => inventario.handleEditarProducto(producto)}
-                                          className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 text-gray-500 hover:text-gray-800"
-                                          title="Editar referencia"
-                                        >
-                                          <Edit size={16} />
-                                        </button>
-                                        <button
-                                          onClick={() => inventario.handleEliminarProducto(producto.id)}
-                                          className="p-1.5 rounded-lg transition-colors hover:bg-red-50 text-gray-400 hover:text-red-500"
-                                          title="Eliminar referencia"
-                                        >
-                                          <Trash2 size={16} />
-                                        </button>
-                                      </div>
-                                    </div>
+                                        <div className="col-span-2">
+                                          <div className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest mb-1">Acciones</div>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              onClick={() => handleTogglePublicadoWeb(producto.id, !producto.publicado_web)}
+                                              className={`p-1.5 rounded-lg transition-colors ${
+                                                producto.publicado_web
+                                                  ? 'hover:bg-gray-100 text-gray-500 hover:text-gray-800'
+                                                  : 'hover:bg-yellow-50 text-yellow-500 hover:text-yellow-600'
+                                              }`}
+                                              title={producto.publicado_web ? 'Ocultar de la web' : 'Mostrar en la web'}
+                                            >
+                                              {producto.publicado_web ? <Eye size={16} /> : <EyeOff size={16} />}
+                                            </button>
+                                            <button
+                                              onClick={() => inventario.handleEditarProducto(producto)}
+                                              className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+                                              title="Editar referencia"
+                                            >
+                                              <Edit size={16} />
+                                            </button>
+                                            <button
+                                              onClick={() => inventario.handleEliminarProducto(producto.id)}
+                                              className="p-1.5 rounded-lg transition-colors hover:bg-red-50 text-gray-400 hover:text-red-500"
+                                              title="Eliminar referencia"
+                                            >
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </div>
+                                        </div>
                                   </div>
                                 </div>
 
