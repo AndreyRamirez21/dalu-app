@@ -4,9 +4,11 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 
-const SUPABASE_URL = 'https://gfxnsufzqselsikkzmbo.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+console.log('🔗 Conectando a:', SUPABASE_URL);
 
 const MAPEO_CATEGORIAS = {
   'Essence': 'pijamas',
@@ -23,14 +25,15 @@ const MAPEO_CATEGORIAS = {
   'Humidificadores': 'accesorios',
 };
 
-function mapearCategoria(categoriaOriginal) {
+function mapearCategoria(categoriaOriginal, coleccion) {
+  if (coleccion) return 'pijamas';
   return MAPEO_CATEGORIAS[categoriaOriginal] || null;
 }
 
 // ==================== VERIFICAR INTERNET ====================
 function verificarConexion() {
   return new Promise((resolve) => {
-    const req = https.get('https://gfxnsufzqselsikkzmbo.supabase.co', { timeout: 5000 }, () => {
+    const req = https.get(process.env.SUPABASE_URL,  { timeout: 5000 }, () => {
       resolve(true);
     });
     req.on('error', () => resolve(false));
@@ -94,20 +97,19 @@ function obtenerFechaLocalSQLite() {
 }
 
 // ==================== SUBIDA DE IMÁGENES ====================
-async function subirImagenProducto(referencia, rutaImagenLocal) {
+async function subirImagenProducto(referencia, indice, rutaImagenLocal) {
   if (!rutaImagenLocal || !fs.existsSync(rutaImagenLocal)) {
     return null;
   }
 
   try {
     const buffer = fs.readFileSync(rutaImagenLocal);
-    const extension = rutaImagenLocal.split('.').pop();
-    const nombreArchivo = `${referencia}.${extension}`;
+    const nombreArchivo = `${referencia}/${indice + 1}.jpg`;
 
     const { error: errorUpload } = await supabase.storage
       .from('productos-imagenes')
       .upload(nombreArchivo, buffer, {
-        contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        contentType: 'image/jpeg',
         upsert: true,
       });
 
@@ -162,7 +164,7 @@ async function sincronizarCatalogoWeb(db, userDataPath) {
         const nuevasImagenesSincronizadas = { ...imagenesSincronizadas };
 
         for (const p of productos) {
-          const slugCategoria = mapearCategoria(p.categoria);
+          const slugCategoria = mapearCategoria(p.categoria, p.coleccion);
           if (!slugCategoria) {
             console.warn(`⚠️ Categoría no mapeada, se omite: ${p.categoria}`);
             continue;
@@ -174,25 +176,35 @@ async function sincronizarCatalogoWeb(db, userDataPath) {
               nombre: p.nombre,
               slug: generarSlug(p.referencia),
               categoria: slugCategoria,
-              coleccion:
+              coleccion: p.coleccion || (
                 slugCategoria === 'accesorios' || ['Essence', 'Deluxe'].includes(p.categoria)
                   ? p.categoria.toLowerCase()
-                  : null,
+                  : null
+              ),
+              coleccion_visible: p.coleccion_oculta !== 1,
+              descripcion: p.descripcion || null,
               precio_venta_base: p.precio_venta_base,
               activo: p.activo === 1 && p.publicado_web === 1,
               actualizado_en: new Date().toISOString(),
             };
 
-            // ✅ Solo sube la imagen si cambió respecto a la última vez sincronizada
-            const imagenYaSincronizada = imagenesSincronizadas[p.referencia] === p.imagen;
-
-            if (p.imagen && !imagenYaSincronizada) {
-              const url = await subirImagenProducto(p.referencia, p.imagen);
-              if (url) {
-                datosUpsert.imagen_url = url;
-                nuevasImagenesSincronizadas[p.referencia] = p.imagen;
-                imagenesSubidas++;
-              }
+            let imagenesLocales = [];
+            try {
+              imagenesLocales = JSON.parse(p.imagenes || '[]');
+            } catch {
+              imagenesLocales = [];
+            }
+            if (!Array.isArray(imagenesLocales) || imagenesLocales.length === 0) {
+              imagenesLocales = p.imagen ? [p.imagen] : [];
+            }
+            imagenesLocales = imagenesLocales.filter(Boolean).slice(0, 4);
+            const firmaImagenes = JSON.stringify(imagenesLocales);
+            if (imagenesSincronizadas[p.referencia] !== firmaImagenes) {
+              const urls = (await Promise.all(imagenesLocales.map((ruta, indice) => subirImagenProducto(p.referencia, indice, ruta)))).filter(Boolean);
+              datosUpsert.imagen_url = urls[0] || null;
+              datosUpsert.imagenes_urls = urls;
+              nuevasImagenesSincronizadas[p.referencia] = firmaImagenes;
+              imagenesSubidas += urls.length;
             }
 
             const { data: productoWeb, error: errProducto } = await supabase

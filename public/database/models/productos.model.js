@@ -7,6 +7,8 @@ function agregarProducto(datos, callback) {
     referencia,
     nombre,
     categoria,
+    descripcion,
+    coleccion,
     costo_base,
     precio_calculado,
     precio_venta_base,
@@ -20,15 +22,15 @@ function agregarProducto(datos, callback) {
     // ✅ ACTUALIZADO: Incluir fecha_ingreso explícitamente
 const sqlProducto = `
   INSERT INTO productos
-  (referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tiene_variantes)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  (referencia, nombre, categoria, descripcion, coleccion, costo_base, precio_calculado, precio_venta_base, tiene_variantes)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
     const tieneVariantes = variantes?.length > 0 ? 1 : 0;
 
     db.run(
       sqlProducto,
-      [referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tieneVariantes],
+      [referencia, nombre, categoria, descripcion || null, coleccion || null, costo_base, precio_calculado, precio_venta_base, tieneVariantes],
       function (err) {
         if (err) {
           db.run('ROLLBACK');
@@ -285,6 +287,8 @@ function actualizarProducto(id, datos, callback) {
     referencia,
     nombre,
     categoria,
+    descripcion,
+    coleccion,
     costo_base,
     precio_calculado,
     precio_venta_base,
@@ -297,7 +301,7 @@ function actualizarProducto(id, datos, callback) {
 
     const sqlProducto = `
       UPDATE productos
-      SET referencia = ?, nombre = ?, categoria = ?, costo_base = ?,
+      SET referencia = ?, nombre = ?, categoria = ?, descripcion = ?, coleccion = ?, costo_base = ?,
           precio_calculado = ?, precio_venta_base = ?, tiene_variantes = ?,
           fecha_actualizado = datetime('now', 'localtime')
       WHERE id = ?
@@ -307,7 +311,7 @@ function actualizarProducto(id, datos, callback) {
 
     db.run(
       sqlProducto,
-      [referencia, nombre, categoria, costo_base, precio_calculado, precio_venta_base, tieneVariantes, id],
+      [referencia, nombre, categoria, descripcion || null, coleccion || null, costo_base, precio_calculado, precio_venta_base, tieneVariantes, id],
       function (err) {
         if (err) {
           db.run('ROLLBACK');

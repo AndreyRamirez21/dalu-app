@@ -29,11 +29,15 @@ function initDatabase() {
       referencia TEXT UNIQUE NOT NULL,
       nombre TEXT NOT NULL,
       categoria TEXT NOT NULL,
+      descripcion TEXT,
+      coleccion TEXT,
+      coleccion_oculta INTEGER DEFAULT 0,
       costo_base REAL NOT NULL,
       precio_calculado REAL,
       precio_venta_base REAL NOT NULL,
       tiene_variantes INTEGER DEFAULT 0,
       imagen TEXT,
+      imagenes TEXT,
       -- ✅ NUEVO: Fecha de ingreso del producto al inventario
       fecha_ingreso DATETIME DEFAULT (datetime('now', 'localtime')),
       fecha_creado DATETIME DEFAULT (datetime('now', 'localtime')),
@@ -42,6 +46,7 @@ function initDatabase() {
 
     // Agregar columna imagen si no existe
     db.run(`ALTER TABLE productos ADD COLUMN imagen TEXT`, () => {});
+    db.run(`ALTER TABLE productos ADD COLUMN imagenes TEXT`, () => {});
     db.run(`
       ALTER TABLE productos ADD COLUMN imagenThumbnail TEXT
     `, (err) => {
@@ -67,6 +72,25 @@ db.run(`ALTER TABLE productos ADD COLUMN activo INTEGER DEFAULT 1`, (err) => {
 db.run(`ALTER TABLE productos ADD COLUMN publicado_web INTEGER DEFAULT 1`, (err) => {
   if (err && !err.message.includes('duplicate column')) {
     console.error('Error al agregar columna publicado_web:', err);
+  }
+});
+
+// Campos opcionales para la ficha web. Las bases de datos existentes los reciben sin perder productos.
+db.run(`ALTER TABLE productos ADD COLUMN descripcion TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar descripción a productos:', err);
+  }
+});
+
+db.run(`ALTER TABLE productos ADD COLUMN coleccion TEXT`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar colección a productos:', err);
+  }
+});
+
+db.run(`ALTER TABLE productos ADD COLUMN coleccion_oculta INTEGER DEFAULT 0`, (err) => {
+  if (err && !err.message.includes('duplicate column')) {
+    console.error('Error al agregar visibilidad de colección a productos:', err);
   }
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3, HardDrive, Store, Wallet,Sparkles } from 'lucide-react';
+import { ShoppingCart, CreditCard, DollarSign, Package, LogOut, Users, BarChart3, HardDrive, Store, Wallet, Sparkles, PanelsTopLeft } from 'lucide-react';
 
 const Sidebar = ({ activeSection, setActiveSection }) => {
   return (
@@ -135,6 +135,16 @@ const Sidebar = ({ activeSection, setActiveSection }) => {
         >
           <Store size={20} />
           <span className="font-medium">Marcas aliadas</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('pagina-web')}
+          className={`w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg transition ${
+            activeSection === 'pagina-web' ? 'bg-teal-50 text-teal-600' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          <PanelsTopLeft size={20} />
+          <span className="font-medium">Página web</span>
         </button>
 
                 {/* ── Separador ── */}

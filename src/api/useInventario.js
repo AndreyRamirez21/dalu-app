@@ -92,15 +92,14 @@ export const useInventario = () => {
     referencia: '',
     nombre: '',
     categoria: 'Deluxe',
+    descripcion: '',
+    coleccion: '',
     costo_base: '',
     precio_venta_base: '',
     precio_calculado: 0,
     variantes: [],
     costos_adicionales: [],
-    imagen: null,
-    imagenThumbnail: null,
-    rutaImagen: null,
-    imagenPreview: null,
+    imagenes: [],
     cargandoImagen: false,
   };
 
@@ -365,42 +364,47 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
   };
 
   const handleImagenChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const archivos = Array.from(e.target.files || []);
+    const espaciosDisponibles = 4 - formulario.imagenes.length;
+    const archivosAProcesar = archivos.slice(0, espaciosDisponibles);
+    if (archivosAProcesar.length === 0) {
+      if (archivos.length > 0) setErrorImagen('Puedes agregar un máximo de 4 imágenes por producto.');
+      e.target.value = '';
+      return;
+    }
 
-    const validacion = validarImagen(file, 5);
-    if (!validacion.valido) {
-      setErrorImagen(validacion.error);
+    const archivoInvalido = archivosAProcesar.map(file => validarImagen(file, 5)).find(resultado => !resultado.valido);
+    if (archivoInvalido) {
+      setErrorImagen(archivoInvalido.error);
       e.target.value = '';
       return;
     }
 
     setFormulario(prev => ({ ...prev, cargandoImagen: true }));
-
     try {
-      const imagenProcesada = await procesarImagen(file);
+      const imagenesProcesadas = await Promise.all(archivosAProcesar.map(procesarImagen));
       setFormulario(prev => ({
         ...prev,
-        imagen: imagenProcesada.imagenCompleta,
-        imagenThumbnail: imagenProcesada.thumbnail,
-        imagenPreview: imagenProcesada.thumbnail,
-        cargandoImagen: false
+        imagenes: [...prev.imagenes, ...imagenesProcesadas.map(imagen => ({
+          data: imagen.imagenCompleta,
+          thumbnail: imagen.thumbnail,
+        }))],
+        cargandoImagen: false,
       }));
+      if (archivos.length > espaciosDisponibles) setErrorImagen('Solo se agregaron las primeras imágenes hasta completar el máximo de 4.');
     } catch (error) {
-      console.error('Error al procesar imagen:', error);
-      setErrorImagen(error.message || 'Error al procesar la imagen');
-      e.target.value = '';
+      console.error('Error al procesar imágenes:', error);
+      setErrorImagen(error.message || 'Error al procesar las imágenes');
       setFormulario(prev => ({ ...prev, cargandoImagen: false }));
+    } finally {
+      e.target.value = '';
     }
   };
 
-  const eliminarImagen = () => {
+  const eliminarImagen = (indice) => {
     setFormulario(prev => ({
       ...prev,
-      imagen: null,
-      imagenThumbnail: null,
-      imagenPreview: null,
-      rutaImagen: null
+      imagenes: prev.imagenes.filter((_, index) => index !== indice),
     }));
   };
 
@@ -522,6 +526,8 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
       referencia: formulario.referencia.trim(),
       nombre: formulario.nombre.trim(),
       categoria: formulario.categoria,
+      descripcion: formulario.descripcion.trim(),
+      coleccion: formulario.coleccion.trim(),
       costo_base: parseFloat(formulario.costo_base),
       precio_calculado: calcularPrecioSugerido(),
       precio_venta_base: parseFloat(formulario.precio_venta_base),
@@ -533,10 +539,10 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
       costos_adicionales: formulario.costos_adicionales
         .filter(c => c.concepto.trim() !== '')
         .map(c => ({ concepto: c.concepto.trim(), monto: parseFloat(c.monto) })),
-      imagen: formulario.imagen ? {
-        name: `${formulario.referencia}_${Date.now()}.jpg`,
-        data: formulario.imagen,
-      } : null
+      imagenes: formulario.imagenes.map((imagen, indice) => ({
+        name: `${formulario.referencia}_${indice + 1}.jpg`,
+        data: imagen.data,
+      }))
     };
 
     try {
@@ -557,19 +563,23 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
     const ipc = getIPC();
     setProductoEditar(producto);
 
-    let imagenPreview = null;
-    if (producto.imagen && ipc) {
+    const rutasImagenes = producto.imagenes?.length ? producto.imagenes : (producto.imagen ? [producto.imagen] : []);
+    const imagenes = ipc ? await Promise.all(rutasImagenes.map(async (ruta) => {
       try {
-        imagenPreview = await ipc.invoke('cargar-imagen', producto.imagen);
+        const preview = await ipc.invoke('cargar-imagen', ruta);
+        return preview ? { data: preview, thumbnail: preview } : null;
       } catch (error) {
         console.error('Error al cargar imagen:', error);
+        return null;
       }
-    }
+    })) : [];
 
     setFormulario({
       referencia: producto.referencia,
       nombre: producto.nombre,
       categoria: producto.categoria,
+      descripcion: producto.descripcion || '',
+      coleccion: producto.coleccion || '',
       costo_base: producto.costo_base.toString(),
       precio_venta_base: producto.precio_venta_base.toString(),
       precio_calculado: producto.precio_calculado || 0,
@@ -584,8 +594,7 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
         monto: c.monto,
         conceptoManual: !conceptosCostosDisponibles.includes(c.concepto)
       })),
-      imagen: null,
-      imagenPreview: imagenPreview
+      imagenes: imagenes.filter(Boolean)
     });
 
     setVista('editar');
@@ -628,6 +637,8 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
       referencia: formulario.referencia.trim(),
       nombre: formulario.nombre.trim(),
       categoria: formulario.categoria,
+      descripcion: formulario.descripcion.trim(),
+      coleccion: formulario.coleccion.trim(),
       costo_base: parseFloat(formulario.costo_base),
       precio_calculado: calcularPrecioSugerido(),
       precio_venta_base: parseFloat(formulario.precio_venta_base),
@@ -639,11 +650,10 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
       costos_adicionales: formulario.costos_adicionales
         .filter(c => c.concepto.trim() !== '')
         .map(c => ({ concepto: c.concepto.trim(), monto: parseFloat(c.monto) })),
-      imagen: formulario.imagen ? {
-        name: `${formulario.referencia}_${Date.now()}.jpg`,
-        data: formulario.imagen,
-        thumbnail: formulario.imagenThumbnail
-      } : null
+      imagenes: formulario.imagenes.map((imagen, indice) => ({
+        name: `${formulario.referencia}_${indice + 1}.jpg`,
+        data: imagen.data,
+      }))
     };
 
     try {
@@ -685,6 +695,26 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
   const handleCancelar = () => {
     setVista('lista');
     resetFormulario();
+  };
+
+  const cambiarVisibilidadColeccion = async (coleccion, ocultar) => {
+    const ipc = getIPC();
+    if (!ipc) {
+      setNotificacion({ mensaje: 'Electron IPC no disponible', tipo: 'error' });
+      return;
+    }
+
+    try {
+      await ipc.invoke('actualizar-visibilidad-coleccion-pijama', coleccion, ocultar);
+      await cargarProductos();
+      setNotificacion({
+        mensaje: ocultar ? `Colección "${coleccion}" oculta de la web` : `Colección "${coleccion}" visible nuevamente en la web`,
+        tipo: 'exito'
+      });
+    } catch (err) {
+      console.error('Error al cambiar visibilidad de colección:', err);
+      setNotificacion({ mensaje: 'No se pudo actualizar la colección', tipo: 'error' });
+    }
   };
 
   return {
@@ -751,6 +781,7 @@ return coincideBusqueda && coincideCategoria && coincideTalla && pasaFiltroPreci
     handleActualizarProducto,
     handleEliminarProducto,
     handleCancelar,
+    cambiarVisibilidadColeccion,
 
     // ✅ NUEVO: Panel de rotación
     panelRotacionAbierto,

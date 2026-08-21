@@ -12,6 +12,7 @@ import Backups from './components/sections/GestionBackups';
 import { MarcasAliadas } from './components/sections/marcas/MarcasAliadas';
 import Caja from './components/sections/Caja';
 import IA from './components/sections/IA';
+import PaginaWeb from './components/sections/PaginaWeb';
 
 const App = () => {
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -40,6 +41,8 @@ const App = () => {
         return <MarcasAliadas />;
       case 'ia':
       return <IA />;
+      case 'pagina-web':
+        return <PaginaWeb />;
       default:
         return <Dashboard />;
 
@@ -94,6 +97,10 @@ const App = () => {
       ia: {
       title: 'Asistente IA',
       subtitle: 'Análisis inteligente de tu negocio con Claude.'
+      },
+      'pagina-web': {
+        title: 'Gestión de página web',
+        subtitle: 'Actualiza las imágenes, el video y los productos destacados de tu tienda.'
       }
 
     };

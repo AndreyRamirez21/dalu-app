@@ -2,12 +2,12 @@
 import React from 'react';
 import { X, Save, Plus, Trash2, Package, DollarSign, Edit3 } from 'lucide-react';
 import { calcularMargen } from "../../../utils/exportExcel";
-import { calcularTamanoImagen } from '../../../utils/imagenUtils'; // ⭐ AGREGAR ESTA LÍNEA
 import { ModalErrorImagen } from '../../common/ModalErrorImagen';
 
 
 export const VistaFormulario = ({ inventario }) => {
   const esEdicion = inventario.vista === 'editar';
+  const coleccionesPijamas = [...new Set(inventario.productos.map((producto) => producto.coleccion).filter(Boolean))].sort();
 
   return (
     <div className="p-8 bg-gray-50 min-h-screen">
@@ -76,13 +76,70 @@ export const VistaFormulario = ({ inventario }) => {
               </select>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Colección de pijamas (opcional)
+              </label>
+              <input
+                type="text"
+                name="coleccion"
+                list="colecciones-pijamas"
+                value={inventario.formulario.coleccion}
+                onChange={inventario.handleInputChange}
+                placeholder="Ej: Línea San Valentín"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <datalist id="colecciones-pijamas">
+                {coleccionesPijamas.map((coleccion) => <option key={coleccion} value={coleccion} />)}
+              </datalist>
+              <p className="mt-1 text-xs text-gray-500">Si la completas, este producto aparecerá como pijama en esa colección de la web.</p>
+              {coleccionesPijamas.length > 0 && (
+                <details className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-teal-700">Gestionar colecciones de pijamas</summary>
+                  <div className="mt-3 space-y-2">
+                    {coleccionesPijamas.map((coleccion) => {
+                      const productosColeccion = inventario.productos.filter((producto) => producto.coleccion === coleccion);
+                      const oculta = productosColeccion.every((producto) => producto.coleccion_oculta === 1);
+                      return (
+                        <div key={coleccion} className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-sm">
+                          <span className="text-gray-700">{coleccion} <span className="text-xs text-gray-400">({productosColeccion.length})</span></span>
+                          <button
+                            type="button"
+                            onClick={() => inventario.cambiarVisibilidadColeccion(coleccion, !oculta)}
+                            className={`rounded-md px-3 py-1.5 text-xs font-medium ${oculta ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                          >
+                            {oculta ? 'Mostrar en la web' : 'Ocultar de la web'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción del producto (opcional)
+              </label>
+              <textarea
+                name="descripcion"
+                value={inventario.formulario.descripcion}
+                onChange={inventario.handleInputChange}
+                rows={4}
+                placeholder="Escribe una descripción que verán las clientas en la página web..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 resize-y"
+              />
+            </div>
+
 <div>
   <label className="block text-sm font-medium text-gray-700 mb-2">
-    Imagen del Producto (opcional)
+    Imágenes del Producto (opcional)
   </label>
   <input
     type="file"
     accept="image/*"
+    multiple
     onChange={inventario.handleImagenChange}
     disabled={inventario.formulario.cargandoImagen}
     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -96,35 +153,32 @@ export const VistaFormulario = ({ inventario }) => {
     </div>
   )}
 
-  {/* Preview */}
-  {inventario.formulario.imagenPreview && !inventario.formulario.cargandoImagen && (
-    <div className="mt-3 flex items-center space-x-4">
-      <img
-        src={inventario.formulario.imagenPreview}
-        alt="Preview"
-        className="w-32 h-32 object-cover rounded-lg border-2 border-teal-200 shadow-sm"
-      />
-      <div className="flex flex-col space-y-2">
-        <button
-          type="button"
-          onClick={inventario.eliminarImagen}
-          className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium"
-        >
-          Eliminar imagen
-        </button>
-
-        {/* Mostrar tamaños */}
-        <div className="text-xs text-gray-500">
-          <div>Thumbnail: {calcularTamanoImagen(inventario.formulario.imagenThumbnail)} KB</div>
-          <div>Completa: {calcularTamanoImagen(inventario.formulario.imagen)} KB</div>
+  {/* Previsualizaciones */}
+  {inventario.formulario.imagenes.length > 0 && !inventario.formulario.cargandoImagen && (
+    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {inventario.formulario.imagenes.map((imagen, indice) => (
+        <div key={`${indice}-${imagen.data?.slice(-12) || ''}`} className="relative">
+          <img
+            src={imagen.thumbnail || imagen.data}
+            alt={`Vista previa ${indice + 1}`}
+            className="w-full aspect-square object-cover rounded-lg border-2 border-teal-200 shadow-sm"
+          />
+          <button
+            type="button"
+            onClick={() => inventario.eliminarImagen(indice)}
+            className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-600 text-white text-sm leading-none shadow hover:bg-red-700"
+            aria-label={`Eliminar imagen ${indice + 1}`}
+          >
+            ×
+          </button>
+          <p className="mt-1 text-xs text-gray-500 text-center">Imagen {indice + 1}</p>
         </div>
-      </div>
+      ))}
     </div>
   )}
 
   <p className="mt-2 text-xs text-gray-500">
-    📸 Formatos: JPG, PNG, WEBP. Máximo 5MB.
-    Se crearán versiones optimizadas automáticamente.
+    📸 JPG, PNG o WEBP; máximo 5 MB cada una. Puedes elegir hasta 4 imágenes y la primera será la principal.
   </p>
 </div>
 

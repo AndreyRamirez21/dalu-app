@@ -100,8 +100,13 @@
       {
         "from": "build/icon.ico",
         "to": "."
+      },
+      {
+        "from": ".env",
+        "to": ".env"
       }
     ],
+
     "asarUnpack": [
       "node_modules/sqlite3/**/*"
     ],
